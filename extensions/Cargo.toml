@@ -13,5 +13,7 @@ async-trait = "0.1"
 tokio = { version = "1.0", features = ["full"] }
 solana-client = "1.18"
 solana-sdk = "1.18"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.0", features = ["v4"] }
 tracing = "0.1"
 anyhow = "1.0"
