@@ -2,6 +2,9 @@ FROM rust:bookworm AS builder
 
 WORKDIR /app
 
+# Limit parallel jobs to reduce peak disk usage during build (Solana deps are large)
+ENV CARGO_BUILD_JOBS=2
+
 RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
 
 COPY Cargo.toml Cargo.lock* ./
@@ -11,7 +14,8 @@ COPY mining/ mining/
 COPY extensions/ extensions/
 COPY src/ src/
 
-RUN cargo build --release --bin pot-o-validator
+RUN cargo build --release --bin pot-o-validator \
+    && rm -rf /app/target/release/build /app/target/release/deps/*.rlib /app/target/release/incremental
 
 FROM debian:bookworm-slim
 

@@ -1,10 +1,15 @@
 pub mod chain_bridge;
+pub mod defi;
 pub mod device_protocol;
 pub mod peer_network;
 pub mod pool_strategy;
 pub mod security;
 
 pub use chain_bridge::{ChainBridge, SolanaBridge};
+pub use defi::{
+    DefiClient, EscrowInfo, LiquidityPoolInfo, StakeAccountInfo, StakingPoolInfo, SwapQuoteInfo,
+    TreasuryInfo, UserVaultInfo,
+};
 pub use device_protocol::{
     DeviceProtocol, DeviceStatus, DeviceType, ESP32SDevice, ESP8266Device, NativeDevice,
     WasmDevice,

@@ -1,0 +1,25 @@
+# Build artifacts (never copy into context; build fresh in container)
+target/
+**/target/
+
+# Keys / secrets (mount at runtime, do not bake into image)
+keys/*.json
+
+# Firmware build artifacts (not needed for validator binary)
+firmware/.pio/
+firmware/build/
+firmware/.pioenvs/
+firmware/.piopackages/
+
+# Git / IDE
+.git/
+.gitignore
+.dockerignore
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Docs (optional: remove if you want them in image)
+*.md
+!keys/README.md

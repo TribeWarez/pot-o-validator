@@ -2,13 +2,14 @@ mod config;
 
 use axum::{
     extract::Path,
+    extract::Query,
     extract::State,
     http::StatusCode,
     response::{IntoResponse, Redirect},
     routing::{get, post},
     Json, Router,
 };
-use pot_o_extensions::{ExtensionRegistry, PoolStrategy as _};
+use pot_o_extensions::{DefiClient, ExtensionRegistry, PoolStrategy as _};
 use pot_o_mining::{PotOConsensus, PotOProof, ProofPayload};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -154,6 +155,16 @@ async fn main() {
         .route("/devices/register", post(register_device))
         .route("/devices", get(get_devices))
         .route("/network/peers", get(get_peers))
+        // Staking (tribewarez-staking)
+        .route("/staking/pool/:token_mint", get(get_staking_pool))
+        .route("/staking/stake/:pool_pubkey/:user_pubkey", get(get_stake_account))
+        // Swap (tribewarez-swap)
+        .route("/swap/pool/:token_a/:token_b", get(get_swap_pool))
+        .route("/swap/quote", get(get_swap_quote))
+        // Vault (tribewarez-vault)
+        .route("/vault/treasury/:token_mint", get(get_vault_treasury))
+        .route("/vault/vault/:treasury_pubkey/:user_pubkey", get(get_user_vault))
+        .route("/vault/escrow/:depositor/:beneficiary", get(get_escrow))
         .layer(CorsLayer::permissive())
         .with_state(state);
 
@@ -521,5 +532,235 @@ async fn get_peers(State(state): State<Arc<AppState>>) -> impl IntoResponse {
                 "error": e.to_string(),
             }))
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Staking / Swap / Vault (DeFi) handlers — run RPC in spawn_blocking
+// ---------------------------------------------------------------------------
+
+async fn get_staking_pool(
+    State(state): State<Arc<AppState>>,
+    Path(token_mint): Path<String>,
+) -> impl IntoResponse {
+    let rpc_url = state.config.solana_rpc_url.clone();
+    match tokio::task::spawn_blocking(move || {
+        let client = DefiClient::new(rpc_url);
+        client.get_staking_pool(&token_mint)
+    })
+    .await
+    {
+        Ok(Ok(Some(pool))) => (StatusCode::OK, Json(serde_json::to_value(&pool).unwrap())),
+        Ok(Ok(None)) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "Staking pool not found" })),
+        ),
+        Ok(Err(e)) => {
+            tracing::warn!(error = %e, "GET /staking/pool failed");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": e.to_string() })),
+            )
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        ),
+    }
+}
+
+async fn get_stake_account(
+    State(state): State<Arc<AppState>>,
+    Path((pool_pubkey, user_pubkey)): Path<(String, String)>,
+) -> impl IntoResponse {
+    let rpc_url = state.config.solana_rpc_url.clone();
+    match tokio::task::spawn_blocking(move || {
+        let client = DefiClient::new(rpc_url);
+        client.get_stake_account(&pool_pubkey, &user_pubkey)
+    })
+    .await
+    {
+        Ok(Ok(Some(account))) => {
+            (StatusCode::OK, Json(serde_json::to_value(&account).unwrap()))
+        }
+        Ok(Ok(None)) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "Stake account not found" })),
+        ),
+        Ok(Err(e)) => {
+            tracing::warn!(error = %e, "GET /staking/stake failed");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": e.to_string() })),
+            )
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        ),
+    }
+}
+
+async fn get_swap_pool(
+    State(state): State<Arc<AppState>>,
+    Path((token_a, token_b)): Path<(String, String)>,
+) -> impl IntoResponse {
+    let rpc_url = state.config.solana_rpc_url.clone();
+    match tokio::task::spawn_blocking(move || {
+        let client = DefiClient::new(rpc_url);
+        client.get_swap_pool(&token_a, &token_b)
+    })
+    .await
+    {
+        Ok(Ok(Some(pool))) => (StatusCode::OK, Json(serde_json::to_value(&pool).unwrap())),
+        Ok(Ok(None)) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "Liquidity pool not found" })),
+        ),
+        Ok(Err(e)) => {
+            tracing::warn!(error = %e, "GET /swap/pool failed");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": e.to_string() })),
+            )
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        ),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct SwapQuoteQuery {
+    token_a: String,
+    token_b: String,
+    amount_in: u64,
+    is_a_to_b: Option<bool>,
+}
+
+async fn get_swap_quote(
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<SwapQuoteQuery>,
+) -> impl IntoResponse {
+    let rpc_url = state.config.solana_rpc_url.clone();
+    let token_a = q.token_a.clone();
+    let token_b = q.token_b.clone();
+    let amount_in = q.amount_in;
+    let is_a_to_b = q.is_a_to_b.unwrap_or(true);
+    match tokio::task::spawn_blocking(move || {
+        let client = DefiClient::new(rpc_url);
+        client.get_swap_quote(&token_a, &token_b, amount_in, is_a_to_b)
+    })
+    .await
+    {
+        Ok(Ok(Some(quote))) => (StatusCode::OK, Json(serde_json::to_value(&quote).unwrap())),
+        Ok(Ok(None)) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "Pool not found or no liquidity" })),
+        ),
+        Ok(Err(e)) => {
+            tracing::warn!(error = %e, "GET /swap/quote failed");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": e.to_string() })),
+            )
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        ),
+    }
+}
+
+async fn get_vault_treasury(
+    State(state): State<Arc<AppState>>,
+    Path(token_mint): Path<String>,
+) -> impl IntoResponse {
+    let rpc_url = state.config.solana_rpc_url.clone();
+    match tokio::task::spawn_blocking(move || {
+        let client = DefiClient::new(rpc_url);
+        client.get_treasury(&token_mint)
+    })
+    .await
+    {
+        Ok(Ok(Some(treasury))) => {
+            (StatusCode::OK, Json(serde_json::to_value(&treasury).unwrap()))
+        }
+        Ok(Ok(None)) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "Treasury not found" })),
+        ),
+        Ok(Err(e)) => {
+            tracing::warn!(error = %e, "GET /vault/treasury failed");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": e.to_string() })),
+            )
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        ),
+    }
+}
+
+async fn get_user_vault(
+    State(state): State<Arc<AppState>>,
+    Path((treasury_pubkey, user_pubkey)): Path<(String, String)>,
+) -> impl IntoResponse {
+    let rpc_url = state.config.solana_rpc_url.clone();
+    match tokio::task::spawn_blocking(move || {
+        let client = DefiClient::new(rpc_url);
+        client.get_user_vault(&treasury_pubkey, &user_pubkey)
+    })
+    .await
+    {
+        Ok(Ok(Some(vault))) => (StatusCode::OK, Json(serde_json::to_value(&vault).unwrap())),
+        Ok(Ok(None)) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "User vault not found" })),
+        ),
+        Ok(Err(e)) => {
+            tracing::warn!(error = %e, "GET /vault/vault failed");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": e.to_string() })),
+            )
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        ),
+    }
+}
+
+async fn get_escrow(
+    State(state): State<Arc<AppState>>,
+    Path((depositor, beneficiary)): Path<(String, String)>,
+) -> impl IntoResponse {
+    let rpc_url = state.config.solana_rpc_url.clone();
+    match tokio::task::spawn_blocking(move || {
+        let client = DefiClient::new(rpc_url);
+        client.get_escrow(&depositor, &beneficiary)
+    })
+    .await
+    {
+        Ok(Ok(Some(escrow))) => (StatusCode::OK, Json(serde_json::to_value(&escrow).unwrap())),
+        Ok(Ok(None)) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "Escrow not found" })),
+        ),
+        Ok(Err(e)) => {
+            tracing::warn!(error = %e, "GET /vault/escrow failed");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": e.to_string() })),
+            )
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        ),
     }
 }
