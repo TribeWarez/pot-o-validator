@@ -144,6 +144,18 @@ impl PotOConsensus {
         Ok(true)
     }
 
+    /// Expected path and calc counts for this challenge (for status dashboard treemap).
+    /// - expected_paths: length of the neural path signature (deterministic per challenge).
+    /// - expected_calcs: 1 + difficulty (one base tensor op plus difficulty-derived steps).
+    pub fn expected_paths_and_calcs(&self, challenge: &Challenge) -> (u64, u64) {
+        let expected_paths = self
+            .neural_validator
+            .expected_path_signature(&challenge.id)
+            .len() as u64;
+        let expected_calcs = 1 + challenge.difficulty;
+        (expected_paths, expected_calcs)
+    }
+
     /// Compute the deterministic proof hash: sha256(challenge_id || tensor_hash || mml_score || path_sig || nonce)
     pub fn compute_proof_hash(
         challenge_id: &str,
@@ -187,5 +199,21 @@ mod tests {
         let h1 = PotOConsensus::compute_proof_hash("chal", "tensor", 0.5, "path", 42);
         let h2 = PotOConsensus::compute_proof_hash("chal", "tensor", 0.5, "path", 42);
         assert_eq!(h1, h2);
+    }
+
+    #[test]
+    fn test_expected_paths_and_calcs() {
+        let consensus = PotOConsensus::new(2, 8);
+        let hash = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+        let challenge = consensus.generate_challenge(100, hash).unwrap();
+        let (expected_paths, expected_calcs) = consensus.expected_paths_and_calcs(&challenge);
+        assert!(expected_paths > 0, "expected_paths should be positive");
+        assert!(expected_calcs > 0, "expected_calcs should be positive");
+        let path_len = consensus
+            .neural_validator
+            .expected_path_signature(&challenge.id)
+            .len() as u64;
+        assert_eq!(expected_paths, path_len, "expected_paths should match path signature length");
+        assert_eq!(expected_calcs, 1 + challenge.difficulty);
     }
 }
