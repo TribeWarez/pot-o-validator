@@ -4,7 +4,7 @@ use axum::{
     extract::Path,
     extract::State,
     http::StatusCode,
-    response::IntoResponse,
+    response::{IntoResponse, Redirect},
     routing::{get, post},
     Json, Router,
 };
@@ -59,6 +59,7 @@ async fn main() {
     });
 
     let app = Router::new()
+        .route("/", get(|| async { Redirect::permanent("/status") }))
         .route("/health", get(health))
         .route("/status", get(status))
         .route("/challenge", post(get_challenge))
@@ -92,6 +93,16 @@ async fn status(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let stats = state.stats.read().await.clone();
     let engine_stats = state.consensus.engine.get_stats();
     let network = state.extensions.network.sync_state().await.ok();
+    let peers = state.extensions.network.discover_peers().await.ok().unwrap_or_default();
+    let current_challenge = state.current_challenge.read().await.as_ref().map(|c| serde_json::json!({
+        "id": c.id,
+        "slot": c.slot,
+        "operation_type": c.operation_type,
+        "difficulty": c.difficulty,
+        "mml_threshold": c.mml_threshold,
+        "path_distance_max": c.path_distance_max,
+        "expires_at": c.expires_at.to_rfc3339(),
+    }));
     Json(serde_json::json!({
         "node_id": state.config.node_id,
         "difficulty": state.config.difficulty,
@@ -105,6 +116,8 @@ async fn status(State(state): State<Arc<AppState>>) -> impl IntoResponse {
             "failed": engine_stats.failed_tasks,
         },
         "network": network,
+        "current_challenge": current_challenge,
+        "connected_peers": peers,
     }))
 }
 
