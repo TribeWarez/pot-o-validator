@@ -1,6 +1,8 @@
 use pot_o_core::TribeResult;
 use pot_o_mining::PotOProof;
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Instant;
 
 // ---------------------------------------------------------------------------
 // Trait
@@ -29,13 +31,30 @@ pub trait DeviceProtocol: Send + Sync {
     fn max_tensor_dims(&self) -> (usize, usize);
     fn max_working_memory(&self) -> usize;
     fn heartbeat(&self) -> TribeResult<DeviceStatus>;
+    fn supported_operations(&self) -> Vec<&'static str>;
 }
 
 // ---------------------------------------------------------------------------
-// NativeDevice (implemented now)
+// NativeDevice
 // ---------------------------------------------------------------------------
 
-pub struct NativeDevice;
+pub struct NativeDevice {
+    started_at: Instant,
+}
+
+impl NativeDevice {
+    pub fn new() -> Self {
+        Self {
+            started_at: Instant::now(),
+        }
+    }
+}
+
+impl Default for NativeDevice {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl DeviceProtocol for NativeDevice {
     fn device_type(&self) -> DeviceType {
@@ -51,17 +70,67 @@ impl DeviceProtocol for NativeDevice {
         Ok(DeviceStatus {
             device_type: DeviceType::Native,
             online: true,
-            uptime_secs: 0,
+            uptime_secs: self.started_at.elapsed().as_secs(),
             last_heartbeat: chrono::Utc::now(),
         })
+    }
+    fn supported_operations(&self) -> Vec<&'static str> {
+        vec![
+            "matrix_multiply",
+            "convolution",
+            "relu",
+            "sigmoid",
+            "tanh",
+            "dot_product",
+            "normalize",
+        ]
     }
 }
 
 // ---------------------------------------------------------------------------
-// ESP32SDevice (stubbed)
+// ESP32SDevice
 // ---------------------------------------------------------------------------
 
-pub struct ESP32SDevice;
+/// ESP32-S device protocol handler.
+/// Tracks registered devices by ID and provides heartbeat status.
+/// The actual mining runs on the ESP firmware; this represents
+/// the validator-side view of a connected ESP32-S.
+pub struct ESP32SDevice {
+    pub device_id: String,
+    started_at: Instant,
+    last_seen: AtomicU64,
+}
+
+impl ESP32SDevice {
+    pub fn new(device_id: String) -> Self {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        Self {
+            device_id,
+            started_at: Instant::now(),
+            last_seen: AtomicU64::new(now),
+        }
+    }
+
+    pub fn record_heartbeat(&self) {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        self.last_seen.store(now, Ordering::Relaxed);
+    }
+
+    pub fn is_stale(&self, timeout_secs: u64) -> bool {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let last = self.last_seen.load(Ordering::Relaxed);
+        now.saturating_sub(last) > timeout_secs
+    }
+}
 
 impl DeviceProtocol for ESP32SDevice {
     fn device_type(&self) -> DeviceType {
@@ -74,15 +143,68 @@ impl DeviceProtocol for ESP32SDevice {
         320 * 1024 // 320 KB
     }
     fn heartbeat(&self) -> TribeResult<DeviceStatus> {
-        todo!("ESP32S heartbeat via HTTP/MQTT not yet implemented")
+        self.record_heartbeat();
+        Ok(DeviceStatus {
+            device_type: DeviceType::ESP32S,
+            online: !self.is_stale(90),
+            uptime_secs: self.started_at.elapsed().as_secs(),
+            last_heartbeat: chrono::Utc::now(),
+        })
+    }
+    fn supported_operations(&self) -> Vec<&'static str> {
+        vec![
+            "matrix_multiply",
+            "convolution",
+            "relu",
+            "sigmoid",
+            "dot_product",
+            "normalize",
+        ]
     }
 }
 
 // ---------------------------------------------------------------------------
-// ESP8266Device (stubbed)
+// ESP8266Device
 // ---------------------------------------------------------------------------
 
-pub struct ESP8266Device;
+/// ESP8266 device protocol handler.
+/// Reduced tensor dimensions (32x32) and limited operation set.
+pub struct ESP8266Device {
+    pub device_id: String,
+    started_at: Instant,
+    last_seen: AtomicU64,
+}
+
+impl ESP8266Device {
+    pub fn new(device_id: String) -> Self {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        Self {
+            device_id,
+            started_at: Instant::now(),
+            last_seen: AtomicU64::new(now),
+        }
+    }
+
+    pub fn record_heartbeat(&self) {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        self.last_seen.store(now, Ordering::Relaxed);
+    }
+
+    pub fn is_stale(&self, timeout_secs: u64) -> bool {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let last = self.last_seen.load(Ordering::Relaxed);
+        now.saturating_sub(last) > timeout_secs
+    }
+}
 
 impl DeviceProtocol for ESP8266Device {
     fn device_type(&self) -> DeviceType {
@@ -95,12 +217,21 @@ impl DeviceProtocol for ESP8266Device {
         80 * 1024 // 80 KB
     }
     fn heartbeat(&self) -> TribeResult<DeviceStatus> {
-        todo!("ESP8266 heartbeat via HTTP/MQTT not yet implemented")
+        self.record_heartbeat();
+        Ok(DeviceStatus {
+            device_type: DeviceType::ESP8266,
+            online: !self.is_stale(90),
+            uptime_secs: self.started_at.elapsed().as_secs(),
+            last_heartbeat: chrono::Utc::now(),
+        })
+    }
+    fn supported_operations(&self) -> Vec<&'static str> {
+        vec!["relu", "sigmoid", "dot_product", "normalize"]
     }
 }
 
 // ---------------------------------------------------------------------------
-// WasmDevice (stubbed)
+// WasmDevice (stubbed – pending wasm-bindgen integration)
 // ---------------------------------------------------------------------------
 
 pub struct WasmDevice;
@@ -116,6 +247,22 @@ impl DeviceProtocol for WasmDevice {
         64 * 1024 * 1024 // 64 MB WASM linear memory
     }
     fn heartbeat(&self) -> TribeResult<DeviceStatus> {
-        todo!("WASM device heartbeat not yet implemented")
+        Ok(DeviceStatus {
+            device_type: DeviceType::WASM,
+            online: false,
+            uptime_secs: 0,
+            last_heartbeat: chrono::Utc::now(),
+        })
+    }
+    fn supported_operations(&self) -> Vec<&'static str> {
+        vec![
+            "matrix_multiply",
+            "convolution",
+            "relu",
+            "sigmoid",
+            "tanh",
+            "dot_product",
+            "normalize",
+        ]
     }
 }

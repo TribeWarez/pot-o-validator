@@ -5,7 +5,10 @@ pub mod pool_strategy;
 pub mod security;
 
 pub use chain_bridge::{ChainBridge, SolanaBridge};
-pub use device_protocol::{DeviceProtocol, DeviceStatus, DeviceType, NativeDevice};
+pub use device_protocol::{
+    DeviceProtocol, DeviceStatus, DeviceType, ESP32SDevice, ESP8266Device, NativeDevice,
+    WasmDevice,
+};
 pub use peer_network::{LocalOnlyNetwork, PeerNetwork};
 pub use pool_strategy::{PoolStrategy, SoloStrategy};
 pub use security::{Ed25519Authority, ProofAuthority};
@@ -26,7 +29,7 @@ impl ExtensionRegistry {
     /// Build the default registry for single-node local operation.
     pub fn local_defaults(solana_rpc_url: &str, program_id: &str) -> Self {
         Self {
-            device: Box::new(NativeDevice),
+            device: Box::new(NativeDevice::new()),
             network: Box::new(LocalOnlyNetwork::new()),
             pool: Box::new(SoloStrategy),
             chain: Box::new(SolanaBridge::new(
