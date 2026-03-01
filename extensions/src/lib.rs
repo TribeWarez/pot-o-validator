@@ -27,7 +27,11 @@ pub struct ExtensionRegistry {
 
 impl ExtensionRegistry {
     /// Build the default registry for single-node local operation.
-    pub fn local_defaults(solana_rpc_url: &str, program_id: &str) -> Self {
+    pub fn local_defaults(
+        solana_rpc_url: &str,
+        program_id: &str,
+        relayer_keypair_path: &str,
+    ) -> Self {
         Self {
             device: Box::new(NativeDevice::new()),
             network: Box::new(LocalOnlyNetwork::new()),
@@ -35,6 +39,7 @@ impl ExtensionRegistry {
             chain: Box::new(SolanaBridge::new(
                 solana_rpc_url.to_string(),
                 program_id.to_string(),
+                relayer_keypair_path.to_string(),
             )),
             auth: Box::new(Ed25519Authority),
         }

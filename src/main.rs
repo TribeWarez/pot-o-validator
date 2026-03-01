@@ -66,16 +66,28 @@ struct AppState {
 }
 
 fn load_registry(path: &str) -> HashMap<String, RegisteredDevice> {
-    let Ok(data) = std::fs::read_to_string(path) else {
-        return HashMap::new();
-    };
-    serde_json::from_str(&data).unwrap_or_default()
+    match std::fs::read_to_string(path) {
+        Ok(data) => {
+            let reg: HashMap<String, RegisteredDevice> = serde_json::from_str(&data).unwrap_or_default();
+            tracing::debug!(path, count = reg.len(), "Loaded device registry from disk");
+            reg
+        }
+        Err(_) => {
+            tracing::debug!(path, "No existing device registry file; starting empty");
+            HashMap::new()
+        }
+    }
 }
 
 fn spawn_persist_registry(reg: HashMap<String, RegisteredDevice>, path: String) {
+    let count = reg.len();
     tokio::spawn(async move {
         if let Ok(json) = serde_json::to_string_pretty(&reg) {
-            let _ = tokio::fs::write(&path, json).await;
+            if let Err(e) = tokio::fs::write(&path, json).await {
+                tracing::warn!(path, error = %e, "Failed to persist device registry");
+            } else {
+                tracing::debug!(path, count, "Persisted device registry");
+            }
         }
     });
 }
@@ -95,19 +107,27 @@ struct ValidatorStats {
 
 #[tokio::main]
 async fn main() {
+    // Full info/debug by default; use RUST_LOG=pot_o_validator=trace for trace, or RUST_LOG=warn to reduce
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "pot_o_validator=info,tower_http=info".into()),
+                .unwrap_or_else(|_| "pot_o_validator=debug,tower_http=debug".into()),
         )
+        .with_target(true)
+        .with_thread_ids(false)
+        .with_file(false)
+        .with_line_number(false)
         .init();
 
     let cfg = ValidatorConfig::load();
     tracing::info!(port = cfg.port, difficulty = cfg.difficulty, "Starting PoT-O Validator");
 
     let consensus = PotOConsensus::new(cfg.difficulty, cfg.max_tensor_dim);
-    let extensions =
-        ExtensionRegistry::local_defaults(&cfg.solana_rpc_url, &cfg.pot_program_id);
+    let extensions = ExtensionRegistry::local_defaults(
+        &cfg.solana_rpc_url,
+        &cfg.pot_program_id,
+        &cfg.relayer_keypair_path,
+    );
 
     let registry_path = std::env::var("DEVICE_REGISTRY_PATH")
         .unwrap_or_else(|_| DEFAULT_REGISTRY_PATH.to_string());
@@ -156,6 +176,7 @@ async fn health() -> impl IntoResponse {
 }
 
 async fn status(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    tracing::debug!("GET /status");
     let stats = state.stats.read().await.clone();
     let engine_stats = state.consensus.engine.get_stats();
     let network = state.extensions.network.sync_state().await.ok();
@@ -174,7 +195,7 @@ async fn status(State(state): State<Arc<AppState>>) -> impl IntoResponse {
             "expected_calcs": expected_calcs,
         })
     });
-    Json(serde_json::json!({
+    let resp = Json(serde_json::json!({
         "node_id": state.config.node_id,
         "difficulty": state.config.difficulty,
         "max_tensor_dim": state.config.max_tensor_dim,
@@ -189,7 +210,17 @@ async fn status(State(state): State<Arc<AppState>>) -> impl IntoResponse {
         "network": network,
         "current_challenge": current_challenge,
         "connected_peers": peers,
-    }))
+    }));
+    tracing::info!(
+        challenges_issued = stats.total_challenges_issued,
+        proofs_valid = stats.total_proofs_valid,
+        paths_in_block = stats.paths_in_block,
+        calcs_in_block = stats.calcs_in_block,
+        peers = peers.len(),
+        has_challenge = current_challenge.is_some(),
+        "GET /status response"
+    );
+    resp
 }
 
 #[derive(Deserialize)]
@@ -205,9 +236,9 @@ async fn get_challenge(
 ) -> impl IntoResponse {
     let slot = body.slot.unwrap_or(100);
     let slot_hash = body.slot_hash.unwrap_or_else(|| {
-        // Deterministic fallback hash for testing
         format!("{:0>64}", hex::encode(slot.to_le_bytes()))
     });
+    tracing::debug!(slot, device_type = ?body.device_type, "POST /challenge request");
 
     match state.consensus.generate_challenge(slot, &slot_hash) {
         Ok(challenge) => {
@@ -219,12 +250,22 @@ async fn get_challenge(
             }
             let mut current = state.current_challenge.write().await;
             *current = Some(challenge.clone());
+            tracing::info!(
+                challenge_id = %challenge.id,
+                slot = challenge.slot,
+                operation_type = %challenge.operation_type,
+                difficulty = challenge.difficulty,
+                "POST /challenge issued"
+            );
             (StatusCode::OK, Json(serde_json::to_value(&challenge).unwrap()))
         }
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": e.to_string() })),
-        ),
+        Err(e) => {
+            tracing::warn!(error = %e, "POST /challenge failed");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": e.to_string() })),
+            )
+        }
     }
 }
 
@@ -240,12 +281,17 @@ async fn submit_proof(
     State(state): State<Arc<AppState>>,
     Json(body): Json<SubmitRequest>,
 ) -> impl IntoResponse {
+    tracing::debug!(
+        challenge_id = %body.proof.challenge_id,
+        miner = %body.proof.miner_pubkey,
+        device_id = ?body.device_id,
+        "POST /submit received"
+    );
     {
         let mut s = state.stats.write().await;
         s.total_proofs_received += 1;
     }
 
-    // Verify against current challenge
     let challenge = state.current_challenge.read().await;
     if let Some(ref chal) = *challenge {
         match state.consensus.verify_proof(&body.proof, chal) {
@@ -275,29 +321,47 @@ async fn submit_proof(
                 };
 
                 match state.extensions.chain.submit_proof(&payload).await {
-                    Ok(tx) => (
-                        StatusCode::OK,
-                        Json(serde_json::json!({
-                            "accepted": true,
-                            "tx_signature": tx.0,
-                        })),
-                    ),
-                    Err(e) => (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        Json(serde_json::json!({ "accepted": false, "error": e.to_string() })),
-                    ),
+                    Ok(tx) => {
+                        tracing::info!(
+                            challenge_id = %body.proof.challenge_id,
+                            tx_signature = %tx.0,
+                            device_id = ?body.device_id,
+                            "POST /submit accepted (on-chain)"
+                        );
+                        (
+                            StatusCode::OK,
+                            Json(serde_json::json!({
+                                "accepted": true,
+                                "tx_signature": tx.0,
+                            })),
+                        )
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, "POST /submit chain submit failed");
+                        (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            Json(serde_json::json!({ "accepted": false, "error": e.to_string() })),
+                        )
+                    }
                 }
             }
-            Ok(false) => (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({ "accepted": false, "error": "Proof validation failed" })),
-            ),
-            Err(e) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({ "accepted": false, "error": e.to_string() })),
-            ),
+            Ok(false) => {
+                tracing::info!(challenge_id = %body.proof.challenge_id, "POST /submit rejected (validation failed)");
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({ "accepted": false, "error": "Proof validation failed" })),
+                )
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "POST /submit verify error");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "accepted": false, "error": e.to_string() })),
+                )
+            }
         }
     } else {
+        tracing::debug!("POST /submit rejected (no active challenge)");
         (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "accepted": false, "error": "No active challenge" })),
@@ -309,20 +373,31 @@ async fn get_miner(
     State(state): State<Arc<AppState>>,
     Path(pubkey): Path<String>,
 ) -> impl IntoResponse {
+    tracing::debug!(pubkey = %pubkey, "GET /miners/:pubkey");
     match state.extensions.chain.query_miner(&pubkey).await {
-        Ok(Some(acct)) => (StatusCode::OK, Json(serde_json::to_value(&acct).unwrap())),
-        Ok(None) => (
-            StatusCode::NOT_FOUND,
-            Json(serde_json::json!({ "error": "Miner not found" })),
-        ),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": e.to_string() })),
-        ),
+        Ok(Some(acct)) => {
+            tracing::debug!(pubkey = %pubkey, "GET /miners/:pubkey found");
+            (StatusCode::OK, Json(serde_json::to_value(&acct).unwrap()))
+        }
+        Ok(None) => {
+            tracing::debug!(pubkey = %pubkey, "GET /miners/:pubkey not found");
+            (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({ "error": "Miner not found" })),
+            )
+        }
+        Err(e) => {
+            tracing::warn!(pubkey = %pubkey, error = %e, "GET /miners/:pubkey error");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": e.to_string() })),
+            )
+        }
     }
 }
 
 async fn pool_info(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    tracing::debug!("GET /pool");
     let info = state.extensions.pool.pool_info(0, 0);
     Json(serde_json::to_value(&info).unwrap())
 }
@@ -342,11 +417,12 @@ async fn register_device(
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     let device_type_normalized = normalize_device_type(&body.device_type);
     let now = chrono::Utc::now();
-    {
+    let is_new = {
         let mut reg = state.device_registry.write().await;
         if let Some(prev) = reg.get_mut(&device_id) {
             prev.last_activity = now;
             prev.device_type = device_type_normalized.clone();
+            false
         } else {
             reg.insert(
                 device_id.clone(),
@@ -358,8 +434,15 @@ async fn register_device(
                     tasks_processed: 0,
                 },
             );
+            true
         }
-    }
+    };
+    tracing::info!(
+        device_id = %device_id,
+        device_type = %body.device_type,
+        is_new = is_new,
+        "POST /devices/register"
+    );
     let reg = state.device_registry.read().await.clone();
     spawn_persist_registry(reg, state.registry_path.clone());
     Json(serde_json::json!({
@@ -370,6 +453,7 @@ async fn register_device(
 }
 
 async fn get_devices(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    tracing::debug!("GET /devices");
     let reg = state.device_registry.read().await.clone();
     let mut by_type: HashMap<String, (u64, u64, u64, Option<chrono::DateTime<chrono::Utc>>)> =
         HashMap::new();
@@ -415,19 +499,27 @@ async fn get_devices(State(state): State<Arc<AppState>>) -> impl IntoResponse {
             }),
         );
     }
+    tracing::debug!(device_count = reg.len(), "GET /devices response");
     Json(serde_json::json!({
         "miners_by_device": miners_map,
     }))
 }
 
 async fn get_peers(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    tracing::debug!("GET /network/peers");
     match state.extensions.network.discover_peers().await {
-        Ok(peers) => Json(serde_json::json!({
-            "node_id": state.extensions.network.node_id(),
-            "peers": peers,
-        })),
-        Err(e) => Json(serde_json::json!({
-            "error": e.to_string(),
-        })),
+        Ok(peers) => {
+            tracing::debug!(peer_count = peers.len(), "GET /network/peers");
+            Json(serde_json::json!({
+                "node_id": state.extensions.network.node_id(),
+                "peers": peers,
+            }))
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "GET /network/peers failed");
+            Json(serde_json::json!({
+                "error": e.to_string(),
+            }))
+        }
     }
 }

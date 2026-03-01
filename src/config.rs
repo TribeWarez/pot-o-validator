@@ -26,6 +26,8 @@ pub struct ValidatorConfig {
     pub chain_bridge: String,
     #[serde(default = "default_device_protocol")]
     pub device_protocol: String,
+    #[serde(default = "default_relayer_keypair_path")]
+    pub relayer_keypair_path: String,
 }
 
 fn default_node_id() -> String {
@@ -60,6 +62,10 @@ fn default_chain_bridge() -> String {
 }
 fn default_device_protocol() -> String {
     "native".into()
+}
+fn default_relayer_keypair_path() -> String {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".into());
+    format!("{}/.config/solana/id.json", home)
 }
 
 impl ValidatorConfig {
@@ -104,6 +110,9 @@ impl ValidatorConfig {
         if let Ok(v) = std::env::var("DEVICE_PROTOCOL") {
             cfg.device_protocol = v;
         }
+        if let Ok(v) = std::env::var("RELAYER_KEYPAIR_PATH") {
+            cfg.relayer_keypair_path = v;
+        }
 
         cfg
     }
@@ -122,6 +131,7 @@ impl ValidatorConfig {
             pool_strategy: default_pool_strategy(),
             chain_bridge: default_chain_bridge(),
             device_protocol: default_device_protocol(),
+            relayer_keypair_path: default_relayer_keypair_path(),
         }
     }
 }
