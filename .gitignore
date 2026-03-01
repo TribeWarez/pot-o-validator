@@ -1,0 +1,13 @@
+# Rust build artifacts
+target/
+**/target/
+
+# OS / IDE
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Environment overrides
+.env
+.env.local

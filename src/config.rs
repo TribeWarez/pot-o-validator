@@ -1,0 +1,127 @@
+use serde::Deserialize;
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ValidatorConfig {
+    #[serde(default = "default_node_id")]
+    pub node_id: String,
+    #[serde(default = "default_listen_addr")]
+    pub listen_addr: String,
+    #[serde(default = "default_port")]
+    pub port: u16,
+    #[serde(default = "default_solana_rpc_url")]
+    pub solana_rpc_url: String,
+    #[serde(default)]
+    pub pot_program_id: String,
+    #[serde(default = "default_difficulty")]
+    pub difficulty: u64,
+    #[serde(default = "default_max_tensor_dim")]
+    pub max_tensor_dim: usize,
+    #[serde(default = "default_max_mine_iterations")]
+    pub max_mine_iterations: u64,
+    #[serde(default = "default_peer_network_mode")]
+    pub peer_network_mode: String,
+    #[serde(default = "default_pool_strategy")]
+    pub pool_strategy: String,
+    #[serde(default = "default_chain_bridge")]
+    pub chain_bridge: String,
+    #[serde(default = "default_device_protocol")]
+    pub device_protocol: String,
+}
+
+fn default_node_id() -> String {
+    uuid::Uuid::new_v4().to_string()
+}
+fn default_listen_addr() -> String {
+    "0.0.0.0".into()
+}
+fn default_port() -> u16 {
+    8900
+}
+fn default_solana_rpc_url() -> String {
+    "http://testnet-solana-rpc-gateway:8899".into()
+}
+fn default_difficulty() -> u64 {
+    2
+}
+fn default_max_tensor_dim() -> usize {
+    64
+}
+fn default_max_mine_iterations() -> u64 {
+    10_000
+}
+fn default_peer_network_mode() -> String {
+    "local_only".into()
+}
+fn default_pool_strategy() -> String {
+    "solo".into()
+}
+fn default_chain_bridge() -> String {
+    "solana".into()
+}
+fn default_device_protocol() -> String {
+    "native".into()
+}
+
+impl ValidatorConfig {
+    /// Load config from TOML file, then override with env vars.
+    pub fn load() -> Self {
+        let mut cfg: Self = std::fs::read_to_string("/config/default.toml")
+            .ok()
+            .and_then(|s| toml::from_str(&s).ok())
+            .or_else(|| {
+                std::fs::read_to_string("config/default.toml")
+                    .ok()
+                    .and_then(|s| toml::from_str(&s).ok())
+            })
+            .unwrap_or_else(|| Self::defaults());
+
+        // Env overrides
+        if let Ok(v) = std::env::var("SOLANA_RPC_URL") {
+            cfg.solana_rpc_url = v;
+        }
+        if let Ok(v) = std::env::var("POT_PROGRAM_ID") {
+            cfg.pot_program_id = v;
+        }
+        if let Ok(v) = std::env::var("POT_O_DIFFICULTY") {
+            if let Ok(d) = v.parse() {
+                cfg.difficulty = d;
+            }
+        }
+        if let Ok(v) = std::env::var("PORT") {
+            if let Ok(p) = v.parse() {
+                cfg.port = p;
+            }
+        }
+        if let Ok(v) = std::env::var("PEER_NETWORK_MODE") {
+            cfg.peer_network_mode = v;
+        }
+        if let Ok(v) = std::env::var("POOL_STRATEGY") {
+            cfg.pool_strategy = v;
+        }
+        if let Ok(v) = std::env::var("CHAIN_BRIDGE") {
+            cfg.chain_bridge = v;
+        }
+        if let Ok(v) = std::env::var("DEVICE_PROTOCOL") {
+            cfg.device_protocol = v;
+        }
+
+        cfg
+    }
+
+    fn defaults() -> Self {
+        Self {
+            node_id: default_node_id(),
+            listen_addr: default_listen_addr(),
+            port: default_port(),
+            solana_rpc_url: default_solana_rpc_url(),
+            pot_program_id: String::new(),
+            difficulty: default_difficulty(),
+            max_tensor_dim: default_max_tensor_dim(),
+            max_mine_iterations: default_max_mine_iterations(),
+            peer_network_mode: default_peer_network_mode(),
+            pool_strategy: default_pool_strategy(),
+            chain_bridge: default_chain_bridge(),
+            device_protocol: default_device_protocol(),
+        }
+    }
+}

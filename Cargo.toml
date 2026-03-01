@@ -1,0 +1,49 @@
+[package]
+name = "pot-o-validator"
+version = "0.1.0"
+edition = "2021"
+authors = ["TribeWarez"]
+description = "PoT-O (Proof of Tensor Optimizations) Validator Service"
+license = "MIT"
+
+[workspace]
+members = [
+    "core",
+    "ai3-lib",
+    "mining",
+    "extensions",
+]
+
+[dependencies]
+pot-o-core = { path = "core" }
+ai3-lib = { path = "ai3-lib" }
+pot-o-mining = { path = "mining" }
+pot-o-extensions = { path = "extensions" }
+
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+rand = "0.8"
+tokio = { version = "1.0", features = ["full"] }
+axum = "0.7"
+tower-http = { version = "0.5", features = ["cors"] }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.0", features = ["v4"] }
+toml = "0.8"
+hex = "0.4"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = "1.0"
+thiserror = "1.0"
+solana-client = "1.18"
+solana-sdk = "1.18"
+
+[[bin]]
+name = "pot-o-validator"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"

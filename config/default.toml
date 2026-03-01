@@ -1,0 +1,16 @@
+# PoT-O Validator default configuration
+# Env vars override these values (see config.rs for mapping).
+
+listen_addr = "0.0.0.0"
+port = 8900
+solana_rpc_url = "http://testnet-solana-rpc-gateway:8899"
+pot_program_id = ""
+difficulty = 2
+max_tensor_dim = 64
+max_mine_iterations = 10000
+
+# Extension point modes (defaults for single-node local operation)
+peer_network_mode = "local_only"
+pool_strategy = "solo"
+chain_bridge = "solana"
+device_protocol = "native"
