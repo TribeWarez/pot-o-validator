@@ -69,7 +69,8 @@ struct AppState {
 fn load_registry(path: &str) -> HashMap<String, RegisteredDevice> {
     match std::fs::read_to_string(path) {
         Ok(data) => {
-            let reg: HashMap<String, RegisteredDevice> = serde_json::from_str(&data).unwrap_or_default();
+            let reg: HashMap<String, RegisteredDevice> =
+                serde_json::from_str(&data).unwrap_or_default();
             tracing::debug!(path, count = reg.len(), "Loaded device registry from disk");
             reg
         }
@@ -121,7 +122,11 @@ async fn main() {
         .init();
 
     let cfg = ValidatorConfig::load();
-    tracing::info!(port = cfg.port, difficulty = cfg.difficulty, "Starting PoT-O Validator");
+    tracing::info!(
+        port = cfg.port,
+        difficulty = cfg.difficulty,
+        "Starting PoT-O Validator"
+    );
 
     let consensus = PotOConsensus::new(cfg.difficulty, cfg.max_tensor_dim);
     let extensions = ExtensionRegistry::local_defaults(
@@ -131,8 +136,8 @@ async fn main() {
         cfg.auto_register_miners,
     );
 
-    let registry_path = std::env::var("DEVICE_REGISTRY_PATH")
-        .unwrap_or_else(|_| DEFAULT_REGISTRY_PATH.to_string());
+    let registry_path =
+        std::env::var("DEVICE_REGISTRY_PATH").unwrap_or_else(|_| DEFAULT_REGISTRY_PATH.to_string());
     let device_registry = load_registry(&registry_path);
 
     let state = Arc::new(AppState {
@@ -158,13 +163,19 @@ async fn main() {
         .route("/network/peers", get(get_peers))
         // Staking (tribewarez-staking)
         .route("/staking/pool/:token_mint", get(get_staking_pool))
-        .route("/staking/stake/:pool_pubkey/:user_pubkey", get(get_stake_account))
+        .route(
+            "/staking/stake/:pool_pubkey/:user_pubkey",
+            get(get_stake_account),
+        )
         // Swap (tribewarez-swap)
         .route("/swap/pool/:token_a/:token_b", get(get_swap_pool))
         .route("/swap/quote", get(get_swap_quote))
         // Vault (tribewarez-vault)
         .route("/vault/treasury/:token_mint", get(get_vault_treasury))
-        .route("/vault/vault/:treasury_pubkey/:user_pubkey", get(get_user_vault))
+        .route(
+            "/vault/vault/:treasury_pubkey/:user_pubkey",
+            get(get_user_vault),
+        )
         .route("/vault/escrow/:depositor/:beneficiary", get(get_escrow))
         .layer(CorsLayer::permissive())
         .with_state(state);
@@ -192,7 +203,13 @@ async fn status(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let stats = state.stats.read().await.clone();
     let engine_stats = state.consensus.engine.get_stats();
     let network = state.extensions.network.sync_state().await.ok();
-    let peers = state.extensions.network.discover_peers().await.ok().unwrap_or_default();
+    let peers = state
+        .extensions
+        .network
+        .discover_peers()
+        .await
+        .ok()
+        .unwrap_or_default();
     let current_challenge = state.current_challenge.read().await.as_ref().map(|c| {
         let (expected_paths, expected_calcs) = state.consensus.expected_paths_and_calcs(c);
         serde_json::json!({
@@ -247,9 +264,9 @@ async fn get_challenge(
     Json(body): Json<ChallengeRequest>,
 ) -> impl IntoResponse {
     let slot = body.slot.unwrap_or(100);
-    let slot_hash = body.slot_hash.unwrap_or_else(|| {
-        format!("{:0>64}", hex::encode(slot.to_le_bytes()))
-    });
+    let slot_hash = body
+        .slot_hash
+        .unwrap_or_else(|| format!("{:0>64}", hex::encode(slot.to_le_bytes())));
     tracing::debug!(slot, device_type = ?body.device_type, "POST /challenge request");
 
     match state.consensus.generate_challenge(slot, &slot_hash) {
@@ -269,7 +286,10 @@ async fn get_challenge(
                 difficulty = challenge.difficulty,
                 "POST /challenge issued"
             );
-            (StatusCode::OK, Json(serde_json::to_value(&challenge).unwrap()))
+            (
+                StatusCode::OK,
+                Json(serde_json::to_value(&challenge).unwrap()),
+            )
         }
         Err(e) => {
             tracing::warn!(error = %e, "POST /challenge failed");
@@ -382,7 +402,9 @@ async fn submit_proof(
                 tracing::info!(challenge_id = %body.proof.challenge_id, "POST /submit rejected (validation failed)");
                 (
                     StatusCode::BAD_REQUEST,
-                    Json(serde_json::json!({ "accepted": false, "error": "Proof validation failed" })),
+                    Json(
+                        serde_json::json!({ "accepted": false, "error": "Proof validation failed" }),
+                    ),
                 )
             }
             Err(e) => {
@@ -475,27 +497,25 @@ async fn register_device(
 
     let miner_registered = if let Some(ref miner_pubkey) = body.miner_pubkey {
         match state.extensions.chain.query_miner(miner_pubkey).await {
-            Ok(None) => {
-                match state.extensions.chain.register_miner(miner_pubkey).await {
-                    Ok(_) => {
-                        tracing::info!(
-                            device_id = %device_id,
-                            miner_pubkey = %miner_pubkey,
-                            "Auto-registered miner on-chain at device registration"
-                        );
-                        true
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            device_id = %device_id,
-                            miner_pubkey = %miner_pubkey,
-                            error = %e,
-                            "Auto-register miner at registration failed"
-                        );
-                        false
-                    }
+            Ok(None) => match state.extensions.chain.register_miner(miner_pubkey).await {
+                Ok(_) => {
+                    tracing::info!(
+                        device_id = %device_id,
+                        miner_pubkey = %miner_pubkey,
+                        "Auto-registered miner on-chain at device registration"
+                    );
+                    true
                 }
-            }
+                Err(e) => {
+                    tracing::warn!(
+                        device_id = %device_id,
+                        miner_pubkey = %miner_pubkey,
+                        error = %e,
+                        "Auto-register miner at registration failed"
+                    );
+                    false
+                }
+            },
             Ok(Some(_)) => true, // already on-chain, can mine
             Err(e) => {
                 tracing::warn!(
@@ -534,10 +554,7 @@ async fn get_devices(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let mut by_type: HashMap<String, (u64, u64, u64, Option<chrono::DateTime<chrono::Utc>>)> =
         HashMap::new();
     for key in DEVICE_TYPE_KEYS {
-        by_type.insert(
-            (*key).to_string(),
-            (0, 0, 0, None),
-        );
+        by_type.insert((*key).to_string(), (0, 0, 0, None));
     }
     for d in reg.values() {
         let key = &d.device_type;
@@ -645,9 +662,10 @@ async fn get_stake_account(
     })
     .await
     {
-        Ok(Ok(Some(account))) => {
-            (StatusCode::OK, Json(serde_json::to_value(&account).unwrap()))
-        }
+        Ok(Ok(Some(account))) => (
+            StatusCode::OK,
+            Json(serde_json::to_value(&account).unwrap()),
+        ),
         Ok(Ok(None)) => (
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({ "error": "Stake account not found" })),
@@ -749,9 +767,10 @@ async fn get_vault_treasury(
     })
     .await
     {
-        Ok(Ok(Some(treasury))) => {
-            (StatusCode::OK, Json(serde_json::to_value(&treasury).unwrap()))
-        }
+        Ok(Ok(Some(treasury))) => (
+            StatusCode::OK,
+            Json(serde_json::to_value(&treasury).unwrap()),
+        ),
         Ok(Ok(None)) => (
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({ "error": "Treasury not found" })),

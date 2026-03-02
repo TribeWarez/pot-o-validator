@@ -92,12 +92,7 @@ impl NeuralPathValidator {
     }
 
     /// Validate that the actual path is close enough to the expected path.
-    pub fn validate(
-        &self,
-        actual_path: &[u8],
-        challenge_hash: &str,
-        max_distance: u32,
-    ) -> bool {
+    pub fn validate(&self, actual_path: &[u8], challenge_hash: &str, max_distance: u32) -> bool {
         let expected = self.expected_path_signature(challenge_hash);
         let min_len = actual_path.len().min(expected.len());
         let distance = Self::hamming_distance(&actual_path[..min_len], &expected[..min_len]);
@@ -136,19 +131,24 @@ mod tests {
 
     #[test]
     fn test_hamming_distance() {
-        assert_eq!(NeuralPathValidator::hamming_distance(&[0, 1, 0], &[0, 1, 0]), 0);
-        assert_eq!(NeuralPathValidator::hamming_distance(&[0, 1, 0], &[1, 0, 1]), 3);
-        assert_eq!(NeuralPathValidator::hamming_distance(&[1, 1, 1], &[0, 1, 0]), 2);
+        assert_eq!(
+            NeuralPathValidator::hamming_distance(&[0, 1, 0], &[0, 1, 0]),
+            0
+        );
+        assert_eq!(
+            NeuralPathValidator::hamming_distance(&[0, 1, 0], &[1, 0, 1]),
+            3
+        );
+        assert_eq!(
+            NeuralPathValidator::hamming_distance(&[1, 1, 1], &[0, 1, 0]),
+            2
+        );
     }
 
     #[test]
     fn test_actual_path_varies_with_nonce() {
         let v = NeuralPathValidator::default();
-        let t = Tensor::new(
-            TensorShape::new(vec![64]),
-            TensorData::F32(vec![0.5; 64]),
-        )
-        .unwrap();
+        let t = Tensor::new(TensorShape::new(vec![64]), TensorData::F32(vec![0.5; 64])).unwrap();
         let p1 = v.compute_actual_path(&t, 0).unwrap();
         let p2 = v.compute_actual_path(&t, 999_999).unwrap();
         // Different nonces should (usually) produce different paths

@@ -11,8 +11,7 @@ pub use defi::{
     TreasuryInfo, UserVaultInfo,
 };
 pub use device_protocol::{
-    DeviceProtocol, DeviceStatus, DeviceType, ESP32SDevice, ESP8266Device, NativeDevice,
-    WasmDevice,
+    DeviceProtocol, DeviceStatus, DeviceType, ESP32SDevice, ESP8266Device, NativeDevice, WasmDevice,
 };
 pub use peer_network::{LocalOnlyNetwork, PeerNetwork};
 pub use pool_strategy::{PoolStrategy, SoloStrategy};

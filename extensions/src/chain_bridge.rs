@@ -164,8 +164,7 @@ impl SolanaBridge {
             .expect("checked before calling")
             .pubkey();
 
-        let (config_pda, _) =
-            Pubkey::find_program_address(&[b"pot_o_config"], &self.program_id);
+        let (config_pda, _) = Pubkey::find_program_address(&[b"pot_o_config"], &self.program_id);
         let (miner_pda, _) =
             Pubkey::find_program_address(&[b"miner", miner_pubkey.as_ref()], &self.program_id);
 
@@ -201,14 +200,15 @@ impl SolanaBridge {
             .expect("checked before calling")
             .pubkey();
 
-        let (config_pda, _) =
-            Pubkey::find_program_address(&[b"pot_o_config"], &self.program_id);
+        let (config_pda, _) = Pubkey::find_program_address(&[b"pot_o_config"], &self.program_id);
         let (miner_pda, _) =
             Pubkey::find_program_address(&[b"miner", miner_pubkey.as_ref()], &self.program_id);
 
         let challenge_id_bytes = hex_to_32(&proof.proof.challenge_id)?;
-        let (proof_pda, _) =
-            Pubkey::find_program_address(&[b"proof", challenge_id_bytes.as_ref()], &self.program_id);
+        let (proof_pda, _) = Pubkey::find_program_address(
+            &[b"proof", challenge_id_bytes.as_ref()],
+            &self.program_id,
+        );
 
         let params = OnChainProofParams {
             challenge_id: challenge_id_bytes,
@@ -313,12 +313,8 @@ impl ChainBridge for SolanaBridge {
                 .get_latest_blockhash()
                 .map_err(|e| TribeError::ChainBridgeError(format!("get_latest_blockhash: {e}")))?;
 
-            let tx = Transaction::new_signed_with_payer(
-                &[ix],
-                Some(&kp.pubkey()),
-                &[&kp],
-                blockhash,
-            );
+            let tx =
+                Transaction::new_signed_with_payer(&[ix], Some(&kp.pubkey()), &[&kp], blockhash);
 
             let signature = client
                 .send_and_confirm_transaction(&tx)
@@ -372,7 +368,11 @@ impl ChainBridge for SolanaBridge {
         .await
         .map_err(|e| TribeError::ChainBridgeError(format!("spawn_blocking join: {e}")))??;
 
-        tracing::debug!(pubkey, found = result.is_some(), "Querying miner account on-chain");
+        tracing::debug!(
+            pubkey,
+            found = result.is_some(),
+            "Querying miner account on-chain"
+        );
         Ok(result)
     }
 
@@ -386,9 +386,8 @@ impl ChainBridge for SolanaBridge {
             }
         };
 
-        let miner_pubkey =
-            Pubkey::from_str(miner_pubkey)
-                .map_err(|e| TribeError::ChainBridgeError(format!("invalid miner pubkey: {e}")))?;
+        let miner_pubkey = Pubkey::from_str(miner_pubkey)
+            .map_err(|e| TribeError::ChainBridgeError(format!("invalid miner pubkey: {e}")))?;
         let ix = self.build_register_miner_ix(&miner_pubkey)?;
 
         let rpc_url = self.rpc_url.clone();
@@ -399,12 +398,8 @@ impl ChainBridge for SolanaBridge {
                 .get_latest_blockhash()
                 .map_err(|e| TribeError::ChainBridgeError(format!("get_latest_blockhash: {e}")))?;
 
-            let tx = Transaction::new_signed_with_payer(
-                &[ix],
-                Some(&kp.pubkey()),
-                &[&kp],
-                blockhash,
-            );
+            let tx =
+                Transaction::new_signed_with_payer(&[ix], Some(&kp.pubkey()), &[&kp], blockhash);
 
             match client.send_and_confirm_transaction(&tx) {
                 Ok(signature) => {
@@ -447,7 +442,12 @@ impl ChainBridge for SolanaBridge {
         to_token: Token,
         amount: u64,
     ) -> TribeResult<TxSignature> {
-        tracing::info!(?from_token, ?to_token, amount, "Swap request (CPI to tribewarez-swap)");
+        tracing::info!(
+            ?from_token,
+            ?to_token,
+            amount,
+            "Swap request (CPI to tribewarez-swap)"
+        );
         Ok(TxSignature("sim_swap_placeholder".into()))
     }
 }
@@ -475,7 +475,12 @@ impl ChainBridge for EvmBridge {
     async fn get_current_difficulty(&self) -> TribeResult<u64> {
         todo!("EVM difficulty query not yet implemented")
     }
-    async fn request_swap(&self, _from: Token, _to: Token, _amount: u64) -> TribeResult<TxSignature> {
+    async fn request_swap(
+        &self,
+        _from: Token,
+        _to: Token,
+        _amount: u64,
+    ) -> TribeResult<TxSignature> {
         todo!("EVM swap not yet implemented")
     }
 }
@@ -503,7 +508,12 @@ impl ChainBridge for CrossChainBridge {
     async fn get_current_difficulty(&self) -> TribeResult<u64> {
         todo!("Cross-chain difficulty query not yet implemented")
     }
-    async fn request_swap(&self, _from: Token, _to: Token, _amount: u64) -> TribeResult<TxSignature> {
+    async fn request_swap(
+        &self,
+        _from: Token,
+        _to: Token,
+        _amount: u64,
+    ) -> TribeResult<TxSignature> {
         todo!("Cross-chain atomic swap not yet implemented")
     }
 }

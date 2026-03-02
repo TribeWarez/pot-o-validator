@@ -1,5 +1,5 @@
-use pot_o_mining::PotOConsensus;
 use pot_o_core::TribeResult;
+use pot_o_mining::PotOConsensus;
 use std::time::Instant;
 
 /// Simple timing harness for PoT-O operations and mining loop on PC.
@@ -52,4 +52,3 @@ fn main() -> TribeResult<()> {
 
     Ok(())
 }
-

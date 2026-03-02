@@ -1,5 +1,5 @@
-use pot_o_mining::PotOConsensus;
 use pot_o_core::TribeResult;
+use pot_o_mining::PotOConsensus;
 use serde_json::json;
 use std::time::SystemTime;
 
@@ -19,9 +19,7 @@ fn main() -> TribeResult<()> {
         let slot_hash = format!("{:0>64}", hex::encode(slot.to_le_bytes()));
         let challenge = consensus.generate_challenge(slot, &slot_hash)?;
 
-        if let Some(proof) = consensus
-            .mine(&challenge, "golden_miner_pubkey", 5_000)?
-        {
+        if let Some(proof) = consensus.mine(&challenge, "golden_miner_pubkey", 5_000)? {
             let now = SystemTime::now()
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -46,4 +44,3 @@ fn main() -> TribeResult<()> {
 
     Ok(())
 }
-

@@ -49,11 +49,7 @@ impl PotOConsensus {
     }
 
     /// Generate a new challenge from the latest Solana slot data.
-    pub fn generate_challenge(
-        &self,
-        slot: u64,
-        slot_hash: &str,
-    ) -> TribeResult<Challenge> {
+    pub fn generate_challenge(&self, slot: u64, slot_hash: &str) -> TribeResult<Challenge> {
         self.challenge_gen.generate(slot, slot_hash)
     }
 
@@ -77,20 +73,27 @@ impl PotOConsensus {
             let actual_path = self
                 .neural_validator
                 .compute_actual_path(&output_tensor, nonce)?;
-            let expected = self
-                .neural_validator
-                .expected_path_signature(&challenge.id);
+            let expected = self.neural_validator.expected_path_signature(&challenge.id);
             let min_len = actual_path.len().min(expected.len());
-            let distance =
-                NeuralPathValidator::hamming_distance(&actual_path[..min_len], &expected[..min_len]);
+            let distance = NeuralPathValidator::hamming_distance(
+                &actual_path[..min_len],
+                &expected[..min_len],
+            );
 
             if distance <= challenge.path_distance_max
-                && self.mml_validator.validate(mml_score, challenge.mml_threshold)
+                && self
+                    .mml_validator
+                    .validate(mml_score, challenge.mml_threshold)
             {
                 let tensor_result_hash = output_tensor.calculate_hash();
                 let path_sig = NeuralPathValidator::path_to_hex(&actual_path);
-                let computation_hash =
-                    Self::compute_proof_hash(&challenge.id, &tensor_result_hash, mml_score, &path_sig, nonce);
+                let computation_hash = Self::compute_proof_hash(
+                    &challenge.id,
+                    &tensor_result_hash,
+                    mml_score,
+                    &path_sig,
+                    nonce,
+                );
 
                 let elapsed = start.elapsed();
                 self.engine.record_result(true, elapsed);
@@ -186,7 +189,9 @@ mod tests {
         assert!(!challenge.id.is_empty());
 
         // With low difficulty and small tensors, mining should find a proof quickly
-        let result = consensus.mine(&challenge, "test_miner_pubkey", 1000).unwrap();
+        let result = consensus
+            .mine(&challenge, "test_miner_pubkey", 1000)
+            .unwrap();
         assert!(result.is_some(), "Should find a proof with low difficulty");
 
         let proof = result.unwrap();
@@ -213,7 +218,10 @@ mod tests {
             .neural_validator
             .expected_path_signature(&challenge.id)
             .len() as u64;
-        assert_eq!(expected_paths, path_len, "expected_paths should match path signature length");
+        assert_eq!(
+            expected_paths, path_len,
+            "expected_paths should match path signature length"
+        );
         assert_eq!(expected_calcs, 1 + challenge.difficulty);
     }
 }

@@ -51,7 +51,8 @@ pub struct PoolInfo {
 /// How mining rewards are distributed among participants.
 pub trait PoolStrategy: Send + Sync {
     fn pool_type(&self) -> PoolType;
-    fn calculate_shares(&self, proofs: &[ProofRecord], reward: u64) -> TribeResult<Vec<MinerShare>>;
+    fn calculate_shares(&self, proofs: &[ProofRecord], reward: u64)
+        -> TribeResult<Vec<MinerShare>>;
     fn minimum_stake(&self) -> u64;
     fn accept_miner(&self, miner: &MinerInfo) -> TribeResult<bool>;
     fn pool_info(&self, miners: usize, total_stake: u64) -> PoolInfo;
@@ -68,7 +69,11 @@ impl PoolStrategy for SoloStrategy {
         PoolType::Solo
     }
 
-    fn calculate_shares(&self, proofs: &[ProofRecord], reward: u64) -> TribeResult<Vec<MinerShare>> {
+    fn calculate_shares(
+        &self,
+        proofs: &[ProofRecord],
+        reward: u64,
+    ) -> TribeResult<Vec<MinerShare>> {
         // 100% to the miner who submitted the proof
         Ok(proofs
             .last()
@@ -113,7 +118,11 @@ impl PoolStrategy for ProportionalPool {
         PoolType::Proportional
     }
 
-    fn calculate_shares(&self, _proofs: &[ProofRecord], _reward: u64) -> TribeResult<Vec<MinerShare>> {
+    fn calculate_shares(
+        &self,
+        _proofs: &[ProofRecord],
+        _reward: u64,
+    ) -> TribeResult<Vec<MinerShare>> {
         todo!("Proportional reward distribution not yet implemented")
     }
 
@@ -149,7 +158,11 @@ impl PoolStrategy for PPLNSPool {
         PoolType::PPLNS
     }
 
-    fn calculate_shares(&self, _proofs: &[ProofRecord], _reward: u64) -> TribeResult<Vec<MinerShare>> {
+    fn calculate_shares(
+        &self,
+        _proofs: &[ProofRecord],
+        _reward: u64,
+    ) -> TribeResult<Vec<MinerShare>> {
         todo!("PPLNS reward distribution not yet implemented")
     }
 

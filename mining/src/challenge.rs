@@ -90,8 +90,9 @@ impl ChallengeGenerator {
 
         let difficulty = self.compute_difficulty(slot);
         let mml_threshold = self.base_mml_threshold / (1.0 + (difficulty as f64).log2().max(0.0));
-        let path_distance_max =
-            self.base_path_distance.saturating_sub((difficulty as u32).min(self.base_path_distance - 1));
+        let path_distance_max = self
+            .base_path_distance
+            .saturating_sub((difficulty as u32).min(self.base_path_distance - 1));
 
         let now = chrono::Utc::now();
         let challenge_id = {

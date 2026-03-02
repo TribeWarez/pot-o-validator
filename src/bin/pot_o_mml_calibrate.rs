@@ -1,5 +1,5 @@
-use pot_o_mining::{ChallengeGenerator, MMLPathValidator};
 use pot_o_core::TribeResult;
+use pot_o_mining::{ChallengeGenerator, MMLPathValidator};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use std::time::Instant;
 
@@ -89,4 +89,3 @@ fn main() -> TribeResult<()> {
 
     Ok(())
 }
-

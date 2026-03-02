@@ -95,10 +95,7 @@ impl ESPCompatibility {
     }
 
     /// Clamp a tensor to fit within ESP device limits
-    pub fn optimize_for_esp(
-        tensor: &Tensor,
-        device_type: &ESPDeviceType,
-    ) -> TribeResult<Tensor> {
+    pub fn optimize_for_esp(tensor: &Tensor, device_type: &ESPDeviceType) -> TribeResult<Tensor> {
         let (max_r, _max_c) = device_type.max_tensor_dims();
         Ok(tensor.clamp_dimensions(max_r))
     }

@@ -103,12 +103,7 @@ impl Tensor {
         let floats = self.data.as_f32();
         let clamped_len = floats.len().min(max_dim * max_dim);
         let clamped_data: Vec<f32> = floats.into_iter().take(clamped_len).collect();
-        let new_shape = self
-            .shape
-            .dims
-            .iter()
-            .map(|&d| d.min(max_dim))
-            .collect();
+        let new_shape = self.shape.dims.iter().map(|&d| d.min(max_dim)).collect();
         Self {
             shape: TensorShape::new(new_shape),
             data: TensorData::F32(clamped_data),

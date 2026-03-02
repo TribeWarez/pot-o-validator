@@ -460,9 +460,9 @@ impl DefiClient {
 
     fn get_account(&self, pubkey: &Pubkey) -> TribeResult<Vec<u8>> {
         let client = RpcClient::new(&self.rpc_url);
-        let account = client
-            .get_account(pubkey)
-            .map_err(|e| pot_o_core::TribeError::ChainBridgeError(format!("rpc get_account: {e}")))?;
+        let account = client.get_account(pubkey).map_err(|e| {
+            pot_o_core::TribeError::ChainBridgeError(format!("rpc get_account: {e}"))
+        })?;
         Ok(account.data)
     }
 
@@ -507,10 +507,12 @@ impl DefiClient {
         token_a_mint: &str,
         token_b_mint: &str,
     ) -> TribeResult<Option<LiquidityPoolInfo>> {
-        let a = Pubkey::from_str(token_a_mint)
-            .map_err(|e| pot_o_core::TribeError::ChainBridgeError(format!("invalid token_a: {e}")))?;
-        let b = Pubkey::from_str(token_b_mint)
-            .map_err(|e| pot_o_core::TribeError::ChainBridgeError(format!("invalid token_b: {e}")))?;
+        let a = Pubkey::from_str(token_a_mint).map_err(|e| {
+            pot_o_core::TribeError::ChainBridgeError(format!("invalid token_a: {e}"))
+        })?;
+        let b = Pubkey::from_str(token_b_mint).map_err(|e| {
+            pot_o_core::TribeError::ChainBridgeError(format!("invalid token_b: {e}"))
+        })?;
         let (pda, _) =
             Pubkey::find_program_address(&[b"pool", a.as_ref(), b.as_ref()], &self.swap_program_id);
         let data = match self.get_account(&pda) {
@@ -566,8 +568,9 @@ impl DefiClient {
         treasury_pubkey: &str,
         user_pubkey: &str,
     ) -> TribeResult<Option<UserVaultInfo>> {
-        let treasury = Pubkey::from_str(treasury_pubkey)
-            .map_err(|e| pot_o_core::TribeError::ChainBridgeError(format!("invalid treasury: {e}")))?;
+        let treasury = Pubkey::from_str(treasury_pubkey).map_err(|e| {
+            pot_o_core::TribeError::ChainBridgeError(format!("invalid treasury: {e}"))
+        })?;
         let user = Pubkey::from_str(user_pubkey)
             .map_err(|e| pot_o_core::TribeError::ChainBridgeError(format!("invalid user: {e}")))?;
         let (pda, _) = Pubkey::find_program_address(
@@ -586,10 +589,12 @@ impl DefiClient {
         depositor: &str,
         beneficiary: &str,
     ) -> TribeResult<Option<EscrowInfo>> {
-        let dep = Pubkey::from_str(depositor)
-            .map_err(|e| pot_o_core::TribeError::ChainBridgeError(format!("invalid depositor: {e}")))?;
-        let ben = Pubkey::from_str(beneficiary)
-            .map_err(|e| pot_o_core::TribeError::ChainBridgeError(format!("invalid beneficiary: {e}")))?;
+        let dep = Pubkey::from_str(depositor).map_err(|e| {
+            pot_o_core::TribeError::ChainBridgeError(format!("invalid depositor: {e}"))
+        })?;
+        let ben = Pubkey::from_str(beneficiary).map_err(|e| {
+            pot_o_core::TribeError::ChainBridgeError(format!("invalid beneficiary: {e}"))
+        })?;
         let (pda, _) = Pubkey::find_program_address(
             &[b"escrow", dep.as_ref(), ben.as_ref()],
             &self.vault_program_id,

@@ -85,8 +85,7 @@ impl MMLPathValidator {
     }
 
     fn compressed_length(&self, data: &[u8]) -> TribeResult<usize> {
-        let mut encoder =
-            DeflateEncoder::new(Vec::new(), Compression::new(self.compression_level));
+        let mut encoder = DeflateEncoder::new(Vec::new(), Compression::new(self.compression_level));
         encoder
             .write_all(data)
             .map_err(|e| pot_o_core::TribeError::TensorError(format!("Compression failed: {e}")))?;

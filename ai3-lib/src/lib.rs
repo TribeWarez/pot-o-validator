@@ -1,12 +1,12 @@
-pub mod tensor;
-pub mod operations;
-pub mod mining;
 pub mod esp_compat;
+pub mod mining;
+pub mod operations;
+pub mod tensor;
 
-pub use tensor::{Tensor, TensorData, TensorShape};
-pub use operations::{ActivationFunction, Convolution, MatrixMultiply, TensorOp, VectorOp};
-pub use mining::{MinerCapabilities, MinerStats, MiningResult, MiningTask, TaskDistributor};
 pub use esp_compat::{ESPCompatibility, ESPDeviceType, ESPMiningConfig};
+pub use mining::{MinerCapabilities, MinerStats, MiningResult, MiningTask, TaskDistributor};
+pub use operations::{ActivationFunction, Convolution, MatrixMultiply, TensorOp, VectorOp};
+pub use tensor::{Tensor, TensorData, TensorShape};
 
 use pot_o_core::TribeResult;
 use std::sync::{Arc, Mutex};
