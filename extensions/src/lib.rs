@@ -36,6 +36,7 @@ impl ExtensionRegistry {
         solana_rpc_url: &str,
         program_id: &str,
         relayer_keypair_path: &str,
+        auto_register_miners: bool,
     ) -> Self {
         Self {
             device: Box::new(NativeDevice::new()),
@@ -45,6 +46,7 @@ impl ExtensionRegistry {
                 solana_rpc_url.to_string(),
                 program_id.to_string(),
                 relayer_keypair_path.to_string(),
+                auto_register_miners,
             )),
             auth: Box::new(Ed25519Authority),
         }

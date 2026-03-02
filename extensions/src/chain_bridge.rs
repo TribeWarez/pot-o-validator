@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use borsh::BorshSerialize;
+use borsh::{BorshDeserialize, BorshSerialize};
 use pot_o_core::{TribeError, TribeResult};
 use pot_o_mining::ProofPayload;
 use serde::{Deserialize, Serialize};
@@ -48,6 +48,8 @@ pub enum Token {
 pub trait ChainBridge: Send + Sync {
     async fn submit_proof(&self, proof: &ProofPayload) -> TribeResult<TxSignature>;
     async fn query_miner(&self, pubkey: &str) -> TribeResult<Option<MinerAccount>>;
+    /// Register a miner on-chain (creates MinerAccount PDA). Used for auto-registration of new devices/miners.
+    async fn register_miner(&self, miner_pubkey: &str) -> TribeResult<TxSignature>;
     async fn get_current_difficulty(&self) -> TribeResult<u64>;
     async fn request_swap(
         &self,
@@ -75,6 +77,18 @@ struct OnChainProofParams {
 
 const MML_SCALE: f64 = 1_000_000_000.0;
 
+/// On-chain MinerAccount layout (Borsh). Must match the tribewarez-pot-o program.
+/// Skip 8-byte Anchor account discriminator before deserializing.
+#[derive(BorshDeserialize)]
+struct OnChainMinerAccount {
+    owner: Pubkey,
+    total_proofs: u64,
+    total_rewards: u64,
+    pending_rewards: u64,
+    reputation_score: f64,
+    last_proof_slot: u64,
+}
+
 fn hex_to_32(hex_str: &str) -> Result<[u8; 32], TribeError> {
     let bytes = hex::decode(hex_str)
         .map_err(|e| TribeError::ChainBridgeError(format!("hex decode: {e}")))?;
@@ -100,10 +114,17 @@ pub struct SolanaBridge {
     pub rpc_url: String,
     pub program_id: Pubkey,
     relayer_keypair: Option<Arc<Keypair>>,
+    /// When true, submit_proof will call register_miner for unknown miners before submitting.
+    auto_register_miners: bool,
 }
 
 impl SolanaBridge {
-    pub fn new(rpc_url: String, program_id: String, keypair_path: String) -> Self {
+    pub fn new(
+        rpc_url: String,
+        program_id: String,
+        keypair_path: String,
+        auto_register_miners: bool,
+    ) -> Self {
         let pid = Pubkey::from_str(&program_id).unwrap_or_else(|e| {
             tracing::warn!(error = %e, program_id, "Invalid program_id, using default");
             Pubkey::default()
@@ -132,7 +153,38 @@ impl SolanaBridge {
             rpc_url,
             program_id: pid,
             relayer_keypair: kp,
+            auto_register_miners,
         }
+    }
+
+    fn build_register_miner_ix(&self, miner_pubkey: &Pubkey) -> TribeResult<Instruction> {
+        let relayer_pubkey = self
+            .relayer_keypair
+            .as_ref()
+            .expect("checked before calling")
+            .pubkey();
+
+        let (config_pda, _) =
+            Pubkey::find_program_address(&[b"pot_o_config"], &self.program_id);
+        let (miner_pda, _) =
+            Pubkey::find_program_address(&[b"miner", miner_pubkey.as_ref()], &self.program_id);
+
+        let disc = anchor_discriminator("register_miner");
+        let data = disc.to_vec();
+
+        let accounts = vec![
+            AccountMeta::new_readonly(config_pda, false),
+            AccountMeta::new_readonly(*miner_pubkey, false),
+            AccountMeta::new(miner_pda, false),
+            AccountMeta::new(relayer_pubkey, true),
+            AccountMeta::new_readonly(system_program::ID, false),
+        ];
+
+        Ok(Instruction {
+            program_id: self.program_id,
+            accounts,
+            data,
+        })
     }
 
     fn build_submit_proof_ix(
@@ -214,6 +266,23 @@ impl ChainBridge for SolanaBridge {
             }
         };
 
+        if self.auto_register_miners {
+            if let Ok(None) = self.query_miner(&proof.proof.miner_pubkey).await {
+                tracing::info!(
+                    miner = %proof.proof.miner_pubkey,
+                    "Miner not on-chain; auto-registering before submit"
+                );
+                if let Err(e) = self.register_miner(&proof.proof.miner_pubkey).await {
+                    tracing::warn!(
+                        miner = %proof.proof.miner_pubkey,
+                        error = %e,
+                        "Auto-register failed (may already exist); continuing with submit"
+                    );
+                    // Continue anyway: program may reject if miner still missing, or idempotent
+                }
+            }
+        }
+
         tracing::info!(
             challenge = %proof.proof.challenge_id,
             miner = %proof.proof.miner_pubkey,
@@ -265,8 +334,107 @@ impl ChainBridge for SolanaBridge {
     }
 
     async fn query_miner(&self, pubkey: &str) -> TribeResult<Option<MinerAccount>> {
-        tracing::debug!(pubkey, "Querying miner account on-chain");
-        Ok(None)
+        let miner_pubkey = Pubkey::from_str(pubkey)
+            .map_err(|e| TribeError::ChainBridgeError(format!("invalid miner pubkey: {e}")))?;
+        let (miner_pda, _) =
+            Pubkey::find_program_address(&[b"miner", miner_pubkey.as_ref()], &self.program_id);
+
+        let rpc_url = self.rpc_url.clone();
+        let program_id = self.program_id;
+
+        let result = tokio::task::spawn_blocking(move || -> TribeResult<Option<MinerAccount>> {
+            let client = RpcClient::new(&rpc_url);
+            match client.get_account(&miner_pda) {
+                Ok(account) => {
+                    let data = account.data;
+                    if data.len() < 8 {
+                        return Ok(None);
+                    }
+                    let payload = &data[8..];
+                    match OnChainMinerAccount::try_from_slice(payload) {
+                        Ok(on_chain) => Ok(Some(MinerAccount {
+                            pubkey: on_chain.owner.to_string(),
+                            total_proofs: on_chain.total_proofs,
+                            total_rewards: on_chain.total_rewards,
+                            pending_rewards: on_chain.pending_rewards,
+                            reputation_score: on_chain.reputation_score,
+                            last_proof_slot: on_chain.last_proof_slot,
+                        })),
+                        Err(e) => {
+                            tracing::debug!(error = %e, "Failed to deserialize miner account");
+                            Ok(None)
+                        }
+                    }
+                }
+                Err(_) => Ok(None),
+            }
+        })
+        .await
+        .map_err(|e| TribeError::ChainBridgeError(format!("spawn_blocking join: {e}")))??;
+
+        tracing::debug!(pubkey, found = result.is_some(), "Querying miner account on-chain");
+        Ok(result)
+    }
+
+    async fn register_miner(&self, miner_pubkey: &str) -> TribeResult<TxSignature> {
+        let kp = match &self.relayer_keypair {
+            Some(k) => Arc::clone(k),
+            None => {
+                return Err(TribeError::ChainBridgeError(
+                    "No relayer keypair; cannot register miner".into(),
+                ));
+            }
+        };
+
+        let miner_pubkey =
+            Pubkey::from_str(miner_pubkey)
+                .map_err(|e| TribeError::ChainBridgeError(format!("invalid miner pubkey: {e}")))?;
+        let ix = self.build_register_miner_ix(&miner_pubkey)?;
+
+        let rpc_url = self.rpc_url.clone();
+
+        let sig = tokio::task::spawn_blocking(move || -> TribeResult<String> {
+            let client = RpcClient::new(&rpc_url);
+            let blockhash = client
+                .get_latest_blockhash()
+                .map_err(|e| TribeError::ChainBridgeError(format!("get_latest_blockhash: {e}")))?;
+
+            let tx = Transaction::new_signed_with_payer(
+                &[ix],
+                Some(&kp.pubkey()),
+                &[&kp],
+                blockhash,
+            );
+
+            match client.send_and_confirm_transaction(&tx) {
+                Ok(signature) => {
+                    tracing::info!(
+                        miner = %miner_pubkey,
+                        tx_signature = %signature,
+                        "Miner registered on-chain"
+                    );
+                    Ok(signature.to_string())
+                }
+                Err(e) => {
+                    let err_str = e.to_string();
+                    if err_str.contains("already in use") || err_str.contains("already exists") {
+                        tracing::debug!(
+                            miner = %miner_pubkey,
+                            "Miner account already exists (idempotent)"
+                        );
+                        Ok(format!("already_registered_{}", miner_pubkey))
+                    } else {
+                        Err(TribeError::ChainBridgeError(format!(
+                            "register_miner send_and_confirm: {e}"
+                        )))
+                    }
+                }
+            }
+        })
+        .await
+        .map_err(|e| TribeError::ChainBridgeError(format!("spawn_blocking join: {e}")))??;
+
+        Ok(TxSignature(sig))
     }
 
     async fn get_current_difficulty(&self) -> TribeResult<u64> {
@@ -301,6 +469,9 @@ impl ChainBridge for EvmBridge {
     async fn query_miner(&self, _pubkey: &str) -> TribeResult<Option<MinerAccount>> {
         todo!("EVM miner query not yet implemented")
     }
+    async fn register_miner(&self, _miner_pubkey: &str) -> TribeResult<TxSignature> {
+        todo!("EVM miner registration not yet implemented")
+    }
     async fn get_current_difficulty(&self) -> TribeResult<u64> {
         todo!("EVM difficulty query not yet implemented")
     }
@@ -325,6 +496,9 @@ impl ChainBridge for CrossChainBridge {
     }
     async fn query_miner(&self, _pubkey: &str) -> TribeResult<Option<MinerAccount>> {
         todo!("Cross-chain miner query not yet implemented")
+    }
+    async fn register_miner(&self, _miner_pubkey: &str) -> TribeResult<TxSignature> {
+        todo!("Cross-chain miner registration not yet implemented")
     }
     async fn get_current_difficulty(&self) -> TribeResult<u64> {
         todo!("Cross-chain difficulty query not yet implemented")

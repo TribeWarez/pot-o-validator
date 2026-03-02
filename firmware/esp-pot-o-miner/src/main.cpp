@@ -381,15 +381,25 @@ bool mine_challenge(const JsonDocument& challenge, JsonDocument& proof_doc) {
         i++;
     }
 
-    // Execute tensor operation
+    // Execute tensor operation (measure kernel time)
     int op_id = op_from_name(op_name);
     Tensor in_tensor;
     tensor_init(&in_tensor, g_input_buf, rows, cols);
+    unsigned long op_start_us = micros();
     size_t out_len = tensor_execute(op_id, &in_tensor, g_output_buf);
+    unsigned long op_end_us = micros();
 
     // Compute MML score
     double mml_score = compute_mml_score(g_input_buf, dim, g_output_buf, out_len);
     bool mml_ok = mml_score <= mml_threshold;
+
+    Serial.printf("[MINE] Tensor op=%s rows=%u cols=%u in_len=%u out_len=%u op_time_us=%lu\n",
+                  op_name,
+                  (unsigned int)rows,
+                  (unsigned int)cols,
+                  (unsigned int)dim,
+                  (unsigned int)out_len,
+                  (unsigned long)(op_end_us - op_start_us));
 
     Serial.printf("[MINE] MML score=%.4f threshold=%.4f %s\n",
                   mml_score, mml_threshold, mml_ok ? "PASS" : "FAIL");
@@ -408,7 +418,8 @@ bool mine_challenge(const JsonDocument& challenge, JsonDocument& proof_doc) {
     char tensor_hash[65];
     compute_tensor_hash(g_output_buf, out_len, rows, cols, tensor_hash);
 
-    // Nonce search
+    // Nonce search (measure mining loop time)
+    unsigned long mine_start_us = micros();
     for (uint64_t nonce = 0; nonce < MAX_MINE_ITERATIONS; nonce++) {
         uint8_t actual_path[NEURAL_TOTAL_NEURONS];
         size_t actual_len;
@@ -425,8 +436,11 @@ bool mine_challenge(const JsonDocument& challenge, JsonDocument& proof_doc) {
             compute_proof_hash(challenge_id, tensor_hash,
                                mml_score, path_sig, nonce, comp_hash);
 
-            Serial.printf("[MINE] Found proof at nonce=%llu dist=%u\n",
-                          (unsigned long long)nonce, dist);
+            unsigned long mine_end_us = micros();
+            Serial.printf("[MINE] Found proof at nonce=%llu dist=%u mine_time_us=%lu\n",
+                          (unsigned long long)nonce,
+                          dist,
+                          (unsigned long)(mine_end_us - mine_start_us));
 
             // Build proof JSON
             proof_doc["challenge_id"] = challenge_id;
@@ -450,6 +464,9 @@ bool mine_challenge(const JsonDocument& challenge, JsonDocument& proof_doc) {
         }
     }
 
+    unsigned long mine_end_us = micros();
+    Serial.printf("[MINE] Exhausted nonces without proof, mine_time_us=%lu\n",
+                  (unsigned long)(mine_end_us - mine_start_us));
     return false;
 }
 

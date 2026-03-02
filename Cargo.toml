@@ -42,6 +42,18 @@ solana-sdk = "1.18"
 name = "pot-o-validator"
 path = "src/main.rs"
 
+[[bin]]
+name = "pot-o-mml-calibrate"
+path = "src/bin/pot_o_mml_calibrate.rs"
+
+[[bin]]
+name = "pot-o-timing"
+path = "src/bin/pot_o_timing.rs"
+
+[[bin]]
+name = "pot-o-golden-proofs"
+path = "src/bin/pot_o_golden_proofs.rs"
+
 [profile.release]
 opt-level = 3
 lto = true

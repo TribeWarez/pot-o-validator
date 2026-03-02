@@ -35,6 +35,44 @@ impl MMLPathValidator {
         Ok(output_compressed_len as f64 / input_compressed_len as f64)
     }
 
+    /// Compute an MML-like score using the same byte-level entropy approximation
+    /// implemented on ESP firmware. This does NOT use DEFLATE and is intended
+    /// for calibration and comparison only.
+    ///
+    /// Score is defined as: output_entropy / input_entropy, where entropy is
+    /// Shannon entropy over the raw little-endian bytes of the tensor data.
+    pub fn compute_entropy_mml_score(&self, input: &Tensor, output: &Tensor) -> f64 {
+        fn entropy(bytes: &[u8]) -> f64 {
+            let mut hist = [0u64; 256];
+            for &b in bytes {
+                hist[b as usize] += 1;
+            }
+            let total = bytes.len() as f64;
+            if total == 0.0 {
+                return 0.0;
+            }
+            let mut ent = 0.0f64;
+            for &count in &hist {
+                if count == 0 {
+                    continue;
+                }
+                let p = count as f64 / total;
+                ent -= p * p.ln();
+            }
+            ent
+        }
+
+        let input_bytes = input.data.to_bytes();
+        let output_bytes = output.data.to_bytes();
+        let in_ent = entropy(&input_bytes);
+        let out_ent = entropy(&output_bytes);
+        if in_ent.abs() < f64::EPSILON {
+            1.0
+        } else {
+            out_ent / in_ent
+        }
+    }
+
     /// Check whether an MML score passes the threshold for a given difficulty.
     pub fn validate(&self, mml_score: f64, mml_threshold: f64) -> bool {
         mml_score <= mml_threshold

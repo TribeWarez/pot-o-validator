@@ -128,6 +128,7 @@ async fn main() {
         &cfg.solana_rpc_url,
         &cfg.pot_program_id,
         &cfg.relayer_keypair_path,
+        cfg.auto_register_miners,
     );
 
     let registry_path = std::env::var("DEVICE_REGISTRY_PATH")
@@ -286,6 +287,8 @@ struct SubmitRequest {
     signature: Option<Vec<u8>>,
     /// Optional device_id (e.g. MAC) for real-time ESP mapping; updates registry on success.
     device_id: Option<String>,
+    /// Optional device_type (cpu, native, gpu, esp32, esp8266, wasm). If set, registry is upserted so CPU/native/GPU stats update live even without prior /devices/register.
+    device_type: Option<String>,
 }
 
 async fn submit_proof(
@@ -296,6 +299,7 @@ async fn submit_proof(
         challenge_id = %body.proof.challenge_id,
         miner = %body.proof.miner_pubkey,
         device_id = ?body.device_id,
+        device_type = ?body.device_type,
         "POST /submit received"
     );
     {
@@ -313,12 +317,30 @@ async fn submit_proof(
                     s.paths_in_block += 1;
                     s.calcs_in_block += 1;
                 }
-                if let Some(ref device_id) = body.device_id {
+                let now = chrono::Utc::now();
+                let device_type_normalized = body
+                    .device_type
+                    .as_deref()
+                    .map(normalize_device_type)
+                    .unwrap_or_else(|| "native".to_string());
+                let registry_key: String = match &body.device_id {
+                    Some(id) => id.clone(),
+                    None => format!("{}:{}", body.proof.miner_pubkey, device_type_normalized),
+                };
+                {
                     let mut reg = state.device_registry.write().await;
-                    if let Some(dev) = reg.get_mut(device_id) {
-                        dev.last_activity = chrono::Utc::now();
-                        dev.proofs_valid += 1;
-                        dev.tasks_processed += 1;
+                    let entry = reg.entry(registry_key).or_insert_with(|| RegisteredDevice {
+                        device_type: device_type_normalized.clone(),
+                        node_id: state.config.node_id.clone(),
+                        last_activity: now,
+                        proofs_valid: 0,
+                        tasks_processed: 0,
+                    });
+                    entry.last_activity = now;
+                    entry.proofs_valid += 1;
+                    entry.tasks_processed += 1;
+                    if body.device_id.is_some() {
+                        entry.device_type = device_type_normalized;
                     }
                 }
                 {
@@ -417,6 +439,8 @@ async fn pool_info(State(state): State<Arc<AppState>>) -> impl IntoResponse {
 struct DeviceRegisterRequest {
     device_type: String,
     device_id: Option<String>,
+    /// If provided and miner not yet on-chain, validator will auto-register the miner (relayer signs).
+    miner_pubkey: Option<String>,
 }
 
 async fn register_device(
@@ -448,10 +472,50 @@ async fn register_device(
             true
         }
     };
+
+    let miner_registered = if let Some(ref miner_pubkey) = body.miner_pubkey {
+        match state.extensions.chain.query_miner(miner_pubkey).await {
+            Ok(None) => {
+                match state.extensions.chain.register_miner(miner_pubkey).await {
+                    Ok(_) => {
+                        tracing::info!(
+                            device_id = %device_id,
+                            miner_pubkey = %miner_pubkey,
+                            "Auto-registered miner on-chain at device registration"
+                        );
+                        true
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            device_id = %device_id,
+                            miner_pubkey = %miner_pubkey,
+                            error = %e,
+                            "Auto-register miner at registration failed"
+                        );
+                        false
+                    }
+                }
+            }
+            Ok(Some(_)) => true, // already on-chain, can mine
+            Err(e) => {
+                tracing::warn!(
+                    device_id = %device_id,
+                    miner_pubkey = %miner_pubkey,
+                    error = %e,
+                    "Query miner failed at device registration"
+                );
+                false
+            }
+        }
+    } else {
+        false
+    };
+
     tracing::info!(
         device_id = %device_id,
         device_type = %body.device_type,
         is_new = is_new,
+        miner_registered = miner_registered,
         "POST /devices/register"
     );
     let reg = state.device_registry.read().await.clone();
@@ -460,6 +524,7 @@ async fn register_device(
         "registered": true,
         "device_type": body.device_type,
         "device_id": device_id,
+        "miner_registered": miner_registered,
     }))
 }
 

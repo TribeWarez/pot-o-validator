@@ -28,6 +28,8 @@ pub struct ValidatorConfig {
     pub device_protocol: String,
     #[serde(default = "default_relayer_keypair_path")]
     pub relayer_keypair_path: String,
+    #[serde(default = "default_auto_register_miners")]
+    pub auto_register_miners: bool,
 }
 
 fn default_node_id() -> String {
@@ -66,6 +68,9 @@ fn default_device_protocol() -> String {
 fn default_relayer_keypair_path() -> String {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/root".into());
     format!("{}/.config/solana/id.json", home)
+}
+fn default_auto_register_miners() -> bool {
+    true
 }
 
 impl ValidatorConfig {
@@ -113,6 +118,9 @@ impl ValidatorConfig {
         if let Ok(v) = std::env::var("RELAYER_KEYPAIR_PATH") {
             cfg.relayer_keypair_path = v;
         }
+        if let Ok(v) = std::env::var("AUTO_REGISTER_MINERS") {
+            cfg.auto_register_miners = v != "0" && v.to_lowercase() != "false";
+        }
 
         cfg
     }
@@ -132,6 +140,7 @@ impl ValidatorConfig {
             chain_bridge: default_chain_bridge(),
             device_protocol: default_device_protocol(),
             relayer_keypair_path: default_relayer_keypair_path(),
+            auto_register_miners: default_auto_register_miners(),
         }
     }
 }
