@@ -54,7 +54,36 @@ pio device monitor -b 115200
    - Compute MML score (entropy-based approximation of DEFLATE ratio)
    - Search nonces for neural path match within Hamming distance tolerance
    - `POST /submit` → submit proof for on-chain verification
-3. **Heartbeat** every 30s via `GET /health`
+3. **Progress** (recommended): `POST /devices/progress` with `challenge_id`, `hash`, and `device_id` every few seconds while mining so the status dashboard shows live activity.
+4. **Heartbeat** every 30s via `GET /health`
+
+For full CLI and ESP integration details (curl examples, device_id on submit, progress reporting), see the validator root [CLI_AND_ESP_GUIDE.md](../../CLI_AND_ESP_GUIDE.md).
+
+## Firmware self-check on boot (optional)
+
+To keep devices up to date, you can perform a lightweight self-check against the status gateway when the ESP boots:
+
+- Base URL: `https://status.rpc.gateway.tribewarez.com`
+- Endpoint: `/api/device/self-check`
+- Query parameters:
+  - `device_type`: `esp32` or `esp8266`
+  - `channel`: e.g. `testnet`
+  - `kind`: `firmware`
+  - `current_version`: firmware version string compiled into the binary (e.g. `POT_O_VERSION`)
+
+Example HTTP request:
+
+```text
+GET https://status.rpc.gateway.tribewarez.com/api/device/self-check?device_type=esp32&channel=testnet&kind=firmware&current_version=1.0.0
+```
+
+If the response reports `update_required` or `update_recommended` and includes an `artifact.download_url`, you can:
+
+1. Download the new firmware image with a small HTTPS client.
+2. Verify the `checksum` (if present).
+3. Flash the new image according to your OTA update strategy for the device.
+
+The exact OTA mechanism depends on your hardware and bootloader, but this endpoint gives you a single, canonical source of truth for which firmware version to run per device type and channel.
 
 ## Architecture
 

@@ -15,11 +15,20 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tower_http::cors::CorsLayer;
 
 use config::ValidatorConfig;
 
+/// Current running calculation reported by a device/thread in real time.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CurrentCalculation {
+    pub challenge_id: String,
+    pub hash: String,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
 /// Per-device record for the registry (device_id -> device state).
+/// When device_id is set on submit, one registry entry per device; optional miner_pubkeys
+/// tracks all miner pubkeys that have submitted from this device for analytics.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct RegisteredDevice {
     device_type: String,
@@ -27,6 +36,12 @@ struct RegisteredDevice {
     last_activity: chrono::DateTime<chrono::Utc>,
     proofs_valid: u64,
     tasks_processed: u64,
+    /// Miner pubkeys that have submitted from this device (when keyed by device_id). Capped for storage.
+    #[serde(default)]
+    miner_pubkeys: Vec<String>,
+    /// Current running calculation with hash, sent in real time by device/thread.
+    #[serde(default)]
+    current_calculation: Option<CurrentCalculation>,
 }
 
 fn normalize_device_type(s: &str) -> String {
@@ -159,6 +174,7 @@ async fn main() {
         .route("/miners/{pubkey}", get(get_miner))
         .route("/pool", get(pool_info))
         .route("/devices/register", post(register_device))
+        .route("/devices/progress", post(device_progress))
         .route("/devices", get(get_devices))
         .route("/network/peers", get(get_peers))
         // Staking (tribewarez-staking)
@@ -177,7 +193,6 @@ async fn main() {
             get(get_user_vault),
         )
         .route("/vault/escrow/:depositor/:beneficiary", get(get_escrow))
-        .layer(CorsLayer::permissive())
         .with_state(state);
 
     let addr = format!("{}:{}", cfg.listen_addr, cfg.port);
@@ -347,6 +362,7 @@ async fn submit_proof(
                     Some(id) => id.clone(),
                     None => format!("{}:{}", body.proof.miner_pubkey, device_type_normalized),
                 };
+                const MAX_MINER_PUBKEYS_PER_DEVICE: usize = 100;
                 {
                     let mut reg = state.device_registry.write().await;
                     let entry = reg.entry(registry_key).or_insert_with(|| RegisteredDevice {
@@ -355,12 +371,20 @@ async fn submit_proof(
                         last_activity: now,
                         proofs_valid: 0,
                         tasks_processed: 0,
+                        miner_pubkeys: Vec::new(),
+                        current_calculation: None,
                     });
                     entry.last_activity = now;
                     entry.proofs_valid += 1;
                     entry.tasks_processed += 1;
                     if body.device_id.is_some() {
                         entry.device_type = device_type_normalized;
+                        let pk = body.proof.miner_pubkey.as_str();
+                        if !entry.miner_pubkeys.iter().any(|p| p.as_str() == pk) {
+                            if entry.miner_pubkeys.len() < MAX_MINER_PUBKEYS_PER_DEVICE {
+                                entry.miner_pubkeys.push(body.proof.miner_pubkey.clone());
+                            }
+                        }
                     }
                 }
                 {
@@ -489,6 +513,8 @@ async fn register_device(
                     last_activity: now,
                     proofs_valid: 0,
                     tasks_processed: 0,
+                    miner_pubkeys: Vec::new(),
+                    current_calculation: None,
                 },
             );
             true
@@ -548,6 +574,75 @@ async fn register_device(
     }))
 }
 
+#[derive(Deserialize)]
+struct DeviceProgressRequest {
+    /// Optional device_id (e.g. MAC or UUID). If set, this device entry is updated.
+    device_id: Option<String>,
+    /// Optional miner_pubkey; used with device_type when device_id is not set to form registry key.
+    miner_pubkey: Option<String>,
+    /// Optional device_type (default "native"). Used with miner_pubkey when device_id is not set.
+    device_type: Option<String>,
+    /// Current challenge id the device/thread is working on.
+    challenge_id: String,
+    /// Hash of the current running calculation (e.g. state or work-in-progress).
+    hash: String,
+}
+
+async fn device_progress(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<DeviceProgressRequest>,
+) -> impl IntoResponse {
+    let device_type_normalized = body
+        .device_type
+        .as_deref()
+        .map(normalize_device_type)
+        .unwrap_or_else(|| "native".to_string());
+    let registry_key: Option<String> = match &body.device_id {
+        Some(id) => Some(id.clone()),
+        None => body.miner_pubkey.as_ref().map(|pk| format!("{}:{}", pk, device_type_normalized)),
+    };
+    let Some(registry_key) = registry_key else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "ok": false,
+                "error": "Either device_id or miner_pubkey must be set",
+            })),
+        );
+    };
+    let now = chrono::Utc::now();
+    let current = CurrentCalculation {
+        challenge_id: body.challenge_id,
+        hash: body.hash,
+        updated_at: now,
+    };
+    let updated = {
+        let mut reg = state.device_registry.write().await;
+        let entry = reg.entry(registry_key.clone()).or_insert_with(|| RegisteredDevice {
+            device_type: device_type_normalized.clone(),
+            node_id: state.config.node_id.clone(),
+            last_activity: now,
+            proofs_valid: 0,
+            tasks_processed: 0,
+            miner_pubkeys: Vec::new(),
+            current_calculation: None,
+        });
+        entry.last_activity = now;
+        entry.current_calculation = Some(current);
+        true
+    };
+    let reg = state.device_registry.read().await.clone();
+    spawn_persist_registry(reg, state.registry_path.clone());
+    tracing::debug!(registry_key = %registry_key, "POST /devices/progress");
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "ok": true,
+            "updated": updated,
+        })),
+    )
+}
+
 async fn get_devices(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     tracing::debug!("GET /devices");
     let reg = state.device_registry.read().await.clone();
@@ -592,9 +687,35 @@ async fn get_devices(State(state): State<Arc<AppState>>) -> impl IntoResponse {
             }),
         );
     }
+    // Per-device detail for analytics (includes miner_pubkeys and current_calculation when keyed by device_id).
+    let devices_detail: serde_json::Map<String, serde_json::Value> = reg
+        .iter()
+        .map(|(id, d)| {
+            let current_calculation = d.current_calculation.as_ref().map(|c| {
+                serde_json::json!({
+                    "challenge_id": c.challenge_id,
+                    "hash": c.hash,
+                    "updated_at": c.updated_at.to_rfc3339(),
+                })
+            });
+            (
+                id.clone(),
+                serde_json::json!({
+                    "device_type": d.device_type,
+                    "proofs_valid": d.proofs_valid,
+                    "tasks_processed": d.tasks_processed,
+                    "last_activity": d.last_activity.to_rfc3339(),
+                    "miner_pubkeys": d.miner_pubkeys,
+                    "current_calculation": current_calculation,
+                }),
+            )
+        })
+        .collect();
+
     tracing::debug!(device_count = reg.len(), "GET /devices response");
     Json(serde_json::json!({
         "miners_by_device": miners_map,
+        "devices_detail": devices_detail,
     }))
 }
 
