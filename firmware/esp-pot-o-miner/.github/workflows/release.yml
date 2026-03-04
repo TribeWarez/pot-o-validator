@@ -1,0 +1,60 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.platformio/.cache
+          key: ${{ runner.os }}-pio
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install PlatformIO Core
+        run: pip install --upgrade platformio
+      - name: Build ESP32-S firmware
+        run: pio run -e esp32s
+      - name: Build ESP8266 firmware
+        run: pio run -e esp8266
+      - name: Collect artifacts
+        run: |
+          mkdir -p artifacts
+          [ -f .pio/build/esp32s/firmware.bin ] && cp -v .pio/build/esp32s/firmware.bin artifacts/esp32s-firmware.bin
+          [ -f .pio/build/esp32s/firmware.elf ] && cp -v .pio/build/esp32s/firmware.elf artifacts/esp32s-firmware.elf
+          [ -f .pio/build/esp8266/firmware.bin ] && cp -v .pio/build/esp8266/firmware.bin artifacts/esp8266-firmware.bin
+          [ -f .pio/build/esp8266/firmware.elf ] && cp -v .pio/build/esp8266/firmware.elf artifacts/esp8266-firmware.elf
+          ls -la artifacts/
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ github.ref_name }}
+          path: artifacts/
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/esp32s-firmware.bin
+            artifacts/esp32s-firmware.elf
+            artifacts/esp8266-firmware.bin
+            artifacts/esp8266-firmware.elf
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish to PlatformIO Registry (optional)
+        if: env.PLATFORMIO_AUTH_TOKEN != ''
+        run: |
+          if [ -n "${{ secrets.PLATFORMIO_AUTH_TOKEN }}" ]; then
+            pio pkg publish --non-interactive || true
+          fi
+        env:
+          PLATFORMIO_AUTH_TOKEN: ${{ secrets.PLATFORMIO_AUTH_TOKEN }}

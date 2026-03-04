@@ -2,11 +2,18 @@
 name = "pot-o-extensions"
 version = "0.1.0"
 edition = "2021"
+authors = ["TribeWarez"]
+description = "DeFi, staking, and external-chain extensions for the PoT-O validator"
+license = "MIT"
+repository = "https://github.com/tribewarez/pot-o-extensions"
+homepage = "https://pot.rpc.gateway.tribewarez.com"
+documentation = "https://docs.rs/pot-o-extensions"
+readme = "README.md"
 
 [dependencies]
-pot-o-core = { path = "../core" }
-ai3-lib = { path = "../ai3-lib" }
-pot-o-mining = { path = "../mining" }
+pot-o-core = "0.1"
+ai3-lib = "0.1"
+pot-o-mining = "0.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 async-trait = "0.1"

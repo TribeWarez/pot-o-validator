@@ -1,7 +1,15 @@
 # ESP PoT-O Miner Firmware
 
+[![CI](https://img.shields.io/github/actions/workflow/status/TribeWarez/esp-pot-o-miner/ci.yml?branch=main)](https://github.com/TribeWarez/esp-pot-o-miner/actions)
+[![Releases](https://img.shields.io/github/v/release/TribeWarez/esp-pot-o-miner)](https://github.com/TribeWarez/esp-pot-o-miner/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 Mining firmware for ESP32-S and ESP8266 microcontrollers.  
 Connects to `pot.rpc.gateway.tribewarez.com` to fetch PoT-O challenges, execute tensor operations on-device, and submit proofs.
+
+- **Releases (binaries):** [github.com/TribeWarez/esp-pot-o-miner/releases](https://github.com/TribeWarez/esp-pot-o-miner/releases)
+- **Repository:** [github.com/TribeWarez/esp-pot-o-miner](https://github.com/TribeWarez/esp-pot-o-miner)
+- **PoT-O gateway:** [pot.rpc.gateway.tribewarez.com](https://pot.rpc.gateway.tribewarez.com)
 
 ## Device Capabilities
 
@@ -109,3 +117,7 @@ build_flags =
     -DPOT_RPC_PORT=8900
     -DPOT_RPC_TLS=0
 ```
+
+## License
+
+[MIT](LICENSE)

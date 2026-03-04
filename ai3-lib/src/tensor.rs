@@ -91,7 +91,7 @@ impl Tensor {
 
     pub fn calculate_hash(&self) -> String {
         let mut hasher = Sha256::new();
-        hasher.update(&self.data.to_bytes());
+        hasher.update(self.data.to_bytes());
         for d in &self.shape.dims {
             hasher.update(d.to_le_bytes());
         }
