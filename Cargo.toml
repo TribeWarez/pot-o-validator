@@ -14,6 +14,13 @@ members = [
     "extensions",
 ]
 
+# Use workspace members when building in-repo; published crates use crates.io
+[patch.crates-io]
+pot-o-core = { path = "core" }
+ai3-lib = { path = "ai3-lib" }
+pot-o-mining = { path = "mining" }
+pot-o-extensions = { path = "extensions" }
+
 [dependencies]
 pot-o-core = { path = "core" }
 ai3-lib = { path = "ai3-lib" }
