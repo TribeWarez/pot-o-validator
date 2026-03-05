@@ -1,7 +1,7 @@
 use crate::challenge::{Challenge, ChallengeGenerator};
 use crate::mml_path::MMLPathValidator;
 use crate::neural_path::NeuralPathValidator;
-use ai3_lib::{AI3Engine, TensorEngine};
+use ai3_lib::{AI3Engine, EngineStats, TensorEngine};
 use pot_o_core::TribeResult;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
