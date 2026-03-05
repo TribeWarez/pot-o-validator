@@ -15,10 +15,11 @@
   #include <WiFiClientSecureBearSSL.h>
 #endif
 
-#include "pot_o_config.h"
-#include "tensor_ops.h"
-#include "sha256_util.h"
-#include "neural_path.h"
+#include "pot_o/pot_o_config.h"
+#include "pot_o/tensor_ops.h"
+#include "pot_o/sha256_util.h"
+#include "pot_o/neural_path.h"
+#include "pot_o/mml_score.h"
 
 // ── Globals ─────────────────────────────────────────────────────────────────
 
@@ -52,8 +53,6 @@ bool submit_proof(const JsonDocument& proof);
 void compute_proof_hash(const char* challenge_id, const char* tensor_hash,
                         double mml_score, const char* path_sig,
                         uint64_t nonce, char* hash_out);
-double compute_mml_score(const float* input, size_t in_len,
-                         const float* output, size_t out_len);
 
 // ── Setup ───────────────────────────────────────────────────────────────────
 
@@ -261,33 +260,6 @@ bool fetch_challenge(JsonDocument& challenge_doc) {
         return false;
     }
     return challenge_doc.containsKey("id");
-}
-
-// ── MML score (DEFLATE approximation) ───────────────────────────────────────
-// ESP doesn't have full zlib; we approximate compressibility by measuring
-// byte-level entropy as a proxy for the server's DEFLATE ratio.
-
-double compute_mml_score(const float* input, size_t in_len,
-                         const float* output, size_t out_len) {
-    // Byte-level histogram entropy as proxy for compressibility
-    auto entropy = [](const float* data, size_t len) -> double {
-        uint32_t hist[256] = {0};
-        size_t total_bytes = len * sizeof(float);
-        const uint8_t* bytes = (const uint8_t*)data;
-        for (size_t i = 0; i < total_bytes; i++) hist[bytes[i]]++;
-        double ent = 0.0;
-        for (int i = 0; i < 256; i++) {
-            if (hist[i] == 0) continue;
-            double p = (double)hist[i] / total_bytes;
-            ent -= p * log(p);
-        }
-        return ent;
-    };
-
-    double in_ent = entropy(input, in_len);
-    double out_ent = entropy(output, out_len);
-    if (in_ent < 1e-9) return 1.0;
-    return out_ent / in_ent;
 }
 
 // ── Proof hash computation ──────────────────────────────────────────────────

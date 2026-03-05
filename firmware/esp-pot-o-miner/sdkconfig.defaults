@@ -1,0 +1,2 @@
+# Enable ESP32 hardware SHA for mbedtls (faster sha256_raw / SHA256Ctx)
+CONFIG_MBEDTLS_HARDWARE_SHA=y

@@ -95,15 +95,13 @@ The exact OTA mechanism depends on your hardware and bootloader, but this endpoi
 
 ## Architecture
 
-```
-include/
-  pot_o_config.h    - Device constraints, WiFi, RPC endpoint config
-  tensor_ops.h      - All tensor operations (matrix multiply, conv, activations)
-  neural_path.h     - Neural path computation and validation
-  sha256_util.h     - SHA-256 for ESP32 (mbedtls) and ESP8266 (BearSSL)
-src/
-  main.cpp          - Setup, mining loop, HTTP client, proof assembly
-```
+- **Core library** (reusable across firmware repos): `lib/pot_o_firmware_core/`
+  - Tensor ops (base + ESP32 tiled matmul, optional ESP-DSP), neural path, SHA-256, MML score.
+  - See `lib/pot_o_firmware_core/README.md` for API and optional build flags (`USE_ESP_DSP`, `USE_FAST_ACTIVATIONS`, `USE_SIN_LUT`).
+- **App**: `src/main.cpp` — setup, mining loop, HTTP client, proof assembly. Includes `pot_o/*.h` from the core lib.
+- **Legacy redirects**: `include/*.h` redirect to `pot_o/*.h` for backward compatibility.
+
+Hardware SHA on ESP32 is enabled via `sdkconfig.defaults` (`CONFIG_MBEDTLS_HARDWARE_SHA=y`).
 
 ## RPC Endpoint
 

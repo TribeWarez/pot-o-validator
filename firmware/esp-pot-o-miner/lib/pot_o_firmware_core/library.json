@@ -1,0 +1,9 @@
+{
+  "name": "pot_o_firmware_core",
+  "version": "1.0.0",
+  "description": "PoT-O shared firmware core: tensor ops, neural path, SHA256, MML score",
+  "build": {
+    "includeDir": "include",
+    "srcDir": "src"
+  }
+}
