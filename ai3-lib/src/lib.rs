@@ -62,6 +62,14 @@ impl Default for EngineStats {
     }
 }
 
+/// Abstraction over the tensor execution engine so callers can depend on a trait
+/// (e.g. for testing or alternate backends) instead of a concrete struct.
+pub trait TensorEngine: Send + Sync {
+    fn execute_task(&self, task: &MiningTask) -> TribeResult<Tensor>;
+    fn get_stats(&self) -> EngineStats;
+    fn record_result(&self, success: bool, duration: Duration);
+}
+
 impl AI3Engine {
     pub fn new() -> Self {
         Self::with_config(EngineConfig::default())
@@ -114,6 +122,20 @@ impl AI3Engine {
                     stats.total_compute_time / stats.total_tasks_processed as u32;
             }
         }
+    }
+}
+
+impl TensorEngine for AI3Engine {
+    fn execute_task(&self, task: &MiningTask) -> TribeResult<Tensor> {
+        <AI3Engine>::execute_task(self, task)
+    }
+
+    fn get_stats(&self) -> EngineStats {
+        <AI3Engine>::get_stats(self)
+    }
+
+    fn record_result(&self, success: bool, duration: Duration) {
+        <AI3Engine>::record_result(self, success, duration)
     }
 }
 

@@ -1,3 +1,4 @@
+use crate::neural_path::NeuralPathValidator;
 use ai3_lib::tensor::{Tensor, TensorData, TensorShape};
 use ai3_lib::MiningTask;
 use pot_o_core::TribeResult;
@@ -47,10 +48,15 @@ pub struct ChallengeGenerator {
 
 impl Default for ChallengeGenerator {
     fn default() -> Self {
+        let base_path_distance = NeuralPathValidator::default()
+            .layer_widths
+            .iter()
+            .sum::<usize>() as u32;
+
         Self {
             base_difficulty: 2,
-            base_mml_threshold: 0.85,
-            base_path_distance: 8,
+            base_mml_threshold: 2.0,
+            base_path_distance,
             max_tensor_dim: pot_o_core::ESP_MAX_TENSOR_DIM,
             challenge_ttl_secs: 120,
         }
@@ -126,7 +132,7 @@ impl ChallengeGenerator {
         let mut floats: Vec<f32> = hash_bytes.iter().map(|&b| b as f32 / 255.0).collect();
         // Extend deterministically if hash is shorter than needed
         while floats.len() < total {
-            let seed = floats.len() as f32 * 0.618_033_99;
+            let seed = floats.len() as f32 * 0.618_034;
             floats.push(seed.fract());
         }
         floats.truncate(total);

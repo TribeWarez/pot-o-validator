@@ -1,8 +1,8 @@
 use crate::challenge::{Challenge, ChallengeGenerator};
 use crate::mml_path::MMLPathValidator;
 use crate::neural_path::NeuralPathValidator;
-use ai3_lib::{AI3Engine, Tensor};
-use pot_o_core::{TribeError, TribeResult};
+use ai3_lib::{AI3Engine, TensorEngine};
+use pot_o_core::TribeResult;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::time::Instant;
@@ -32,7 +32,7 @@ pub struct ProofPayload {
 /// The PoT-O consensus engine. Orchestrates challenge generation,
 /// tensor computation, MML validation, and neural path matching.
 pub struct PotOConsensus {
-    pub engine: AI3Engine,
+    pub engine: Box<dyn TensorEngine>,
     pub challenge_gen: ChallengeGenerator,
     pub mml_validator: MMLPathValidator,
     pub neural_validator: NeuralPathValidator,
@@ -41,7 +41,7 @@ pub struct PotOConsensus {
 impl PotOConsensus {
     pub fn new(difficulty: u64, max_tensor_dim: usize) -> Self {
         Self {
-            engine: AI3Engine::new(),
+            engine: Box::new(AI3Engine::new()),
             challenge_gen: ChallengeGenerator::new(difficulty, max_tensor_dim),
             mml_validator: MMLPathValidator::default(),
             neural_validator: NeuralPathValidator::default(),
@@ -157,6 +157,11 @@ impl PotOConsensus {
             .len() as u64;
         let expected_calcs = 1 + challenge.difficulty;
         (expected_paths, expected_calcs)
+    }
+
+    /// Expose a read-only view of engine stats via the TensorEngine abstraction.
+    pub fn engine_stats(&self) -> EngineStats {
+        self.engine.get_stats()
     }
 
     /// Compute the deterministic proof hash: sha256(challenge_id || tensor_hash || mml_score || path_sig || nonce)
