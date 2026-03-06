@@ -9,6 +9,8 @@ repository = "https://github.com/tribewarez/pot-o-extensions"
 homepage = "https://pot.rpc.gateway.tribewarez.com"
 documentation = "https://docs.rs/pot-o-extensions"
 readme = "README.md"
+keywords = ["pot-o", "tribewarez", "blockchain", "defi", "staking", "extensions"]
+categories = ["cryptography::cryptocurrency", "development-tools"]
 
 [dependencies]
 pot-o-core = "0.1"

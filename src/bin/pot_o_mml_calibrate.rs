@@ -1,3 +1,6 @@
+//! CLI to compare DEFLATE-based MML scores with the ESP-style entropy approximation for synthetic challenges.
+//! Exit code: 0 on success, non-zero on error.
+
 use pot_o_core::TribeResult;
 use pot_o_mining::{ChallengeGenerator, MMLPathValidator};
 use rand::{rngs::StdRng, Rng, SeedableRng};

@@ -1,3 +1,5 @@
+//! PoT-O mining: challenge generation, MML path validation, neural path matching, and consensus.
+
 pub mod challenge;
 pub mod mml_path;
 pub mod neural_path;

@@ -9,6 +9,8 @@ repository = "https://github.com/tribewarez/pot-o-mining"
 homepage = "https://pot.rpc.gateway.tribewarez.com"
 documentation = "https://docs.rs/pot-o-mining"
 readme = "README.md"
+keywords = ["pot-o", "tribewarez", "blockchain", "tensor", "mining", "mml", "neural-path"]
+categories = ["cryptography::cryptocurrency", "development-tools"]
 
 [dependencies]
 pot-o-core = "0.1"

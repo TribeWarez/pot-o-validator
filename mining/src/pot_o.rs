@@ -1,3 +1,5 @@
+//! PoT-O consensus: proof generation, verification, and engine stats.
+
 use crate::challenge::{Challenge, ChallengeGenerator};
 use crate::mml_path::MMLPathValidator;
 use crate::neural_path::NeuralPathValidator;

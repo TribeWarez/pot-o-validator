@@ -1,3 +1,8 @@
+//! Core types and utilities for PoT-O (Proof of Tensor Optimizations).
+//!
+//! Provides block and transaction types, error handling, and constants used across
+//! the validator, mining, and extensions crates.
+
 pub mod error;
 
 pub use error::{TribeError, TribeResult};
@@ -5,39 +10,55 @@ pub use error::{TribeError, TribeResult};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-/// TribeChain version
+/// TribeChain version (from crate version).
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Block time target (seconds)
+/// Block time target in seconds.
 pub const BLOCK_TIME_TARGET: u64 = 60;
 
-/// Max tensor dimensions for ESP-compatible challenges
+/// Maximum tensor dimensions for ESP-compatible challenges.
 pub const ESP_MAX_TENSOR_DIM: usize = 64;
 
+/// Token type identifier on the chain.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum TokenType {
+    /// Native chain token.
     TribeChain,
+    /// Pumped TRIB€-test Coin (mining rewards).
     PTtC,
+    /// Numerologic Master Coin.
     NMTC,
+    /// STOMP token.
     STOMP,
+    /// AUM token.
     AUM,
+    /// AI3 token.
     AI3,
 }
 
-/// Minimal block representation aligned with .AI3 core::Block
+/// Minimal block representation aligned with .AI3 core::Block.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Block {
+    /// Block height (genesis = 0).
     pub height: u64,
+    /// SHA-256 hash of the block header and transactions.
     pub hash: String,
+    /// Hash of the previous block.
     pub previous_hash: String,
+    /// Unix timestamp.
     pub timestamp: u64,
+    /// Proof nonce.
     pub nonce: u64,
+    /// Mining difficulty target.
     pub difficulty: u32,
+    /// Miner address or identifier.
     pub miner: String,
+    /// Transactions included in this block.
     pub transactions: Vec<Transaction>,
 }
 
 impl Block {
+    /// Builds a new block with computed hash.
     pub fn new(
         height: u64,
         previous_hash: String,
@@ -59,6 +80,7 @@ impl Block {
         block
     }
 
+    /// Computes the block hash from header and transaction hashes.
     pub fn calculate_hash(&self) -> String {
         let mut hasher = Sha256::new();
         hasher.update(self.height.to_le_bytes());
@@ -74,23 +96,38 @@ impl Block {
     }
 }
 
+/// A single chain transaction.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Transaction {
+    /// Transaction hash.
     pub hash: String,
+    /// Sender address.
     pub from: String,
+    /// Recipient address.
     pub to: String,
+    /// Amount (in smallest unit).
     pub amount: u64,
+    /// Fee paid.
     pub fee: u64,
+    /// Unix timestamp.
     pub timestamp: u64,
+    /// Sender nonce.
     pub nonce: u64,
+    /// Transaction kind.
     pub tx_type: TransactionType,
 }
 
+/// Kind of on-chain transaction.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TransactionType {
+    /// Simple transfer.
     Transfer,
+    /// Staking operation.
     Stake,
+    /// PoT-O tensor proof submission.
     TensorProof,
+    /// Token creation.
     TokenCreate,
+    /// AMM swap.
     Swap,
 }

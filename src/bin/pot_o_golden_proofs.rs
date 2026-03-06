@@ -1,3 +1,6 @@
+//! Generates a small set of golden PoT-O proofs for fixed slots; output is JSONL to stdout.
+//! Exit code: 0 on success, non-zero on error.
+
 use pot_o_core::TribeResult;
 use pot_o_mining::PotOConsensus;
 use serde_json::json;

@@ -1,3 +1,5 @@
+//! Chain bridge: submit proofs and query miners on Solana (and optional EVM/cross-chain).
+
 use async_trait::async_trait;
 use borsh::{BorshDeserialize, BorshSerialize};
 use pot_o_core::{TribeError, TribeResult};

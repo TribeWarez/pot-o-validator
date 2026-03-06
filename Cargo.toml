@@ -5,6 +5,11 @@ edition = "2021"
 authors = ["TribeWarez"]
 description = "PoT-O (Proof of Tensor Optimizations) Validator Service"
 license = "MIT"
+repository = "https://github.com/tribewarez/pot-o-validator"
+documentation = "https://docs.rs/pot-o-validator"
+readme = "README.md"
+keywords = ["pot-o", "tribewarez", "blockchain", "validator", "tensor", "mining"]
+categories = ["cryptography::cryptocurrency", "development-tools"]
 
 [workspace]
 members = [

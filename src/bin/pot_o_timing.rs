@@ -1,3 +1,6 @@
+//! Timing harness for PoT-O operations and mining loop on PC. Prints timing metrics to stdout.
+//! Exit code: 0 on success, non-zero on error.
+
 use pot_o_core::TribeResult;
 use pot_o_mining::PotOConsensus;
 use std::time::Instant;

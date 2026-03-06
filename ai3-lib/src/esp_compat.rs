@@ -1,3 +1,5 @@
+//! ESP32/ESP8266 compatibility: device types, mining config, and tensor constraints.
+
 use crate::tensor::Tensor;
 use pot_o_core::TribeResult;
 use serde::{Deserialize, Serialize};
@@ -11,6 +13,7 @@ pub enum ESPDeviceType {
 }
 
 impl ESPDeviceType {
+    /// Returns (max_rows, max_cols) for tensor dimensions on this device.
     pub fn max_tensor_dims(&self) -> (usize, usize) {
         match self {
             Self::ESP32 | Self::ESP32S => (64, 64),
@@ -18,6 +21,7 @@ impl ESPDeviceType {
         }
     }
 
+    /// Maximum working memory in bytes.
     pub fn max_working_memory(&self) -> usize {
         match self {
             Self::ESP32 | Self::ESP32S => 320 * 1024, // 320 KB
@@ -25,6 +29,7 @@ impl ESPDeviceType {
         }
     }
 
+    /// List of supported operation type names.
     pub fn supported_operations(&self) -> Vec<&'static str> {
         match self {
             Self::ESP32 | Self::ESP32S => vec![
@@ -52,18 +57,25 @@ impl std::str::FromStr for ESPDeviceType {
     }
 }
 
-/// Mining configuration for ESP devices
+/// Mining configuration for ESP devices (RPC, tensor limits, heartbeat).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ESPMiningConfig {
+    /// Device type (ESP32, ESP32S, ESP8266).
     pub device_type: ESPDeviceType,
+    /// WiFi SSID for provisioning.
     pub wifi_ssid: String,
+    /// Validator RPC host.
     pub rpc_host: String,
+    /// Validator RPC port.
     pub rpc_port: u16,
+    /// Maximum tensor dimension for challenges.
     pub max_tensor_dim: usize,
+    /// Heartbeat interval in milliseconds.
     pub heartbeat_interval_ms: u64,
 }
 
 impl ESPMiningConfig {
+    /// Builds default config for the given device type.
     pub fn for_device(device_type: ESPDeviceType) -> Self {
         let (max_dim, _) = device_type.max_tensor_dims();
         Self {

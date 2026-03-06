@@ -1,3 +1,5 @@
+//! Device registry: persistence and in-memory state for miners (ESP, CPU, GPU) and real-time progress.
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tokio::sync::RwLock;
@@ -30,6 +32,7 @@ pub struct RegisteredDevice {
     pub current_calculation: Option<CurrentCalculation>,
 }
 
+/// In-memory map: registry key (device_id or miner_pubkey:device_type) -> device record.
 pub type DeviceRegistry = HashMap<String, RegisteredDevice>;
 
 /// Logical interface for device registry persistence and queries.
@@ -38,9 +41,13 @@ pub trait DeviceStore: Send + Sync {
     fn persist(&self, registry: &DeviceRegistry);
 }
 
+/// Canonical device type labels used in the registry and API.
 pub const DEVICE_TYPE_KEYS: &[&str] = &["esp32", "esp8266", "gpu", "cpu", "native", "wasm"];
+
+/// Default path for the JSON device registry file.
 pub const DEFAULT_REGISTRY_PATH: &str = "device_registry.json";
 
+/// Normalizes a device type string to one of [`DEVICE_TYPE_KEYS`] (e.g. esp32s -> esp32).
 pub fn normalize_device_type(s: &str) -> String {
     let lower = s.to_lowercase();
     if lower == "esp32" || lower == "esp32s" {
@@ -64,6 +71,7 @@ pub fn normalize_device_type(s: &str) -> String {
     "native".to_string()
 }
 
+/// Loads the device registry from a JSON file; returns an empty map if the file is missing or invalid.
 pub fn load_registry(path: &str) -> DeviceRegistry {
     match std::fs::read_to_string(path) {
         Ok(data) => {
@@ -78,6 +86,7 @@ pub fn load_registry(path: &str) -> DeviceRegistry {
     }
 }
 
+/// Spawns a background task to write the registry to disk as pretty JSON.
 pub fn spawn_persist_registry(reg: DeviceRegistry, path: String) {
     let count = reg.len();
     tokio::spawn(async move {
@@ -98,6 +107,7 @@ pub struct JsonFileDeviceStore {
 }
 
 impl JsonFileDeviceStore {
+    /// Creates a store that uses the given path and node_id from config.
     pub fn new_from_config(cfg: &ValidatorConfig, path: String) -> Self {
         Self {
             path,

@@ -1,3 +1,5 @@
+//! PoT-O extensions: chain bridge, DeFi client, device protocol, peer network, pool strategy, and proof authority.
+
 pub mod chain_bridge;
 pub mod defi;
 pub mod device_protocol;

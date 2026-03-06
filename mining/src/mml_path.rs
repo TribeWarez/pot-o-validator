@@ -1,3 +1,5 @@
+//! MML (Minimum Message Length) path validation: compression-based score and threshold check.
+
 use ai3_lib::tensor::Tensor;
 use flate2::write::DeflateEncoder;
 use flate2::Compression;

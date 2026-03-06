@@ -1,3 +1,8 @@
+//! PoT-O Validator binary: HTTP API server for challenge issuance, proof submission, and status.
+//!
+//! Loads config, builds consensus and extension registry, binds to the configured address/port,
+//! and serves the routes defined in `http_api`.
+
 mod config;
 mod consensus;
 mod device_registry;

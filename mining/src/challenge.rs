@@ -1,3 +1,5 @@
+//! Challenge generation from slot/slot_hash and conversion to mining tasks.
+
 use crate::neural_path::NeuralPathValidator;
 use ai3_lib::tensor::{Tensor, TensorData, TensorShape};
 use ai3_lib::MiningTask;
@@ -8,24 +10,37 @@ use sha2::{Digest, Sha256};
 /// A PoT-O mining challenge derived from a Solana slot hash.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Challenge {
+    /// Unique challenge id.
     pub id: String,
+    /// Solana slot number.
     pub slot: u64,
+    /// Slot hash (e.g. 64-char hex).
     pub slot_hash: String,
+    /// Tensor operation type (e.g. matrix_multiply, relu).
     pub operation_type: String,
+    /// Input tensor for the operation.
     pub input_tensor: Tensor,
+    /// Mining difficulty (path distance, etc.).
     pub difficulty: u64,
+    /// MML score threshold to accept a proof.
     pub mml_threshold: f64,
+    /// Maximum allowed Hamming distance for neural path.
     pub path_distance_max: u32,
+    /// Max tensor dimension.
     pub max_tensor_dim: usize,
+    /// Creation time.
     pub created_at: chrono::DateTime<chrono::Utc>,
+    /// Expiry time.
     pub expires_at: chrono::DateTime<chrono::Utc>,
 }
 
 impl Challenge {
+    /// Returns true if the challenge has expired.
     pub fn is_expired(&self) -> bool {
         chrono::Utc::now() > self.expires_at
     }
 
+    /// Converts this challenge into an AI3 mining task for the given requester.
     pub fn to_mining_task(&self, requester: &str) -> MiningTask {
         MiningTask::new(
             self.operation_type.clone(),
@@ -38,11 +53,17 @@ impl Challenge {
     }
 }
 
+/// Generates deterministic challenges from (slot, slot_hash) with configurable difficulty and thresholds.
 pub struct ChallengeGenerator {
+    /// Base difficulty for generated challenges.
     pub base_difficulty: u64,
+    /// Base MML threshold.
     pub base_mml_threshold: f64,
+    /// Base path distance bound.
     pub base_path_distance: u32,
+    /// Maximum tensor dimension.
     pub max_tensor_dim: usize,
+    /// Challenge TTL in seconds.
     pub challenge_ttl_secs: i64,
 }
 
@@ -75,6 +96,7 @@ const OPERATIONS: &[&str] = &[
 ];
 
 impl ChallengeGenerator {
+    /// Creates a generator with the given difficulty and max tensor dimension.
     pub fn new(difficulty: u64, max_tensor_dim: usize) -> Self {
         Self {
             base_difficulty: difficulty,

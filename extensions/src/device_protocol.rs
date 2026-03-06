@@ -1,3 +1,5 @@
+//! Device protocol abstraction: native, ESP32-S, ESP8266, and WASM device types and status.
+
 use pot_o_core::TribeResult;
 use pot_o_mining::PotOProof;
 use serde::{Deserialize, Serialize};

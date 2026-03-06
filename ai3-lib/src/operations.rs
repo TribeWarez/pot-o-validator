@@ -1,12 +1,15 @@
+//! Tensor operations: matrix multiply, convolution, activations, vector ops (aligned with .AI3).
+
 use crate::tensor::{Tensor, TensorData, TensorShape};
 use pot_o_core::{TribeError, TribeResult};
 
-/// Trait for all tensor operations (aligned with .AI3 TensorOp)
+/// Trait for all tensor operations (aligned with .AI3 TensorOp).
 pub trait TensorOp: Send + Sync {
     fn name(&self) -> &str;
     fn execute(&self, input: &Tensor) -> TribeResult<Tensor>;
 }
 
+/// Parses an operation type string into a boxed [`TensorOp`] implementation.
 pub fn parse_operation(op_type: &str) -> TribeResult<Box<dyn TensorOp>> {
     match op_type {
         "matrix_multiply" => Ok(Box::new(MatrixMultiply)),

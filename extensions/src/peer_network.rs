@@ -1,3 +1,5 @@
+//! Peer network: local-only and optional VPN mesh for multi-node discovery.
+
 use async_trait::async_trait;
 use pot_o_core::TribeResult;
 use pot_o_mining::{Challenge, ProofPayload};

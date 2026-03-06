@@ -1,3 +1,5 @@
+//! AI3 support library: tensor engine, ESP compatibility, and mining task execution for PoT-O.
+
 pub mod esp_compat;
 pub mod mining;
 pub mod operations;
@@ -12,19 +14,24 @@ use pot_o_core::TribeResult;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-/// Main AI3 Engine -- coordinates tensor operations and mining tasks.
-/// Ported from .AI3 ai3-lib with PoT-O extensions.
+/// Main AI3 engine: coordinates tensor operations and mining tasks (Ported from .AI3 ai3-lib with PoT-O extensions).
 pub struct AI3Engine {
+    /// Distributor for mining tasks.
     pub task_distributor: TaskDistributor,
     performance_stats: Arc<Mutex<EngineStats>>,
     config: EngineConfig,
 }
 
+/// Configuration for the AI3 engine.
 #[derive(Debug, Clone)]
 pub struct EngineConfig {
+    /// Maximum concurrent tasks.
     pub max_concurrent_tasks: usize,
+    /// Per-task timeout.
     pub task_timeout: Duration,
+    /// Whether to enable ESP-sized tensor clamping.
     pub enable_esp_support: bool,
+    /// Whether to auto-optimize tensor dimensions.
     pub auto_optimize_tensors: bool,
 }
 
@@ -101,6 +108,7 @@ impl AI3Engine {
         }
     }
 
+    /// Returns current engine statistics.
     pub fn get_stats(&self) -> EngineStats {
         self.performance_stats
             .lock()
@@ -108,6 +116,7 @@ impl AI3Engine {
             .unwrap_or_default()
     }
 
+    /// Records a task result for statistics.
     pub fn record_result(&self, success: bool, duration: Duration) {
         if let Ok(mut stats) = self.performance_stats.lock() {
             stats.total_tasks_processed += 1;

@@ -1,3 +1,5 @@
+//! Pool strategy: solo and proportional/PPLNS pool info and reward distribution.
+
 use pot_o_core::TribeResult;
 use serde::{Deserialize, Serialize};
 

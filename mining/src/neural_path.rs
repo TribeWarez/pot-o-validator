@@ -1,3 +1,5 @@
+//! Neural path validation: expected path signature from challenge and actual path from tensor + nonce.
+
 use ai3_lib::tensor::Tensor;
 use pot_o_core::TribeResult;
 use sha2::{Digest, Sha256};

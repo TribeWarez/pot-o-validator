@@ -1,3 +1,5 @@
+//! HTTP API routes for the PoT-O validator: health, status, challenge, submit, devices, staking, swap, vault.
+
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -18,6 +20,7 @@ use crate::device_registry::{
     DEVICE_TYPE_KEYS,
 };
 
+/// Builds the Axum router with all validator routes (health, status, challenge, submit, devices, DeFi).
 pub fn build_router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/", get(|| async { Redirect::permanent("/status") }))

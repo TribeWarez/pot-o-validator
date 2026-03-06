@@ -1,3 +1,5 @@
+//! Proof authority and node authentication: Ed25519, mTLS, HMAC device auth.
+
 use pot_o_core::TribeResult;
 use pot_o_mining::Challenge;
 use serde::{Deserialize, Serialize};
