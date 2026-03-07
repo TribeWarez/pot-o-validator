@@ -1,0 +1,404 @@
+name: Upstream Release - Update Downstream Repos
+
+on:
+  push:
+    tags:
+      - 'pot-o-validator-v*'
+
+env:
+  RUST_BACKTRACE: 1
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Stage 1: Validate the release
+  validate:
+    name: Validate Release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.extract-version.outputs.version }}
+      core-version: ${{ steps.get-versions.outputs.core-version }}
+      ai3-version: ${{ steps.get-versions.outputs.ai3-version }}
+      mining-version: ${{ steps.get-versions.outputs.mining-version }}
+      extensions-version: ${{ steps.get-versions.outputs.extensions-version }}
+    steps:
+      - name: Checkout main repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version from tag
+        id: extract-version
+        run: |
+          TAG=${{ github.ref_name }}
+          VERSION=${TAG#pot-o-validator-v}
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Extracted version: ${VERSION}"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Get workspace crate versions
+        id: get-versions
+        run: |
+          CORE_VERSION=$(grep '^version' core/Cargo.toml | head -1 | sed 's/version = "\(.*\)".*/\1/')
+          AI3_VERSION=$(grep '^version' ai3-lib/Cargo.toml | head -1 | sed 's/version = "\(.*\)".*/\1/')
+          MINING_VERSION=$(grep '^version' mining/Cargo.toml | head -1 | sed 's/version = "\(.*\)".*/\1/')
+          EXT_VERSION=$(grep '^version' extensions/Cargo.toml | head -1 | sed 's/version = "\(.*\)".*/\1/')
+          
+          echo "core-version=${CORE_VERSION}" >> $GITHUB_OUTPUT
+          echo "ai3-version=${AI3_VERSION}" >> $GITHUB_OUTPUT
+          echo "mining-version=${MINING_VERSION}" >> $GITHUB_OUTPUT
+          echo "extensions-version=${EXT_VERSION}" >> $GITHUB_OUTPUT
+          
+          echo "Core version: ${CORE_VERSION}"
+          echo "AI3 version: ${AI3_VERSION}"
+          echo "Mining version: ${MINING_VERSION}"
+          echo "Extensions version: ${EXT_VERSION}"
+
+      - name: Validate Cargo.lock
+        run: cargo update --locked --dry-run
+
+      - name: Build and test validator
+        run: |
+          cargo build --release
+          cargo test --release
+
+      - name: Create release summary
+        run: |
+          cat > /tmp/release-summary.txt << 'EOF'
+          Release: pot-o-validator-v${{ steps.extract-version.outputs.version }}
+          
+          Workspace versions:
+          - pot-o-core: ${{ steps.get-versions.outputs.core-version }}
+          - ai3-lib: ${{ steps.get-versions.outputs.ai3-version }}
+          - pot-o-mining: ${{ steps.get-versions.outputs.mining-version }}
+          - pot-o-extensions: ${{ steps.get-versions.outputs.extensions-version }}
+          
+          Validation: PASSED
+          EOF
+          cat /tmp/release-summary.txt
+
+  # Stage 2: Update pot-o-core
+  update-pot-o-core:
+    name: Update pot-o-core
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout pot-o-core repo
+        uses: actions/checkout@v4
+        with:
+          repository: TribeWarez/pot-o-core
+          token: ${{ secrets.TRIBEWAREZ_PAT }}
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "TribeWarez Release Bot"
+          git config user.email "release@tribewarez.com"
+
+      - name: Update dependencies
+        env:
+          VALIDATOR_VERSION: ${{ needs.validate.outputs.version }}
+          CORE_VERSION: ${{ needs.validate.outputs.core-version }}
+        run: |
+          echo "Current core version: ${CORE_VERSION}"
+          echo "Validator release: v${VALIDATOR_VERSION}"
+          
+          # Update Cargo.toml if needed - pot-o-core typically doesn't depend on validator
+          # but we run the script for consistency
+          cargo update
+
+      - name: Build and test
+        run: |
+          cargo build --release
+          cargo test --release
+
+      - name: Commit and push
+        env:
+          CORE_VERSION: ${{ needs.validate.outputs.core-version }}
+          VALIDATOR_VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          if [[ -n $(git status -s) ]]; then
+            git add -A
+            git commit -m "chore(deps): sync with pot-o-validator upstream v${VALIDATOR_VERSION}"
+            git push origin main
+            echo "COMMIT_SUCCESS=true" >> $GITHUB_ENV
+          else
+            echo "No changes to commit"
+            echo "COMMIT_SUCCESS=false" >> $GITHUB_ENV
+          fi
+
+      - name: Create release tag
+        if: env.COMMIT_SUCCESS == 'true'
+        env:
+          CORE_VERSION: ${{ needs.validate.outputs.core-version }}
+        run: |
+          git tag "pot-o-core-v${CORE_VERSION}" || echo "Tag already exists"
+          git push origin "pot-o-core-v${CORE_VERSION}" 2>&1 || echo "Tag push skipped (might already exist)"
+
+  # Stage 3: Update ai3-lib
+  update-ai3-lib:
+    name: Update ai3-lib
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout ai3-lib repo
+        uses: actions/checkout@v4
+        with:
+          repository: TribeWarez/ai3-lib
+          token: ${{ secrets.TRIBEWAREZ_PAT }}
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "TribeWarez Release Bot"
+          git config user.email "release@tribewarez.com"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Update dependencies
+        env:
+          VALIDATOR_VERSION: ${{ needs.validate.outputs.version }}
+          CORE_VERSION: ${{ needs.validate.outputs.core-version }}
+          AI3_VERSION: ${{ needs.validate.outputs.ai3-version }}
+        run: |
+          echo "Current ai3-lib version: ${AI3_VERSION}"
+          echo "Validator release: v${VALIDATOR_VERSION}"
+          echo "pot-o-core version: ${CORE_VERSION}"
+          
+          # Update pot-o-core dependency to match workspace version
+          sed -i "s/pot-o-core = \".*\"/pot-o-core = \"${CORE_VERSION}\"/" Cargo.toml
+          
+          cargo update
+
+      - name: Build and test
+        run: |
+          cargo build --release
+          cargo test --release
+
+      - name: Commit and push
+        env:
+          AI3_VERSION: ${{ needs.validate.outputs.ai3-version }}
+          VALIDATOR_VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          if [[ -n $(git status -s) ]]; then
+            git add -A
+            git commit -m "chore(deps): update pot-o-core to ${CORE_VERSION}, sync with pot-o-validator upstream v${VALIDATOR_VERSION}"
+            git push origin main
+            echo "COMMIT_SUCCESS=true" >> $GITHUB_ENV
+          else
+            echo "No changes to commit"
+            echo "COMMIT_SUCCESS=false" >> $GITHUB_ENV
+          fi
+
+      - name: Create release tag
+        if: env.COMMIT_SUCCESS == 'true'
+        env:
+          AI3_VERSION: ${{ needs.validate.outputs.ai3-version }}
+        run: |
+          git tag "ai3-lib-v${AI3_VERSION}" || echo "Tag already exists"
+          git push origin "ai3-lib-v${AI3_VERSION}" 2>&1 || echo "Tag push skipped (might already exist)"
+
+  # Stage 4: Update pot-o-mining (depends on pot-o-core and ai3-lib)
+  update-pot-o-mining:
+    name: Update pot-o-mining
+    needs: [validate, update-pot-o-core, update-ai3-lib]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout pot-o-mining repo
+        uses: actions/checkout@v4
+        with:
+          repository: TribeWarez/pot-o-mining
+          token: ${{ secrets.TRIBEWAREZ_PAT }}
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "TribeWarez Release Bot"
+          git config user.email "release@tribewarez.com"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Update dependencies
+        env:
+          VALIDATOR_VERSION: ${{ needs.validate.outputs.version }}
+          CORE_VERSION: ${{ needs.validate.outputs.core-version }}
+          AI3_VERSION: ${{ needs.validate.outputs.ai3-version }}
+          MINING_VERSION: ${{ needs.validate.outputs.mining-version }}
+        run: |
+          echo "Current pot-o-mining version: ${MINING_VERSION}"
+          echo "Validator release: v${VALIDATOR_VERSION}"
+          
+          # Update dependencies
+          sed -i "s/pot-o-core = \".*\"/pot-o-core = \"${CORE_VERSION}\"/" Cargo.toml
+          sed -i "s/ai3-lib = \".*\"/ai3-lib = \"${AI3_VERSION}\"/" Cargo.toml
+          
+          cargo update
+
+      - name: Build and test
+        run: |
+          cargo build --release
+          cargo test --release
+
+      - name: Commit and push
+        env:
+          MINING_VERSION: ${{ needs.validate.outputs.mining-version }}
+          CORE_VERSION: ${{ needs.validate.outputs.core-version }}
+          AI3_VERSION: ${{ needs.validate.outputs.ai3-version }}
+          VALIDATOR_VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          if [[ -n $(git status -s) ]]; then
+            git add -A
+            git commit -m "chore(deps): update pot-o-core to ${CORE_VERSION}, ai3-lib to ${AI3_VERSION}, sync with pot-o-validator upstream v${VALIDATOR_VERSION}"
+            git push origin main
+            echo "COMMIT_SUCCESS=true" >> $GITHUB_ENV
+          else
+            echo "No changes to commit"
+            echo "COMMIT_SUCCESS=false" >> $GITHUB_ENV
+          fi
+
+      - name: Create release tag
+        if: env.COMMIT_SUCCESS == 'true'
+        env:
+          MINING_VERSION: ${{ needs.validate.outputs.mining-version }}
+        run: |
+          git tag "pot-o-mining-v${MINING_VERSION}" || echo "Tag already exists"
+          git push origin "pot-o-mining-v${MINING_VERSION}" 2>&1 || echo "Tag push skipped (might already exist)"
+
+  # Stage 5: Update pot-o-extensions (depends on all previous crates)
+  update-pot-o-extensions:
+    name: Update pot-o-extensions
+    needs: [validate, update-pot-o-core, update-ai3-lib, update-pot-o-mining]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout pot-o-extensions repo
+        uses: actions/checkout@v4
+        with:
+          repository: TribeWarez/pot-o-extensions
+          token: ${{ secrets.TRIBEWAREZ_PAT }}
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "TribeWarez Release Bot"
+          git config user.email "release@tribewarez.com"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Update dependencies
+        env:
+          VALIDATOR_VERSION: ${{ needs.validate.outputs.version }}
+          CORE_VERSION: ${{ needs.validate.outputs.core-version }}
+          AI3_VERSION: ${{ needs.validate.outputs.ai3-version }}
+          MINING_VERSION: ${{ needs.validate.outputs.mining-version }}
+          EXT_VERSION: ${{ needs.validate.outputs.extensions-version }}
+        run: |
+          echo "Current pot-o-extensions version: ${EXT_VERSION}"
+          echo "Validator release: v${VALIDATOR_VERSION}"
+          
+          # Update all dependencies
+          sed -i "s/pot-o-core = \".*\"/pot-o-core = \"${CORE_VERSION}\"/" Cargo.toml
+          sed -i "s/ai3-lib = \".*\"/ai3-lib = \"${AI3_VERSION}\"/" Cargo.toml
+          sed -i "s/pot-o-mining = \".*\"/pot-o-mining = \"${MINING_VERSION}\"/" Cargo.toml
+          
+          cargo update
+
+      - name: Build and test
+        run: |
+          cargo build --release
+          cargo test --release
+
+      - name: Commit and push
+        env:
+          EXT_VERSION: ${{ needs.validate.outputs.extensions-version }}
+          CORE_VERSION: ${{ needs.validate.outputs.core-version }}
+          AI3_VERSION: ${{ needs.validate.outputs.ai3-version }}
+          MINING_VERSION: ${{ needs.validate.outputs.mining-version }}
+          VALIDATOR_VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          if [[ -n $(git status -s) ]]; then
+            git add -A
+            git commit -m "chore(deps): update pot-o-core to ${CORE_VERSION}, ai3-lib to ${AI3_VERSION}, pot-o-mining to ${MINING_VERSION}, sync with pot-o-validator upstream v${VALIDATOR_VERSION}"
+            git push origin main
+            echo "COMMIT_SUCCESS=true" >> $GITHUB_ENV
+          else
+            echo "No changes to commit"
+            echo "COMMIT_SUCCESS=false" >> $GITHUB_ENV
+          fi
+
+      - name: Create release tag
+        if: env.COMMIT_SUCCESS == 'true'
+        env:
+          EXT_VERSION: ${{ needs.validate.outputs.extensions-version }}
+        run: |
+          git tag "pot-o-extensions-v${EXT_VERSION}" || echo "Tag already exists"
+          git push origin "pot-o-extensions-v${EXT_VERSION}" 2>&1 || echo "Tag push skipped (might already exist)"
+
+  # Stage 6: Verification and notification
+  verify-and-notify:
+    name: Verify Release Completion
+    needs: [validate, update-pot-o-core, update-ai3-lib, update-pot-o-mining, update-pot-o-extensions]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check all stages completed
+        run: |
+          echo "=== Upstream Release Completion Report ==="
+          echo "Validator Release: v${{ needs.validate.outputs.version }}"
+          echo ""
+          echo "Updated Crates:"
+          echo "- pot-o-core: v${{ needs.validate.outputs.core-version }}"
+          echo "- ai3-lib: v${{ needs.validate.outputs.ai3-version }}"
+          echo "- pot-o-mining: v${{ needs.validate.outputs.mining-version }}"
+          echo "- pot-o-extensions: v${{ needs.validate.outputs.extensions-version }}"
+          echo ""
+          echo "Job Status Summary:"
+          echo "- validate: ${{ needs.validate.result }}"
+          echo "- update-pot-o-core: ${{ needs.update-pot-o-core.result }}"
+          echo "- update-ai3-lib: ${{ needs.update-ai3-lib.result }}"
+          echo "- update-pot-o-mining: ${{ needs.update-pot-o-mining.result }}"
+          echo "- update-pot-o-extensions: ${{ needs.update-pot-o-extensions.result }}"
+
+      - name: Create GitHub Release (on success)
+        if: |
+          needs.validate.result == 'success' &&
+          needs.update-pot-o-core.result == 'success' &&
+          needs.update-ai3-lib.result == 'success' &&
+          needs.update-pot-o-mining.result == 'success' &&
+          needs.update-pot-o-extensions.result == 'success'
+        uses: softprops/action-gh-release@v1
+        with:
+          draft: false
+          prerelease: false
+          body: |
+            # pot-o-validator Release v${{ needs.validate.outputs.version }}
+            
+            ## Downstream Crate Updates
+            This release triggered automatic updates to all downstream repositories:
+            
+            - **pot-o-core**: v${{ needs.validate.outputs.core-version }}
+            - **ai3-lib**: v${{ needs.validate.outputs.ai3-version }}
+            - **pot-o-mining**: v${{ needs.validate.outputs.mining-version }}
+            - **pot-o-extensions**: v${{ needs.validate.outputs.extensions-version }}
+            
+            All downstream repositories have been updated and tested.
+            
+            ## Release Timeline
+            - ✅ Validator validation and tests completed
+            - ✅ pot-o-core updated and released
+            - ✅ ai3-lib updated and released
+            - ✅ pot-o-mining updated and released
+            - ✅ pot-o-extensions updated and released
+
+      - name: Workflow failure notification
+        if: failure()
+        run: |
+          echo "❌ One or more release stages failed"
+          exit 1
+
