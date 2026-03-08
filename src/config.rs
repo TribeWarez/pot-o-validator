@@ -28,6 +28,7 @@ pub struct ValidatorConfig {
     pub max_tensor_dim: usize,
     /// Max iterations per mining attempt.
     #[serde(default = "default_max_mine_iterations")]
+    #[allow(dead_code)]
     pub max_mine_iterations: u64,
     /// Peer network mode (e.g. local_only).
     #[serde(default = "default_peer_network_mode")]

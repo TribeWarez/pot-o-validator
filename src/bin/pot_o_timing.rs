@@ -21,7 +21,7 @@ fn main() -> TribeResult<()> {
     // Time a single tensor operation via AI3Engine.
     let task = challenge.to_mining_task("timing_miner");
     let op_start = Instant::now();
-    let output = consensus.engine.execute_task(&task)?;
+    let _output = consensus.engine.execute_task(&task)?;
     let op_elapsed = op_start.elapsed();
 
     println!(
