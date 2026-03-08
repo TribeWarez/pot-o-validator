@@ -43,7 +43,7 @@ fn test_constants_are_reasonable() {
     let block_time = pot_o_core::BLOCK_TIME_TARGET;
     assert!(block_time >= 1);
     assert!(block_time <= 86400);
-    
+
     // Tensor dimension should be power-of-2 or close
     let max_dim = pot_o_core::ESP_MAX_TENSOR_DIM;
     assert!(max_dim >= 32);
@@ -54,7 +54,7 @@ fn test_constants_are_reasonable() {
 fn test_public_api_exports() {
     // Verify that error types are exported
     use pot_o_core::{TribeError, TribeResult};
-    
+
     let _err: TribeError = TribeError::InvalidOperation("test".to_string());
     let _result: TribeResult<i32> = Ok(42);
 }
@@ -62,8 +62,8 @@ fn test_public_api_exports() {
 #[test]
 fn test_crypto_constants_exist() {
     // Verify module exports are available
-    use pot_o_core::{VERSION, BLOCK_TIME_TARGET, ESP_MAX_TENSOR_DIM};
-    
+    use pot_o_core::{BLOCK_TIME_TARGET, ESP_MAX_TENSOR_DIM, VERSION};
+
     assert!(!VERSION.is_empty());
     assert!(BLOCK_TIME_TARGET > 0);
     assert!(ESP_MAX_TENSOR_DIM > 0);
@@ -73,14 +73,10 @@ fn test_crypto_constants_exist() {
 fn test_tensor_entropy_functions_available() {
     // Test that tensor entropy functions are exported
     use pot_o_core::{
-        entropy_from_cut,
-        mutual_information,
-        effective_distance,
-        total_network_entropy,
-        approximate_minimal_cut,
-        coherence_probability,
+        approximate_minimal_cut, coherence_probability, effective_distance, entropy_from_cut,
+        mutual_information, total_network_entropy,
     };
-    
+
     // Just verify they're accessible
     let _ = entropy_from_cut;
     let _ = mutual_information;
@@ -93,12 +89,8 @@ fn test_tensor_entropy_functions_available() {
 #[test]
 fn test_math_functions_available() {
     // Test that math functions are exported
-    use pot_o_core::{
-        matrix_multiply,
-        vector_dot,
-        tensor_contract,
-    };
-    
+    use pot_o_core::{matrix_multiply, tensor_contract, vector_dot};
+
     // Just verify they're accessible
     let _ = matrix_multiply;
     let _ = vector_dot;
@@ -108,16 +100,10 @@ fn test_math_functions_available() {
 #[test]
 fn test_types_exports() {
     // Verify core types are exported
-    use pot_o_core::{Block, Transaction, TransactionType, TokenType};
-    
-    let _block_type = Block::new(
-        0,
-        "prev".to_string(),
-        vec![],
-        "miner".to_string(),
-        1000,
-    );
-    
+    use pot_o_core::{Block, TokenType, Transaction, TransactionType};
+
+    let _block_type = Block::new(0, "prev".to_string(), vec![], "miner".to_string(), 1000);
+
     let _token_type = TokenType::TribeChain;
     let _tx_type = TransactionType::Transfer;
 }
@@ -125,8 +111,8 @@ fn test_types_exports() {
 #[test]
 fn test_tensor_constants_available() {
     // Verify tensor constants are exported
-    use pot_o_core::{BOND_DIMENSION_MIN, BOND_DIMENSION_MAX};
-    
+    use pot_o_core::{BOND_DIMENSION_MAX, BOND_DIMENSION_MIN};
+
     assert!(BOND_DIMENSION_MIN > 0);
     assert!(BOND_DIMENSION_MAX > BOND_DIMENSION_MIN);
 }
@@ -135,7 +121,7 @@ fn test_tensor_constants_available() {
 fn test_entropy_calculation_constants() {
     // Verify entropy calculation constants
     use pot_o_core::COHERENCE_THRESHOLD;
-    
+
     assert!(COHERENCE_THRESHOLD >= 0.0);
     assert!(COHERENCE_THRESHOLD <= 1.0);
 }

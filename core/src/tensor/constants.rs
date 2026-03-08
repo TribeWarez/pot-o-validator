@@ -70,7 +70,7 @@ pub const MAX_ENTROPY_FIXED: u64 = u64::MAX / 2;
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_constants_are_positive() {
         assert!(PLANCK_LENGTH > 0.0);
@@ -79,14 +79,14 @@ mod tests {
         assert!(SPEED_OF_LIGHT > 0.0);
         assert!(GRAVITATIONAL_CONSTANT > 0.0);
     }
-    
+
     #[test]
     fn test_bond_dimensions() {
         assert_eq!(DEFAULT_BOND_DIM_QUBIT, 2);
         assert_eq!(DEFAULT_BOND_DIM_QUQUART, 4);
         assert!(MAX_BOND_DIMENSION >= DEFAULT_BOND_DIM_QUDIT);
     }
-    
+
     #[test]
     fn test_network_limits() {
         assert!(MAX_TENSOR_VERTICES > 0);

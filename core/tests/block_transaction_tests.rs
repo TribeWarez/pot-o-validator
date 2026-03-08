@@ -2,7 +2,7 @@
 //!
 //! Validates block creation, hash calculation, transaction handling
 
-use pot_o_core::{Block, Transaction, TransactionType, TokenType};
+use pot_o_core::{Block, TokenType, Transaction, TransactionType};
 
 #[test]
 fn test_token_type_creation() {
@@ -14,7 +14,7 @@ fn test_token_type_creation() {
         TokenType::AUM,
         TokenType::AI3,
     ];
-    
+
     assert_eq!(tokens.len(), 6);
 }
 
@@ -27,7 +27,7 @@ fn test_transaction_type_variants() {
         TransactionType::TokenCreate,
         TransactionType::Swap,
     ];
-    
+
     assert_eq!(types.len(), 5);
 }
 
@@ -41,7 +41,7 @@ fn test_block_creation_basic() {
         "miner1".to_string(),
         1000,
     );
-    
+
     assert_eq!(block.height, 0);
     assert_eq!(block.previous_hash, "genesis");
     assert_eq!(block.miner, "miner1");
@@ -61,11 +61,11 @@ fn test_block_hash_calculation() {
         "miner1".to_string(),
         1000,
     );
-    
+
     // Hash should be deterministic for same inputs
     let hash1 = block.hash.clone();
     let hash2 = block.calculate_hash();
-    
+
     assert_eq!(hash1, hash2);
     assert_eq!(hash1.len(), 64); // SHA-256 produces 64 hex characters
 }
@@ -73,7 +73,7 @@ fn test_block_hash_calculation() {
 #[test]
 fn test_block_hash_changes_with_different_height() {
     let transactions = vec![];
-    
+
     let block1 = Block::new(
         1,
         "prev".to_string(),
@@ -81,7 +81,7 @@ fn test_block_hash_changes_with_different_height() {
         "miner".to_string(),
         1000,
     );
-    
+
     let block2 = Block::new(
         2,
         "prev".to_string(),
@@ -89,14 +89,14 @@ fn test_block_hash_changes_with_different_height() {
         "miner".to_string(),
         1000,
     );
-    
+
     assert_ne!(block1.hash, block2.hash);
 }
 
 #[test]
 fn test_block_hash_changes_with_different_miner() {
     let transactions = vec![];
-    
+
     let block1 = Block::new(
         1,
         "prev".to_string(),
@@ -104,7 +104,7 @@ fn test_block_hash_changes_with_different_miner() {
         "miner1".to_string(),
         1000,
     );
-    
+
     let block2 = Block::new(
         1,
         "prev".to_string(),
@@ -112,14 +112,14 @@ fn test_block_hash_changes_with_different_miner() {
         "miner2".to_string(),
         1000,
     );
-    
+
     assert_ne!(block1.hash, block2.hash);
 }
 
 #[test]
 fn test_block_hash_changes_with_different_difficulty() {
     let transactions = vec![];
-    
+
     let block1 = Block::new(
         1,
         "prev".to_string(),
@@ -127,7 +127,7 @@ fn test_block_hash_changes_with_different_difficulty() {
         "miner".to_string(),
         1000,
     );
-    
+
     let block2 = Block::new(
         1,
         "prev".to_string(),
@@ -135,7 +135,7 @@ fn test_block_hash_changes_with_different_difficulty() {
         "miner".to_string(),
         2000,
     );
-    
+
     assert_ne!(block1.hash, block2.hash);
 }
 
@@ -151,15 +151,9 @@ fn test_block_with_transactions() {
         nonce: 0,
         tx_type: TransactionType::Transfer,
     };
-    
-    let block = Block::new(
-        1,
-        "prev".to_string(),
-        vec![tx],
-        "miner".to_string(),
-        1000,
-    );
-    
+
+    let block = Block::new(1, "prev".to_string(), vec![tx], "miner".to_string(), 1000);
+
     assert_eq!(block.transactions.len(), 1);
     assert_eq!(block.transactions[0].from, "alice");
     assert_eq!(block.transactions[0].to, "bob");
@@ -178,7 +172,7 @@ fn test_block_hash_includes_transaction_hashes() {
         nonce: 0,
         tx_type: TransactionType::Transfer,
     };
-    
+
     let tx2 = Transaction {
         hash: "tx_2".to_string(),
         from: "charlie".to_string(),
@@ -189,23 +183,11 @@ fn test_block_hash_includes_transaction_hashes() {
         nonce: 0,
         tx_type: TransactionType::Stake,
     };
-    
-    let block1 = Block::new(
-        1,
-        "prev".to_string(),
-        vec![tx1],
-        "miner".to_string(),
-        1000,
-    );
-    
-    let block2 = Block::new(
-        1,
-        "prev".to_string(),
-        vec![tx2],
-        "miner".to_string(),
-        1000,
-    );
-    
+
+    let block1 = Block::new(1, "prev".to_string(), vec![tx1], "miner".to_string(), 1000);
+
+    let block2 = Block::new(1, "prev".to_string(), vec![tx2], "miner".to_string(), 1000);
+
     // Different transactions should produce different block hashes
     assert_ne!(block1.hash, block2.hash);
 }
@@ -244,7 +226,7 @@ fn test_block_multiple_transactions() {
             tx_type: TransactionType::Stake,
         },
     ];
-    
+
     let block = Block::new(
         1,
         "prev".to_string(),
@@ -252,7 +234,7 @@ fn test_block_multiple_transactions() {
         "miner".to_string(),
         1000,
     );
-    
+
     assert_eq!(block.transactions.len(), 3);
     assert_eq!(block.transactions[0].from, "alice");
     assert_eq!(block.transactions[1].from, "bob");
@@ -271,10 +253,10 @@ fn test_transaction_type_staking() {
         nonce: 5,
         tx_type: TransactionType::Stake,
     };
-    
+
     assert_eq!(tx.amount, 1000000);
     match tx.tx_type {
-        TransactionType::Stake => {},
+        TransactionType::Stake => {}
         _ => panic!("Expected Stake transaction"),
     }
 }
@@ -291,23 +273,17 @@ fn test_transaction_type_tensor_proof() {
         nonce: 0,
         tx_type: TransactionType::TensorProof,
     };
-    
+
     match tx.tx_type {
-        TransactionType::TensorProof => {},
+        TransactionType::TensorProof => {}
         _ => panic!("Expected TensorProof transaction"),
     }
 }
 
 #[test]
 fn test_block_timestamp_is_set() {
-    let block = Block::new(
-        1,
-        "prev".to_string(),
-        vec![],
-        "miner".to_string(),
-        1000,
-    );
-    
+    let block = Block::new(1, "prev".to_string(), vec![], "miner".to_string(), 1000);
+
     // Timestamp should be roughly current time
     let now = chrono::Utc::now().timestamp() as u64;
     assert!(block.timestamp <= now);
@@ -316,14 +292,8 @@ fn test_block_timestamp_is_set() {
 
 #[test]
 fn test_block_hash_hex_format() {
-    let block = Block::new(
-        1,
-        "prev".to_string(),
-        vec![],
-        "miner".to_string(),
-        1000,
-    );
-    
+    let block = Block::new(1, "prev".to_string(), vec![], "miner".to_string(), 1000);
+
     // Hash should be valid hex (only 0-9, a-f)
     assert!(block.hash.chars().all(|c| c.is_ascii_hexdigit()));
     assert_eq!(block.hash.len(), 64); // SHA-256 is 32 bytes = 64 hex chars
@@ -331,16 +301,10 @@ fn test_block_hash_hex_format() {
 
 #[test]
 fn test_block_clone_and_equality() {
-    let block1 = Block::new(
-        1,
-        "prev".to_string(),
-        vec![],
-        "miner".to_string(),
-        1000,
-    );
-    
+    let block1 = Block::new(1, "prev".to_string(), vec![], "miner".to_string(), 1000);
+
     let block2 = block1.clone();
-    
+
     assert_eq!(block1.hash, block2.hash);
     assert_eq!(block1.height, block2.height);
     assert_eq!(block1.miner, block2.miner);
@@ -358,9 +322,9 @@ fn test_transaction_clone() {
         nonce: 0,
         tx_type: TransactionType::Transfer,
     };
-    
+
     let tx_clone = tx.clone();
-    
+
     assert_eq!(tx.hash, tx_clone.hash);
     assert_eq!(tx.from, tx_clone.from);
     assert_eq!(tx.to, tx_clone.to);
@@ -370,14 +334,8 @@ fn test_transaction_clone() {
 #[test]
 fn test_block_serialization_compatible() {
     // Test that Block can be serialized (via serde derive)
-    let block = Block::new(
-        1,
-        "prev".to_string(),
-        vec![],
-        "miner".to_string(),
-        1000,
-    );
-    
+    let block = Block::new(1, "prev".to_string(), vec![], "miner".to_string(), 1000);
+
     // Verify Block has the required serde attributes
     let _: &(dyn std::any::Any) = &block;
 }

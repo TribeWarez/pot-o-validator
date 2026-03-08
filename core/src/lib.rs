@@ -13,24 +13,20 @@
 //! - Effective distance d_eff recovers geometric structure
 
 pub mod error;
-pub mod types;
-pub mod tensor;
 pub mod math;
+pub mod tensor;
+pub mod types;
 
 pub use error::{TribeError, TribeResult};
-pub use types::*;
+pub use math::portable::*;
 pub use tensor::{
     constants::*,
     entropy::{
-        entropy_from_cut,
-        mutual_information,
-        effective_distance,
-        total_network_entropy,
-        approximate_minimal_cut,
-        coherence_probability,
+        approximate_minimal_cut, coherence_probability, effective_distance, entropy_from_cut,
+        mutual_information, total_network_entropy,
     },
 };
-pub use math::portable::*;
+pub use types::*;
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};

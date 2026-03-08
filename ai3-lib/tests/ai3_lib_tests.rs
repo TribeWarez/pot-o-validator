@@ -3,24 +3,22 @@
 //! Validates AI3Engine, Tensor operations, and mining task execution
 
 use ai3_lib::{
-    AI3Engine, TensorEngine, EngineConfig, EngineStats,
-    Tensor, TensorData, TensorShape,
-    MiningTask, TaskDistributor, MiningResult,
-    ESPCompatibility, ESPDeviceType, ESPMiningConfig,
+    AI3Engine, ESPCompatibility, ESPDeviceType, ESPMiningConfig, EngineConfig, EngineStats,
+    MiningResult, MiningTask, TaskDistributor, Tensor, TensorData, TensorEngine, TensorShape,
 };
 use std::time::Duration;
 
 #[test]
 fn test_tensor_shape_creation() {
     let shape = TensorShape::new(vec![2, 3]);
-    
+
     assert_eq!(shape.dims(), &[2, 3]);
 }
 
 #[test]
 fn test_tensor_shape_multidimensional() {
     let shape = TensorShape::new(vec![2, 3, 4]);
-    
+
     assert_eq!(shape.dims().len(), 3);
     assert_eq!(shape.dims()[0], 2);
     assert_eq!(shape.dims()[1], 3);
@@ -31,7 +29,7 @@ fn test_tensor_shape_multidimensional() {
 fn test_tensor_creation() {
     let shape = TensorShape::new(vec![1, 1]);
     let data = TensorData::from_vec(vec![1.0_f32]);
-    
+
     let tensor = Tensor::new(shape, data);
     assert!(tensor.is_ok());
 }
@@ -40,7 +38,7 @@ fn test_tensor_creation() {
 fn test_tensor_access() {
     let shape = TensorShape::new(vec![2, 2]);
     let data = TensorData::from_vec(vec![1.0_f32, 2.0_f32, 3.0_f32, 4.0_f32]);
-    
+
     let tensor = Tensor::new(shape, data).unwrap();
     assert_eq!(tensor.shape().dims(), &[2, 2]);
 }
@@ -48,7 +46,7 @@ fn test_tensor_access() {
 #[test]
 fn test_engine_config_defaults() {
     let config = EngineConfig::default();
-    
+
     assert_eq!(config.max_concurrent_tasks, 10);
     assert_eq!(config.task_timeout, Duration::from_secs(30));
     assert!(config.enable_esp_support);
@@ -63,7 +61,7 @@ fn test_engine_config_custom() {
         enable_esp_support: false,
         auto_optimize_tensors: false,
     };
-    
+
     assert_eq!(config.max_concurrent_tasks, 20);
     assert_eq!(config.task_timeout, Duration::from_secs(60));
     assert!(!config.enable_esp_support);
@@ -73,7 +71,7 @@ fn test_engine_config_custom() {
 #[test]
 fn test_engine_stats_defaults() {
     let stats = EngineStats::default();
-    
+
     assert_eq!(stats.total_tasks_processed, 0);
     assert_eq!(stats.successful_tasks, 0);
     assert_eq!(stats.failed_tasks, 0);
@@ -84,7 +82,7 @@ fn test_engine_stats_defaults() {
 #[test]
 fn test_ai3_engine_creation() {
     let engine = AI3Engine::new();
-    
+
     // Engine should be created successfully
     assert!(true);
 }
@@ -93,7 +91,7 @@ fn test_ai3_engine_creation() {
 fn test_ai3_engine_clone() {
     let engine = AI3Engine::new();
     let engine2 = engine.clone();
-    
+
     // Cloning should work
     assert!(true);
 }
@@ -101,7 +99,7 @@ fn test_ai3_engine_clone() {
 #[test]
 fn test_engine_trait_implementation() {
     let engine: Box<dyn TensorEngine> = Box::new(AI3Engine::new());
-    
+
     // Should be usable as trait object
     let stats = engine.get_stats();
     assert_eq!(stats.total_tasks_processed, 0);
@@ -117,7 +115,7 @@ fn test_mining_task_creation() {
         300,
         "miner1".to_string(),
     );
-    
+
     assert_eq!(task.operation_type, "identity");
     assert_eq!(task.difficulty, 1000);
 }
@@ -127,7 +125,7 @@ fn test_mining_task_with_inputs() {
     let shape = TensorShape::new(vec![1, 1]);
     let data = TensorData::from_vec(vec![1.0_f32]);
     let tensor = Tensor::new(shape, data).unwrap();
-    
+
     let task = MiningTask::new(
         "matrix_multiply".to_string(),
         vec![tensor],
@@ -136,7 +134,7 @@ fn test_mining_task_with_inputs() {
         300,
         "miner1".to_string(),
     );
-    
+
     assert_eq!(task.operation_type, "matrix_multiply");
     assert_eq!(task.input_tensors.len(), 1);
 }
@@ -151,7 +149,7 @@ fn test_mining_task_reward() {
         300,
         "miner1".to_string(),
     );
-    
+
     assert_eq!(task.reward, 100_000_000);
 }
 
@@ -165,7 +163,7 @@ fn test_mining_task_deadline() {
         600, // 10 minutes
         "miner1".to_string(),
     );
-    
+
     assert_eq!(task.deadline_seconds, 600);
 }
 
@@ -179,14 +177,14 @@ fn test_mining_task_requester() {
         300,
         "validator_node".to_string(),
     );
-    
+
     assert_eq!(task.requester, "validator_node");
 }
 
 #[test]
 fn test_task_distributor_creation() {
     let distributor = TaskDistributor::new();
-    
+
     assert!(true); // Distributor created
 }
 
@@ -197,14 +195,14 @@ fn test_esp_device_type_variants() {
         ESPDeviceType::ESP32C3,
         ESPDeviceType::ESP32H2,
     ];
-    
+
     assert!(types.len() > 0);
 }
 
 #[test]
 fn test_esp_compatibility_creation() {
     let compat = ESPCompatibility::new(ESPDeviceType::ESP32S3);
-    
+
     // Should be created
     assert!(true);
 }
@@ -216,7 +214,7 @@ fn test_esp_mining_config_creation() {
         chunk_size: 16,
         battery_mode: false,
     };
-    
+
     assert_eq!(config.max_tensor_dim, 64);
     assert_eq!(config.chunk_size, 16);
     assert!(!config.battery_mode);
@@ -229,7 +227,7 @@ fn test_esp_mining_config_battery_mode() {
         chunk_size: 8,
         battery_mode: true,
     };
-    
+
     assert!(config.battery_mode);
     assert_eq!(config.max_tensor_dim, 32);
 }
@@ -237,7 +235,7 @@ fn test_esp_mining_config_battery_mode() {
 #[test]
 fn test_tensor_data_from_vec() {
     let data = TensorData::from_vec(vec![1.0_f32, 2.0_f32, 3.0_f32]);
-    
+
     assert!(true); // Data created
 }
 
@@ -245,7 +243,7 @@ fn test_tensor_data_from_vec() {
 fn test_tensor_shape_vector_consistency() {
     let dims = vec![4, 4];
     let shape = TensorShape::new(dims.clone());
-    
+
     assert_eq!(shape.dims(), &dims[..]);
 }
 
@@ -253,7 +251,7 @@ fn test_tensor_shape_vector_consistency() {
 fn test_engine_new_initializes_stats() {
     let engine = AI3Engine::new();
     let stats = engine.get_stats();
-    
+
     assert_eq!(stats.total_tasks_processed, 0);
     assert_eq!(stats.successful_tasks, 0);
 }
@@ -268,9 +266,9 @@ fn test_mining_task_clone() {
         300,
         "miner1".to_string(),
     );
-    
+
     let task2 = task.clone();
-    
+
     assert_eq!(task.operation_type, task2.operation_type);
 }
 
@@ -278,7 +276,7 @@ fn test_mining_task_clone() {
 fn test_tensor_shape_clone() {
     let shape = TensorShape::new(vec![2, 3]);
     let shape2 = shape.clone();
-    
+
     assert_eq!(shape.dims(), shape2.dims());
 }
 
@@ -286,7 +284,7 @@ fn test_tensor_shape_clone() {
 fn test_engine_config_clone() {
     let config = EngineConfig::default();
     let config2 = config.clone();
-    
+
     assert_eq!(config.max_concurrent_tasks, config2.max_concurrent_tasks);
 }
 
@@ -294,7 +292,7 @@ fn test_engine_config_clone() {
 fn test_engine_stats_clone() {
     let stats = EngineStats::default();
     let stats2 = stats.clone();
-    
+
     assert_eq!(stats.total_tasks_processed, stats2.total_tasks_processed);
 }
 
@@ -309,7 +307,7 @@ fn test_tensor_dimension_limits_esp_compatible() {
     // ESP32 max dimension should be 64
     let max_dim = 64usize;
     let shape = TensorShape::new(vec![max_dim as u32; 2]);
-    
+
     assert_eq!(shape.dims()[0], max_dim as u32);
 }
 
@@ -320,7 +318,7 @@ fn test_mining_config_reasonable_bounds() {
         chunk_size: 16,
         battery_mode: true,
     };
-    
+
     // Chunk size should be <= max tensor dim
     assert!(config.chunk_size <= config.max_tensor_dim);
 }
@@ -331,7 +329,7 @@ fn test_engine_concurrent_task_limit() {
         max_concurrent_tasks: 5,
         ..Default::default()
     };
-    
+
     assert!(config.max_concurrent_tasks > 0);
     assert!(config.max_concurrent_tasks <= 1000); // Reasonable upper bound
 }
@@ -339,7 +337,7 @@ fn test_engine_concurrent_task_limit() {
 #[test]
 fn test_task_timeout_is_positive() {
     let config = EngineConfig::default();
-    
+
     assert!(config.task_timeout.as_secs() > 0);
 }
 
@@ -353,6 +351,6 @@ fn test_mining_task_difficulty_positive() {
         300,
         "miner1".to_string(),
     );
-    
+
     assert!(task.difficulty > 0);
 }

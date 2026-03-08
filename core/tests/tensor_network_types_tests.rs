@@ -34,7 +34,7 @@ fn test_bond_dimension_constraints() {
     // Bond dimension should be between 2 and 16 per the vertex creation code
     let min_bond = 2u32;
     let max_bond = 16u32;
-    
+
     // These are implicit in TensorNetworkVertex::new()
     assert!(min_bond <= max_bond);
     assert!(min_bond > 0);
@@ -52,7 +52,7 @@ fn test_network_capacity_limits() {
     // From TensorNetworkState: vertex_count < 256, edge_count < 2048
     let max_vertices = 256u32;
     let max_edges = 2048u32;
-    
+
     assert!(max_vertices > 0);
     assert!(max_edges > max_vertices); // More edges than vertices (makes sense for a graph)
 }
@@ -69,8 +69,8 @@ fn test_entropy_fixed_point_scaling() {
 fn test_fixed_point_arithmetic_example() {
     // Test understanding of fixed-point arithmetic
     let fp_one = 1_000_000u64; // Represents 1.0
-    let fp_half = 500_000u64;  // Represents 0.5
-    
+    let fp_half = 500_000u64; // Represents 0.5
+
     // Addition in fixed-point
     let result = fp_half.saturating_add(fp_half);
     assert_eq!(result, fp_one);
@@ -91,7 +91,7 @@ fn test_maximum_entropy_bounds() {
     let s_a = 1_000_000u64;
     let s_b = 1_000_000u64;
     let s_union = 1_500_000u64; // Can't exceed sum
-    
+
     assert!(s_union <= s_a.saturating_add(s_b));
 }
 
@@ -102,7 +102,7 @@ fn test_distance_normalization_range() {
     // This is clamped to [0.0, 1.0]
     let zero = 0.0f64;
     let one = 1.0f64;
-    
+
     assert!(zero >= 0.0 && zero <= 1.0);
     assert!(one >= 0.0 && one <= 1.0);
 }
@@ -113,7 +113,7 @@ fn test_coherence_probability_bounds() {
     // coherence_probability(local/max) where both positive
     let local = 0.5f64;
     let max = 1.0f64;
-    
+
     let tanh_result = (local / max).tanh();
     assert!(tanh_result >= 0.0 && tanh_result <= 1.0);
 }
@@ -123,7 +123,7 @@ fn test_edge_id_uniqueness() {
     // Edge IDs should be unique
     let id_1 = 0u64;
     let id_2 = 1u64;
-    
+
     assert_ne!(id_1, id_2);
 }
 
@@ -140,7 +140,7 @@ fn test_vertex_dimension_range() {
     // Dimension should be in [2, 16]
     let min = 2u32;
     let max = 16u32;
-    
+
     assert!(min <= max);
     assert!(min >= 2);
     assert!(max <= 256);
@@ -158,7 +158,7 @@ fn test_capacity_check_for_vertices() {
     // Vertex capacity is 256
     let max_verts = 256u32;
     let test_count = 100u32;
-    
+
     assert!(test_count < max_verts);
     assert!(max_verts > 0);
 }
@@ -168,7 +168,7 @@ fn test_capacity_check_for_edges() {
     // Edge capacity is 2048
     let max_edges = 2048u32;
     let test_count = 500u32;
-    
+
     assert!(test_count < max_edges);
     assert!(max_edges > 0);
 }
@@ -179,7 +179,7 @@ fn test_entanglement_index_increment() {
     let mut index = 0u32;
     index += 1;
     assert_eq!(index, 1);
-    
+
     index += 1;
     assert_eq!(index, 2);
 }
@@ -189,7 +189,7 @@ fn test_edge_source_target_pubkeys() {
     // Source and target should be different for valid edges
     let source = b"miner_a".to_vec();
     let target = b"miner_b".to_vec();
-    
+
     assert_ne!(source, target);
 }
 
@@ -198,7 +198,7 @@ fn test_minimal_cut_size_calculation() {
     // Cut size should equal number of edges
     let num_edges = 5;
     let cut_size = num_edges as u32;
-    
+
     assert_eq!(cut_size, num_edges as u32);
 }
 
@@ -208,7 +208,7 @@ fn test_total_bond_dimension_sum() {
     let edge_bd1 = 2u32;
     let edge_bd2 = 4u32;
     let expected_total = (edge_bd1 + edge_bd2) as u64;
-    
+
     assert_eq!(expected_total, 6);
 }
 
@@ -225,7 +225,7 @@ fn test_fixed_point_to_float_conversion() {
     // Converting fixed-point back to float
     let fp = 500_000u64; // Represents 0.5
     let float_val = fp as f64 / 1_000_000.0;
-    
+
     assert!(float_val > 0.49 && float_val < 0.51);
 }
 
@@ -234,7 +234,7 @@ fn test_network_state_empty_initialization() {
     // New network state should be empty
     let vertex_count = 0u32;
     let edge_count = 0u32;
-    
+
     assert_eq!(vertex_count, 0);
     assert_eq!(edge_count, 0);
 }
@@ -244,7 +244,7 @@ fn test_last_updated_timestamp() {
     // Last updated should track when state changes
     let initial = 0i64;
     let updated = 1000i64;
-    
+
     assert!(updated > initial);
 }
 
@@ -253,7 +253,7 @@ fn test_entropy_saturation_arithmetic() {
     // Total entropy uses saturating_add to prevent overflow
     let val1 = u64::MAX - 100;
     let val2 = 200u64;
-    
+
     let sum = val1.saturating_add(val2);
     assert_eq!(sum, u64::MAX); // Should saturate, not overflow
 }
@@ -263,7 +263,7 @@ fn test_bond_dimension_byte_representation() {
     // Bond dimension is u32
     let min_bd = 2u32;
     let max_bd = 16u32;
-    
+
     assert!(min_bd.to_le_bytes().len() == 4);
     assert!(max_bd.to_le_bytes().len() == 4);
 }

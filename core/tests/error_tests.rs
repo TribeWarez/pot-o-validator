@@ -16,7 +16,10 @@ fn test_error_invalid_operation_creation() {
 fn test_error_proof_validation_failed() {
     let msg = "signature mismatch";
     let err = TribeError::ProofValidationFailed(msg.to_string());
-    assert_eq!(err.to_string(), "Proof validation failed: signature mismatch");
+    assert_eq!(
+        err.to_string(),
+        "Proof validation failed: signature mismatch"
+    );
 }
 
 #[test]
@@ -30,13 +33,19 @@ fn test_error_tensor_error_creation() {
 fn test_error_tensor_network_error() {
     let msg = "vertex limit exceeded";
     let err = TribeError::TensorNetworkError(msg.to_string());
-    assert_eq!(err.to_string(), "Tensor network error: vertex limit exceeded");
+    assert_eq!(
+        err.to_string(),
+        "Tensor network error: vertex limit exceeded"
+    );
 }
 
 #[test]
 fn test_error_tensor_network_full() {
     let err = TribeError::TensorNetworkFull;
-    assert_eq!(err.to_string(), "Tensor network is full: cannot add more vertices/edges");
+    assert_eq!(
+        err.to_string(),
+        "Tensor network is full: cannot add more vertices/edges"
+    );
 }
 
 #[test]
@@ -64,7 +73,10 @@ fn test_error_config_error() {
 fn test_error_device_error() {
     let msg = "ESP32 connection lost";
     let err = TribeError::DeviceError(msg.to_string());
-    assert_eq!(err.to_string(), "Device protocol error: ESP32 connection lost");
+    assert_eq!(
+        err.to_string(),
+        "Device protocol error: ESP32 connection lost"
+    );
 }
 
 #[test]
@@ -142,7 +154,7 @@ fn test_tensor_network_error_variants() {
     // Test capacity error
     let full_err = TribeError::TensorNetworkFull;
     assert!(full_err.to_string().contains("full"));
-    
+
     // Test generic tensor network error
     let generic_err = TribeError::TensorNetworkError("specific issue".to_string());
     assert!(generic_err.to_string().contains("specific issue"));
@@ -169,7 +181,7 @@ fn test_io_error_integration() {
         io::ErrorKind::PermissionDenied,
         "access denied",
     ));
-    
+
     let tribe_result: TribeResult<()> = io_result.map_err(|e| e.into());
     assert!(tribe_result.is_err());
 }
@@ -178,15 +190,42 @@ fn test_io_error_integration() {
 #[test]
 fn test_all_error_messages_informative() {
     let test_cases = vec![
-        (TribeError::InvalidOperation("".to_string()), "InvalidOperation should format"),
-        (TribeError::ProofValidationFailed("".to_string()), "ProofValidationFailed should format"),
-        (TribeError::TensorError("".to_string()), "TensorError should format"),
-        (TribeError::ChainBridgeError("".to_string()), "ChainBridgeError should format"),
-        (TribeError::NetworkError("".to_string()), "NetworkError should format"),
-        (TribeError::ConfigError("".to_string()), "ConfigError should format"),
-        (TribeError::DeviceError("".to_string()), "DeviceError should format"),
-        (TribeError::SerializationError("".to_string()), "SerializationError should format"),
-        (TribeError::TensorNetworkError("".to_string()), "TensorNetworkError should format"),
+        (
+            TribeError::InvalidOperation("".to_string()),
+            "InvalidOperation should format",
+        ),
+        (
+            TribeError::ProofValidationFailed("".to_string()),
+            "ProofValidationFailed should format",
+        ),
+        (
+            TribeError::TensorError("".to_string()),
+            "TensorError should format",
+        ),
+        (
+            TribeError::ChainBridgeError("".to_string()),
+            "ChainBridgeError should format",
+        ),
+        (
+            TribeError::NetworkError("".to_string()),
+            "NetworkError should format",
+        ),
+        (
+            TribeError::ConfigError("".to_string()),
+            "ConfigError should format",
+        ),
+        (
+            TribeError::DeviceError("".to_string()),
+            "DeviceError should format",
+        ),
+        (
+            TribeError::SerializationError("".to_string()),
+            "SerializationError should format",
+        ),
+        (
+            TribeError::TensorNetworkError("".to_string()),
+            "TensorNetworkError should format",
+        ),
     ];
 
     for (err, _msg) in test_cases {
