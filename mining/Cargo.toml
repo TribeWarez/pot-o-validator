@@ -10,7 +10,7 @@ homepage = "https://pot.rpc.gateway.tribewarez.com"
 documentation = "https://docs.rs/pot-o-mining"
 readme = "README.md"
 keywords = ["pot-o", "blockchain", "tensor", "mining", "neural-path"]
-categories = ["cryptography::cryptocurrency", "development-tools"]
+categories = ["cryptography::cryptocurrencies", "development-tools"]
 
 [dependencies]
 pot-o-core = "0.1.6-alpha"
