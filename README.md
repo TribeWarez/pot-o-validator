@@ -1,15 +1,16 @@
 # pot-o-validator
 
 [![crates.io](https://img.shields.io/crates/v/pot-o-validator.svg)](https://crates.io/crates/pot-o-validator)
+[![crates.io downloads](https://img.shields.io/crates/d/pot-o-validator.svg)](https://crates.io/crates/pot-o-validator)
 [![docs.rs](https://img.shields.io/docsrs/pot-o-validator)](https://docs.rs/pot-o-validator)
-[![CI](https://img.shields.io/github/actions/workflow/status/TribeWarez/tribe/pot-o-validator.yml?branch=main)](https://github.com/TribeWarez/tribe/actions)
+[![CI](https://img.shields.io/github/actions/workflow/status/TribeWarez/pot-o-validator/ci.yml?branch=main)](https://github.com/TribeWarez/pot-o-validator/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 PoT-O (Proof of Tensor Optimizations) Validator Service — HTTP API and consensus node for the TribeWarez testnet.
 
 - **Crate:** [crates.io/crates/pot-o-validator](https://crates.io/crates/pot-o-validator)
 - **Docs:** [docs.rs/pot-o-validator](https://docs.rs/pot-o-validator)
-- **Repository:** [github.com/TribeWarez/tribe](https://github.com/TribeWarez/tribe) (path: `gateway.tribewarez.com/testnet.rpc.gateway.tribewarez.com/pot-o-validator`)
+- **Repository:** [github.com/TribeWarez/pot-o-validator](https://github.com/TribeWarez/pot-o-validator)
 
 ## Crates
 
