@@ -207,7 +207,7 @@ fn test_e2e_tensor_shape_in_mining_challenge() {
     let gen = ChallengeGenerator::default();
     let challenge = gen.generate(100, "hash").expect("generate");
 
-    let input_dims = challenge.input_tensor.shape.dims();
+    let input_dims = &challenge.input_tensor.shape.dims;
     assert!(!input_dims.is_empty());
     assert!(input_dims.iter().all(|&d| d > 0));
 }
