@@ -110,8 +110,9 @@ jobs:
           echo "Current core version: ${CORE_VERSION}"
           echo "Validator release: v${VALIDATOR_VERSION}"
           
-          # Update Cargo.toml if needed - pot-o-core typically doesn't depend on validator
-          # but we run the script for consistency
+          # Bump the package version to match the workspace version
+          sed -i "s/^version = \".*\"/version = \"${CORE_VERSION}\"/" Cargo.toml
+          
           cargo update
 
       - name: Build and test
@@ -126,16 +127,13 @@ jobs:
         run: |
           if [[ -n $(git status -s) ]]; then
             git add -A
-            git commit -m "chore(deps): sync with pot-o-validator upstream v${VALIDATOR_VERSION}"
+            git commit -m "chore(release): bump version to ${CORE_VERSION}, sync with pot-o-validator upstream v${VALIDATOR_VERSION}"
             git push origin main
-            echo "COMMIT_SUCCESS=true" >> $GITHUB_ENV
           else
             echo "No changes to commit"
-            echo "COMMIT_SUCCESS=false" >> $GITHUB_ENV
           fi
 
       - name: Create release tag
-        if: env.COMMIT_SUCCESS == 'true'
         env:
           CORE_VERSION: ${{ needs.validate.outputs.core-version }}
         run: |
@@ -173,6 +171,9 @@ jobs:
           echo "Validator release: v${VALIDATOR_VERSION}"
           echo "pot-o-core version: ${CORE_VERSION}"
           
+          # Bump the package version to match the workspace version
+          sed -i "s/^version = \".*\"/version = \"${AI3_VERSION}\"/" Cargo.toml
+          
           # Update pot-o-core dependency to match workspace version
           sed -i "s/pot-o-core = \".*\"/pot-o-core = \"${CORE_VERSION}\"/" Cargo.toml
           
@@ -191,16 +192,13 @@ jobs:
         run: |
           if [[ -n $(git status -s) ]]; then
             git add -A
-            git commit -m "chore(deps): update pot-o-core to ${CORE_VERSION}, sync with pot-o-validator upstream v${VALIDATOR_VERSION}"
+            git commit -m "chore(release): bump version to ${AI3_VERSION}, update pot-o-core to ${CORE_VERSION}, sync with pot-o-validator upstream v${VALIDATOR_VERSION}"
             git push origin main
-            echo "COMMIT_SUCCESS=true" >> $GITHUB_ENV
           else
             echo "No changes to commit"
-            echo "COMMIT_SUCCESS=false" >> $GITHUB_ENV
           fi
 
       - name: Create release tag
-        if: env.COMMIT_SUCCESS == 'true'
         env:
           AI3_VERSION: ${{ needs.validate.outputs.ai3-version }}
         run: |
@@ -238,6 +236,9 @@ jobs:
           echo "Current pot-o-mining version: ${MINING_VERSION}"
           echo "Validator release: v${VALIDATOR_VERSION}"
           
+          # Bump the package version to match the workspace version
+          sed -i "s/^version = \".*\"/version = \"${MINING_VERSION}\"/" Cargo.toml
+          
           # Update dependencies
           sed -i "s/pot-o-core = \".*\"/pot-o-core = \"${CORE_VERSION}\"/" Cargo.toml
           sed -i "s/ai3-lib = \".*\"/ai3-lib = \"${AI3_VERSION}\"/" Cargo.toml
@@ -258,16 +259,13 @@ jobs:
         run: |
           if [[ -n $(git status -s) ]]; then
             git add -A
-            git commit -m "chore(deps): update pot-o-core to ${CORE_VERSION}, ai3-lib to ${AI3_VERSION}, sync with pot-o-validator upstream v${VALIDATOR_VERSION}"
+            git commit -m "chore(release): bump version to ${MINING_VERSION}, update pot-o-core to ${CORE_VERSION}, ai3-lib to ${AI3_VERSION}, sync with pot-o-validator upstream v${VALIDATOR_VERSION}"
             git push origin main
-            echo "COMMIT_SUCCESS=true" >> $GITHUB_ENV
           else
             echo "No changes to commit"
-            echo "COMMIT_SUCCESS=false" >> $GITHUB_ENV
           fi
 
       - name: Create release tag
-        if: env.COMMIT_SUCCESS == 'true'
         env:
           MINING_VERSION: ${{ needs.validate.outputs.mining-version }}
         run: |
@@ -306,6 +304,9 @@ jobs:
           echo "Current pot-o-extensions version: ${EXT_VERSION}"
           echo "Validator release: v${VALIDATOR_VERSION}"
           
+          # Bump the package version to match the workspace version
+          sed -i "s/^version = \".*\"/version = \"${EXT_VERSION}\"/" Cargo.toml
+          
           # Update all dependencies
           sed -i "s/pot-o-core = \".*\"/pot-o-core = \"${CORE_VERSION}\"/" Cargo.toml
           sed -i "s/ai3-lib = \".*\"/ai3-lib = \"${AI3_VERSION}\"/" Cargo.toml
@@ -328,16 +329,13 @@ jobs:
         run: |
           if [[ -n $(git status -s) ]]; then
             git add -A
-            git commit -m "chore(deps): update pot-o-core to ${CORE_VERSION}, ai3-lib to ${AI3_VERSION}, pot-o-mining to ${MINING_VERSION}, sync with pot-o-validator upstream v${VALIDATOR_VERSION}"
+            git commit -m "chore(release): bump version to ${EXT_VERSION}, update pot-o-core to ${CORE_VERSION}, ai3-lib to ${AI3_VERSION}, pot-o-mining to ${MINING_VERSION}, sync with pot-o-validator upstream v${VALIDATOR_VERSION}"
             git push origin main
-            echo "COMMIT_SUCCESS=true" >> $GITHUB_ENV
           else
             echo "No changes to commit"
-            echo "COMMIT_SUCCESS=false" >> $GITHUB_ENV
           fi
 
       - name: Create release tag
-        if: env.COMMIT_SUCCESS == 'true'
         env:
           EXT_VERSION: ${{ needs.validate.outputs.extensions-version }}
         run: |
