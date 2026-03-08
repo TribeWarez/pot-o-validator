@@ -8,7 +8,7 @@
 
 PoT-O (Proof of Tensor Optimizations) Validator Service — HTTP API and consensus node for the TribeWarez testnet.
 
-**Current Version**: v0.1.6-alpha | **Planned**: v0.2.0 with Dependency Injection + Tensor Network integration
+**Current Version**: v0.2.0 (Dependency Injection + Tensor Network integration) | **Next**: v0.3.0 with quantum-inspired optimizations
 
 - **Crate:** [crates.io/crates/pot-o-validator](https://crates.io/crates/pot-o-validator)
 - **Docs:** [docs.rs/pot-o-validator](https://docs.rs/pot-o-validator)
@@ -26,19 +26,26 @@ See [docs.tribewarez.com/crates-and-api](https://docs.tribewarez.com/crates-and-
 
 ## Architecture
 
-### v0.1.6-alpha (Current)
+### v0.2.0 (Current)
+- **Dependency Injection** service architecture
+- **Service traits** for ProofValidator, ChallengeGenerator, ConsensusEngine
+- **ServiceRegistry** for flexible component composition
+- **Tensor Network Model** (REALMS Part IV) for entropy-based calculations
+- **Event system** for state tracking and off-chain monitoring
+- **Comprehensive testing** (140+ tests, 50%+ coverage)
+
+### v0.1.6-alpha (Legacy)
 - **Monolithic service design** with modular crate organization
 - **HTTP API** for proof submission and validation
 - **Device registry** for miner management
 - **Challenge generation** with MML and neural path validation
 - **Consensus engine** with difficulty adjustment
 
-### v0.2.0 (Planned - see MIGRATION_GUIDE.md)
-- **Dependency Injection** service architecture
-- **Service traits** for ProofValidator, ChallengeGenerator, ConsensusEngine
-- **ServiceRegistry** for flexible component composition
-- **Tensor Network Model** (REALMS Part IV) for entropy-based calculations
-- **Event system** for state tracking and off-chain monitoring
+### v0.3.0 (Planned - see MIGRATION_GUIDE.md)
+- **Quantum-inspired optimization** algorithms
+- **Cross-chain interoperability** enhancements
+- **Advanced pool strategies** with dynamic allocation
+- **Machine learning integration** for consensus optimization
 
 ## Documentation
 
