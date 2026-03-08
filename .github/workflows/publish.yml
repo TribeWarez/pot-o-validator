@@ -1,0 +1,95 @@
+name: Publish to crates.io
+
+on:
+  push:
+    tags:
+      - 'pot-o-validator-v*'
+
+env:
+  RUST_BACKTRACE: 1
+  CARGO_TERM_COLOR: always
+
+jobs:
+  publish:
+    name: Publish crates to crates.io
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Publish pot-o-core
+        run: cargo publish -p pot-o-core
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+
+      - name: Wait for pot-o-core to be indexed
+        run: |
+          for i in $(seq 1 20); do
+            if cargo search "pot-o-core" --limit 1 2>/dev/null | grep -q "pot-o-core"; then
+              echo "pot-o-core is indexed on crates.io"
+              break
+            fi
+            echo "Waiting for indexing... attempt $i/20"
+            sleep 15
+          done
+
+      - name: Publish ai3-lib
+        run: cargo publish -p ai3-lib
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+
+      - name: Wait for ai3-lib to be indexed
+        run: |
+          for i in $(seq 1 20); do
+            if cargo search "ai3-lib" --limit 1 2>/dev/null | grep -q "ai3-lib"; then
+              echo "ai3-lib is indexed on crates.io"
+              break
+            fi
+            echo "Waiting for indexing... attempt $i/20"
+            sleep 15
+          done
+
+      - name: Publish pot-o-mining
+        run: cargo publish -p pot-o-mining
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+
+      - name: Wait for pot-o-mining to be indexed
+        run: |
+          for i in $(seq 1 20); do
+            if cargo search "pot-o-mining" --limit 1 2>/dev/null | grep -q "pot-o-mining"; then
+              echo "pot-o-mining is indexed on crates.io"
+              break
+            fi
+            echo "Waiting for indexing... attempt $i/20"
+            sleep 15
+          done
+
+      - name: Publish pot-o-extensions
+        run: cargo publish -p pot-o-extensions
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+
+      - name: Wait for pot-o-extensions to be indexed
+        run: |
+          for i in $(seq 1 20); do
+            if cargo search "pot-o-extensions" --limit 1 2>/dev/null | grep -q "pot-o-extensions"; then
+              echo "pot-o-extensions is indexed on crates.io"
+              break
+            fi
+            echo "Waiting for indexing... attempt $i/20"
+            sleep 15
+          done
+
+      - name: Publish pot-o-validator
+        run: cargo publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
