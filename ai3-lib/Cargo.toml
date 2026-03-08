@@ -10,7 +10,7 @@ homepage = "https://pot.rpc.gateway.tribewarez.com"
 documentation = "https://docs.rs/ai3-lib"
 readme = "README.md"
 keywords = ["pot-o", "tensor", "mining", "esp", "ai3"]
-categories = ["cryptography::cryptocurrency", "development-tools"]
+categories = ["cryptography::cryptocurrencies", "development-tools"]
 
 [dependencies]
 pot-o-core = "0.1.6-alpha"

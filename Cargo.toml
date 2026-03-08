@@ -10,7 +10,7 @@ homepage = "https://pot.rpc.gateway.tribewarez.com"
 documentation = "https://docs.rs/pot-o-validator"
 readme = "README.md"
 keywords = ["pot-o", "blockchain", "validator", "tensor", "mining"]
-categories = ["cryptography::cryptocurrency", "development-tools"]
+categories = ["cryptography::cryptocurrencies", "development-tools"]
 
 [workspace]
 members = [

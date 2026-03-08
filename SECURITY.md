@@ -19,13 +19,13 @@ If you discover a security vulnerability in PoT-O Validator, please report it **
    - This creates a private discussion visible only to maintainers
 
 2. **Or Email Security Concerns**
-   - Contact: [security@tribewarez.com](mailto:security@tribewarez.com)
+   - Contact: [builder444@tribewarez.com](mailto:builder444@tribewarez.com)
    - Include detailed information about the vulnerability
    - Provide steps to reproduce and proof-of-concept if possible
 
 3. **PGP/GPG Encryption** (Optional)
    - For sensitive disclosures, you may encrypt your report using our public key
-   - Request our GPG key by emailing security@tribewarez.com
+   - Request our GPG key by emailing builder444@tribewarez.com
 
 ## Vulnerability Scope
 
@@ -143,7 +143,7 @@ We deeply appreciate the security research community's responsible disclosure. R
 For security questions that don't relate to a specific vulnerability, please:
 - Check our documentation and FAQ
 - Open a non-sensitive GitHub discussion
-- Email security@tribewarez.com with [SECURITY QUESTION] in the subject
+- Email builder444@tribewarez.com with [SECURITY QUESTION] in the subject
 
 ---
 

@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'pot-o-validator-v*'
+      - 'pot-o-extensions-v*'
   workflow_dispatch:
     inputs:
       dry_run:
