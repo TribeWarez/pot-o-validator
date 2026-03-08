@@ -2,7 +2,6 @@
 
 use pot_o_core::TribeResult;
 use pot_o_mining::Challenge;
-use serde::{Deserialize, Serialize};
 
 use crate::peer_network::PeerInfo;
 
