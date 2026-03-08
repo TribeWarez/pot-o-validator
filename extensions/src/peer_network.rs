@@ -57,6 +57,12 @@ impl LocalOnlyNetwork {
     }
 }
 
+impl Default for LocalOnlyNetwork {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait]
 impl PeerNetwork for LocalOnlyNetwork {
     fn node_id(&self) -> &NodeId {

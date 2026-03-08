@@ -19,8 +19,6 @@ pub use peer_network::{LocalOnlyNetwork, PeerNetwork};
 pub use pool_strategy::{PoolStrategy, SoloStrategy};
 pub use security::{Ed25519Authority, ProofAuthority};
 
-use serde::{Deserialize, Serialize};
-
 /// Central registry that holds the active extension implementations.
 /// Constructed once at startup from config/env, then passed by reference.
 pub struct ExtensionRegistry {
