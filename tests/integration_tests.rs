@@ -204,12 +204,10 @@ fn test_e2e_core_to_mining_module_integration() {
 #[test]
 fn test_e2e_tensor_shape_in_mining_challenge() {
     // Test: Tensor shapes used in mining challenges
-    use ai3_lib::{Tensor, TensorData, TensorShape};
-
     let gen = ChallengeGenerator::default();
     let challenge = gen.generate(100, "hash").expect("generate");
 
-    let input_dims = challenge.input_tensor.shape().dims();
+    let input_dims = challenge.input_tensor.shape.dims();
     assert!(!input_dims.is_empty());
     assert!(input_dims.iter().all(|&d| d > 0));
 }
