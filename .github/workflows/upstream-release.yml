@@ -99,6 +99,9 @@ jobs:
           git config user.name "TribeWarez Release Bot"
           git config user.email "release@tribewarez.com"
 
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Update dependencies
         env:
           VALIDATOR_VERSION: ${{ needs.validate.outputs.version }}
@@ -183,6 +186,7 @@ jobs:
       - name: Commit and push
         env:
           AI3_VERSION: ${{ needs.validate.outputs.ai3-version }}
+          CORE_VERSION: ${{ needs.validate.outputs.core-version }}
           VALIDATOR_VERSION: ${{ needs.validate.outputs.version }}
         run: |
           if [[ -n $(git status -s) ]]; then
@@ -346,6 +350,8 @@ jobs:
     needs: [validate, update-pot-o-core, update-ai3-lib, update-pot-o-mining, update-pot-o-extensions]
     runs-on: ubuntu-latest
     if: always()
+    permissions:
+      contents: write
     steps:
       - name: Check all stages completed
         run: |
