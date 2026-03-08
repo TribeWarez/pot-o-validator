@@ -236,9 +236,10 @@ async fn submit_proof(
                         entry.device_type = device_type_normalized;
                         let pk = body.proof.miner_pubkey.as_str();
                         if !entry.miner_pubkeys.iter().any(|p| p.as_str() == pk)
-                            && entry.miner_pubkeys.len() < MAX_MINER_PUBKEYS_PER_DEVICE {
-                                entry.miner_pubkeys.push(body.proof.miner_pubkey.clone());
-                            }
+                            && entry.miner_pubkeys.len() < MAX_MINER_PUBKEYS_PER_DEVICE
+                        {
+                            entry.miner_pubkeys.push(body.proof.miner_pubkey.clone());
+                        }
                     }
                 }
                 {
@@ -505,8 +506,7 @@ async fn device_progress(
 async fn get_devices(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     tracing::debug!("GET /devices");
     let reg = state.device_registry.read().await.clone();
-    let mut by_type: HashMap<String, DeviceTypeStat> =
-        HashMap::new();
+    let mut by_type: HashMap<String, DeviceTypeStat> = HashMap::new();
     for key in DEVICE_TYPE_KEYS {
         by_type.insert((*key).to_string(), (0, 0, 0, None));
     }
