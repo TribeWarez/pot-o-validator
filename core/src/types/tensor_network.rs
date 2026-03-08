@@ -37,7 +37,7 @@ impl TensorNetworkVertex {
         Self {
             pubkey,
             label,
-            dimension: dimension.max(2).min(16), // Constrain [2, 16]
+            dimension: dimension.clamp(2, 16),
             entanglement_index: 0,
             created_at,
         }
@@ -85,7 +85,7 @@ impl EntanglementEdge {
             id,
             source,
             target,
-            bond_dimension: bond_dimension.max(2).min(16),
+            bond_dimension: bond_dimension.clamp(2, 16),
             coupling_strength: coupling_strength.min(1_000_000),
             created_at,
         }

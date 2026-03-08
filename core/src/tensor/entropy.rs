@@ -8,7 +8,7 @@
 //! - |γ_A| is the number of edges in the cut
 //! - d is the bond dimension of the entanglement
 
-use crate::types::tensor_network::{EntanglementEdge, MinimalCut, TensorNetworkState};
+use crate::types::tensor_network::{MinimalCut, TensorNetworkState};
 use crate::TribeResult;
 
 /// Calculate entropy from a minimal cut
@@ -120,8 +120,7 @@ pub fn total_network_entropy(network_state: &TensorNetworkState) -> u64 {
         .iter()
         .map(|edge| {
             let bond_dim = edge.bond_dimension.max(2) as f64;
-            let edge_entropy = (bond_dim.ln() * 1_000_000.0) as u64;
-            edge_entropy
+            (bond_dim.ln() * 1_000_000.0) as u64
         })
         .fold(0u64, |acc, val| acc.saturating_add(val))
 }
