@@ -91,7 +91,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: TribeWarez/pot-o-core
-          token: ${{ secrets.TRIBEWAREZ_PAT }}
+          token: ${{ secrets.GH_PAT }}
           fetch-depth: 0
 
       - name: Configure git
@@ -149,7 +149,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: TribeWarez/ai3-lib
-          token: ${{ secrets.TRIBEWAREZ_PAT }}
+          token: ${{ secrets.GH_PAT }}
           fetch-depth: 0
 
       - name: Configure git
@@ -213,7 +213,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: TribeWarez/pot-o-mining
-          token: ${{ secrets.TRIBEWAREZ_PAT }}
+          token: ${{ secrets.GH_PAT }}
           fetch-depth: 0
 
       - name: Configure git
@@ -280,7 +280,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: TribeWarez/pot-o-extensions
-          token: ${{ secrets.TRIBEWAREZ_PAT }}
+          token: ${{ secrets.GH_PAT }}
           fetch-depth: 0
 
       - name: Configure git

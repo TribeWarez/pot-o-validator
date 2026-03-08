@@ -27,7 +27,7 @@ Welcome to the automated release orchestration system for `pot-o-validator`!
 
 ### 1️⃣ Configure Secret
 ```bash
-gh secret set TRIBEWAREZ_PAT
+gh secret set GH_PAT
 # Paste your GitHub Personal Access Token
 ```
 
@@ -142,7 +142,7 @@ The `upstream-release.yml` workflow automatically:
 
 Before using the workflow:
 
-1. **GitHub Secret:** `TRIBEWAREZ_PAT`
+1. **GitHub Secret:** `GH_PAT`
    - GitHub Personal Access Token
    - Scopes: `repo`, `workflow`, `write:packages`
    - See `SETUP_GUIDE.md` for configuration
@@ -207,7 +207,7 @@ Before using the workflow:
 ## 🔒 Security
 
 ### GitHub Secrets
-- Secret Name: `TRIBEWAREZ_PAT`
+- Secret Name: `GH_PAT`
 - Stored securely in GitHub
 - Used only in workflow environment
 
@@ -236,7 +236,7 @@ Before using the workflow:
 ## ✅ Pre-Deployment Checklist
 
 - [ ] Read `GETTING_STARTED.md`
-- [ ] Configure `TRIBEWAREZ_PAT` secret
+- [ ] Configure `GH_PAT` secret
 - [ ] Run `validate-workflow.sh`
 - [ ] Test with test release tag
 - [ ] Verify downstream repos updated
@@ -267,7 +267,7 @@ cat GETTING_STARTED.md
 bash scripts/validate-workflow.sh
 
 # 3. Configure secret
-gh secret set TRIBEWAREZ_PAT
+gh secret set GH_PAT
 
 # 4. Create release!
 git tag pot-o-validator-v0.2.0

@@ -4,7 +4,7 @@
 
 ```bash
 # 1. Set up secrets (one-time)
-gh secret set TRIBEWAREZ_PAT  # Paste your GitHub PAT
+gh secret set GH_PAT  # Paste your GitHub PAT
 
 # 2. Create a release
 git tag pot-o-validator-v0.2.0
@@ -72,7 +72,7 @@ git push origin pot-o-validator-v0.2.0
 
 ## Required Configuration
 
-### GitHub Secret: TRIBEWAREZ_PAT
+### GitHub Secret: GH_PAT
 
 Create at: Repository → Settings → Secrets and variables → Actions
 
@@ -83,7 +83,7 @@ Create at: Repository → Settings → Secrets and variables → Actions
 
 ```bash
 # Using GitHub CLI
-gh secret set TRIBEWAREZ_PAT
+gh secret set GH_PAT
 # Then paste token when prompted
 ```
 
@@ -161,7 +161,7 @@ GitHub Release created with:
 | Problem | Check | Fix |
 |---------|-------|-----|
 | Workflow doesn't trigger | Tag format `pot-o-validator-v*` | Push correct tag |
-| Auth fails | Secret `TRIBEWAREZ_PAT` exists | Create secret |
+| Auth fails | Secret `GH_PAT` exists | Create secret |
 | Build fails | Cargo.toml valid | Fix dependencies |
 | Push fails | Token has `repo` scope | Update token |
 | Version mismatch | Cargo.toml in workspace | Sync versions |
@@ -195,7 +195,7 @@ CARGO_TERM_COLOR: always
 - [ ] All code committed and tested
 - [ ] Cargo.toml versions bumped (if new release)
 - [ ] CHANGELOG.md updated (optional)
-- [ ] Secret `TRIBEWAREZ_PAT` configured
+- [ ] Secret `GH_PAT` configured
 - [ ] Create tag: `git tag pot-o-validator-v0.2.0`
 - [ ] Push tag: `git push origin pot-o-validator-v0.2.0`
 - [ ] Monitor workflow: `gh run list`

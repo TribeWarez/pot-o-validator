@@ -39,12 +39,12 @@ Before deploying this workflow to production, complete these steps:
 
 ### Step 2: Configure GitHub Secrets
 
-**Required:** `TRIBEWAREZ_PAT` secret with proper permissions
+**Required:** `GH_PAT` secret with proper permissions
 
 ```bash
 # Option A: Using GitHub CLI (Recommended)
 gh auth login
-gh secret set TRIBEWAREZ_PAT
+gh secret set GH_PAT
 # Paste your GitHub Personal Access Token
 
 # Option B: Using the setup script
@@ -53,7 +53,7 @@ chmod +x .github/scripts/setup-workflow.sh
 
 # Option C: Manual (via GitHub Web UI)
 # Settings → Secrets and variables → Actions → New repository secret
-# Name: TRIBEWAREZ_PAT
+# Name: GH_PAT
 # Value: Your PAT
 ```
 
@@ -209,7 +209,7 @@ cd /path/to/downstream-repo
 
 ### Before First Release
 1. ✅ All downstream repos must exist and be accessible
-2. ✅ GitHub secret `TRIBEWAREZ_PAT` must be configured
+2. ✅ GitHub secret `GH_PAT` must be configured
 3. ✅ All workspace crates must have valid `Cargo.toml` files
 4. ✅ Default branch in all repos must be `main`
 5. ✅ Test the workflow with a test tag first
@@ -287,7 +287,7 @@ For new team members:
 ```bash
 # Pre-deployment
 □ Review all files in .github/
-□ Configure TRIBEWAREZ_PAT secret
+□ Configure GH_PAT secret
 □ Run validation script successfully
 □ Test with a test tag
 □ Review test workflow logs
@@ -346,7 +346,7 @@ cat .github/QUICK_REFERENCE.md
 ./.github/scripts/validate-workflow.sh
 
 # 3. Configure the secret
-gh secret set TRIBEWAREZ_PAT
+gh secret set GH_PAT
 
 # 4. Create your first release!
 git tag pot-o-validator-v0.2.0

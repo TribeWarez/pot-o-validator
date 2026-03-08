@@ -39,7 +39,7 @@ The workflow is organized into 6 sequential stages:
 - **Dependencies:** Requires `validate` to complete
 - **Purpose:** Update pot-o-core repository with synchronized dependencies
 - **Actions:**
-  - Checkout pot-o-core repository using `TRIBEWAREZ_PAT` token
+  - Checkout pot-o-core repository using `GH_PAT` token
   - Configure git user (TribeWarez Release Bot)
   - Run `cargo update` to refresh dependency locks
   - Build and test release artifacts
@@ -116,7 +116,7 @@ This dependency graph ensures:
 
 ### GitHub Secrets
 
-The workflow requires a `TRIBEWAREZ_PAT` (Personal Access Token) secret configured in the repository:
+The workflow requires a `GH_PAT` (Personal Access Token) secret configured in the repository:
 
 1. Create a PAT with the following permissions:
    - `repo` (full control of private repositories)
@@ -126,7 +126,7 @@ The workflow requires a `TRIBEWAREZ_PAT` (Personal Access Token) secret configur
 2. Add the secret to your GitHub repository:
    - Settings → Secrets and variables → Actions
    - Click "New repository secret"
-   - Name: `TRIBEWAREZ_PAT`
+   - Name: `GH_PAT`
    - Value: Your personal access token
 
 ### Repository Configuration
@@ -194,7 +194,7 @@ When all stages complete successfully, a GitHub Release is created with:
 - Check: Tests pass with `cargo test --release`
 
 #### Issue: Update job fails with authentication error
-- Check: `TRIBEWAREZ_PAT` secret is configured correctly
+- Check: `GH_PAT` secret is configured correctly
 - Check: Token has required permissions (`repo`, `workflow`)
 - Check: Token is not expired
 - Check: Downstream repository exists and is accessible
@@ -286,7 +286,7 @@ While the workflow has dependencies between stages, within each stage all indepe
 
 ### Token Permissions
 
-The `TRIBEWAREZ_PAT` should be:
+The `GH_PAT` should be:
 - Created with minimal required permissions
 - Rotated regularly
 - Never committed to the repository
