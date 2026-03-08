@@ -101,7 +101,7 @@ impl ValidatorConfig {
                     .ok()
                     .and_then(|s| toml::from_str(&s).ok())
             })
-            .unwrap_or_else(|| Self::defaults());
+            .unwrap_or_else(Self::defaults);
 
         // Env overrides
         if let Ok(v) = std::env::var("SOLANA_RPC_URL") {
