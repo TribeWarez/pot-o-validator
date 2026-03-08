@@ -9,7 +9,7 @@ repository = "https://github.com/tribewarez/ai3-lib"
 homepage = "https://pot.rpc.gateway.tribewarez.com"
 documentation = "https://docs.rs/ai3-lib"
 readme = "README.md"
-keywords = ["pot-o", "tribewarez", "tensor", "mining", "esp", "ai3"]
+keywords = ["pot-o", "tensor", "mining", "esp", "ai3"]
 categories = ["cryptography::cryptocurrency", "development-tools"]
 
 [dependencies]
