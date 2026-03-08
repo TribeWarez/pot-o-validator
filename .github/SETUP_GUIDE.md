@@ -71,7 +71,7 @@ cd pot-o-validator
 gh auth login
 
 # Set the secret
-gh secret set TRIBEWAREZ_PAT
+gh secret set GH_PAT
 
 # When prompted, paste your personal access token
 ```
@@ -82,7 +82,7 @@ gh secret set TRIBEWAREZ_PAT
 2. Go to **Settings → Secrets and variables → Actions**
 3. Click **New repository secret**
 4. Configure the secret:
-   - **Name:** `TRIBEWAREZ_PAT`
+   - **Name:** `GH_PAT`
    - **Value:** [Paste your personal access token]
 5. Click **Add secret**
 
@@ -288,7 +288,7 @@ Each should have:
 1. **Verify secret is configured:**
    ```bash
    gh secret list
-   # Should show TRIBEWAREZ_PAT
+   # Should show GH_PAT
    ```
 
 2. **Check token permissions:**
@@ -300,7 +300,7 @@ Each should have:
    ```bash
    # Create new token with proper permissions
    # Then update secret:
-   gh secret set TRIBEWAREZ_PAT
+   gh secret set GH_PAT
    ```
 
 4. **Verify downstream repo access:**

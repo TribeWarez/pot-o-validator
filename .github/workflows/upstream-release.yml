@@ -91,13 +91,16 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: TribeWarez/pot-o-core
-          token: ${{ secrets.TRIBEWAREZ_PAT }}
+          token: ${{ secrets.GH_PAT }}
           fetch-depth: 0
 
       - name: Configure git
         run: |
           git config user.name "TribeWarez Release Bot"
           git config user.email "release@tribewarez.com"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Update dependencies
         env:
@@ -149,7 +152,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: TribeWarez/ai3-lib
-          token: ${{ secrets.TRIBEWAREZ_PAT }}
+          token: ${{ secrets.GH_PAT }}
           fetch-depth: 0
 
       - name: Configure git
@@ -183,6 +186,7 @@ jobs:
       - name: Commit and push
         env:
           AI3_VERSION: ${{ needs.validate.outputs.ai3-version }}
+          CORE_VERSION: ${{ needs.validate.outputs.core-version }}
           VALIDATOR_VERSION: ${{ needs.validate.outputs.version }}
         run: |
           if [[ -n $(git status -s) ]]; then
@@ -213,7 +217,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: TribeWarez/pot-o-mining
-          token: ${{ secrets.TRIBEWAREZ_PAT }}
+          token: ${{ secrets.GH_PAT }}
           fetch-depth: 0
 
       - name: Configure git
@@ -280,7 +284,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: TribeWarez/pot-o-extensions
-          token: ${{ secrets.TRIBEWAREZ_PAT }}
+          token: ${{ secrets.GH_PAT }}
           fetch-depth: 0
 
       - name: Configure git
@@ -346,6 +350,8 @@ jobs:
     needs: [validate, update-pot-o-core, update-ai3-lib, update-pot-o-mining, update-pot-o-extensions]
     runs-on: ubuntu-latest
     if: always()
+    permissions:
+      contents: write
     steps:
       - name: Check all stages completed
         run: |

@@ -85,7 +85,7 @@ Gesamt: 10 Dateien, 112 KB, 2,281 Zeilen Code & Doku
 
 ### 1. Secret konfigurieren (einmalig)
 ```bash
-gh secret set TRIBEWAREZ_PAT
+gh secret set GH_PAT
 # GitHub Personal Access Token einfügen
 ```
 
@@ -168,7 +168,7 @@ gh run list --workflow=upstream-release.yml
 ## ✅ Pre-Deployment
 
 - [ ] `.github/GETTING_STARTED.md` lesen
-- [ ] `TRIBEWAREZ_PAT` Secret konfigurieren
+- [ ] `GH_PAT` Secret konfigurieren
 - [ ] `validate-workflow.sh` ausführen
 - [ ] Mit Test-Tag testen
 - [ ] Downstream-Repos überprüfen
@@ -260,7 +260,7 @@ Manuelle Dependency-Updates
 3. `validate-workflow.sh` ausführen
 
 ### Setup
-4. `TRIBEWAREZ_PAT` Secret erstellen
+4. `GH_PAT` Secret erstellen
 5. `setup-workflow.sh` laufen lassen
 6. Downstream-Repos verifizieren
 
@@ -300,7 +300,7 @@ cat .github/README.md
 cat .github/GETTING_STARTED.md
 
 # 3. Secret erstellen
-gh secret set TRIBEWAREZ_PAT
+gh secret set GH_PAT
 
 # 4. Erste Release!
 git tag pot-o-validator-v0.2.0

@@ -122,7 +122,7 @@ chore(deps): update [deps], sync with pot-o-validator upstream v[VERSION]
 ## 🔐 Security
 
 ### GitHub Secrets
-- Uses `TRIBEWAREZ_PAT` (Personal Access Token)
+- Uses `GH_PAT` (Personal Access Token)
 - Token scopes: `repo`, `workflow`, `write:packages`
 - Automatic cleanup of sensitive data
 - Secret validation at setup time
@@ -165,7 +165,7 @@ Before using the workflow:
 
 - [ ] Review `.github/workflows/upstream-release.yml`
 - [ ] Run `./.github/scripts/validate-workflow.sh`
-- [ ] Configure `TRIBEWAREZ_PAT` secret
+- [ ] Configure `GH_PAT` secret
 - [ ] Verify access to all downstream repositories
 - [ ] Test with initial release tag
 - [ ] Monitor first workflow run
@@ -184,7 +184,7 @@ chmod +x .github/scripts/*.sh
 ./.github/scripts/setup-workflow.sh
 
 # Or manually set secret
-gh secret set TRIBEWAREZ_PAT
+gh secret set GH_PAT
 ```
 
 ### 2. Create Release
@@ -306,7 +306,7 @@ git push origin pot-o-validator-v0.2.0
 | Issue | Solution |
 |-------|----------|
 | Workflow doesn't trigger | Check tag format: `pot-o-validator-v*` |
-| Auth fails | Verify `TRIBEWAREZ_PAT` secret exists |
+| Auth fails | Verify `GH_PAT` secret exists |
 | Build fails | Test locally: `cargo build --release` |
 | Push fails | Check token has `repo` scope |
 

@@ -78,7 +78,7 @@ print_header "Required Secrets Configuration"
 
 echo "The workflow requires the following GitHub secret:"
 echo ""
-echo "Secret Name: TRIBEWAREZ_PAT"
+echo "Secret Name: GH_PAT"
 echo "Description: Personal Access Token for downstream repository access"
 echo ""
 echo "Required Permissions:"
@@ -107,15 +107,15 @@ if [[ "$GITHUB_CLI_AVAILABLE" == true ]]; then
         fi
 
         log_info "Setting secret for $OWNER/$REPO..."
-        echo "$PAT" | gh secret set TRIBEWAREZ_PAT --repo "$OWNER/$REPO"
-        log_success "Secret TRIBEWAREZ_PAT created"
+        echo "$PAT" | gh secret set GH_PAT --repo "$OWNER/$REPO"
+        log_success "Secret GH_PAT created"
     fi
 else
     echo "To create the secret manually:"
     echo "1. Go to your GitHub repository"
     echo "2. Settings → Secrets and variables → Actions"
     echo "3. Click 'New repository secret'"
-    echo "4. Name: TRIBEWAREZ_PAT"
+    echo "4. Name: GH_PAT"
     echo "5. Value: Your GitHub Personal Access Token"
     echo "6. Click 'Add secret'"
 fi
