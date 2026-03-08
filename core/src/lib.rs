@@ -1,11 +1,36 @@
 //! Core types and utilities for PoT-O (Proof of Tensor Optimizations).
 //!
-//! Provides block and transaction types, error handling, and constants used across
-//! the validator, mining, and extensions crates.
+//! Provides block and transaction types, error handling, tensor network utilities,
+//! and constants used across the validator, mining, and extensions crates.
+//!
+//! # Tensor Network (REALMS Part IV)
+//!
+//! This crate implements quantum-inspired tensor network models where:
+//! - Vertices represent quantum subsystems (miners, pools)
+//! - Edges represent entanglement links with bond dimension d
+//! - Entropy S(A) = |γ_A| * log(d) quantifies entanglement
+//! - Mutual information I(A:B) measures region coupling
+//! - Effective distance d_eff recovers geometric structure
 
 pub mod error;
+pub mod types;
+pub mod tensor;
+pub mod math;
 
 pub use error::{TribeError, TribeResult};
+pub use types::*;
+pub use tensor::{
+    constants::*,
+    entropy::{
+        entropy_from_cut,
+        mutual_information,
+        effective_distance,
+        total_network_entropy,
+        approximate_minimal_cut,
+        coherence_probability,
+    },
+};
+pub use math::portable::*;
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};

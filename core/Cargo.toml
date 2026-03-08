@@ -1,6 +1,6 @@
 [package]
 name = "pot-o-core"
-version = "0.1.6-alpha"
+version = "0.2.0"
 edition = "2021"
 authors = ["TribeWarez"]
 description = "Core types and utilities for PoT-O (Proof of Tensor Optimizations)"
@@ -19,3 +19,16 @@ sha2 = "0.10"
 hex = "0.4"
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "1.0"
+
+[dev-dependencies]
+approx = "0.5"
+
+[features]
+default = []
+# Research precision: arbitrary-precision rational arithmetic for theoretical validation
+research-precision = ["num-bigint", "num-rational"]
+
+# Optional dependencies for research precision
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+num-bigint = { version = "0.4", optional = true }
+num-rational = { version = "0.4", optional = true }

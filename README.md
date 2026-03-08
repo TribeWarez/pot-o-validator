@@ -8,6 +8,8 @@
 
 PoT-O (Proof of Tensor Optimizations) Validator Service — HTTP API and consensus node for the TribeWarez testnet.
 
+**Current Version**: v0.1.6-alpha | **Planned**: v0.2.0 with Dependency Injection + Tensor Network integration
+
 - **Crate:** [crates.io/crates/pot-o-validator](https://crates.io/crates/pot-o-validator)
 - **Docs:** [docs.rs/pot-o-validator](https://docs.rs/pot-o-validator)
 - **Repository:** [github.com/TribeWarez/pot-o-validator](https://github.com/TribeWarez/pot-o-validator)
@@ -21,6 +23,59 @@ PoT-O (Proof of Tensor Optimizations) Validator Service — HTTP API and consens
 - **pot-o-extensions**: DeFi, pool strategy, device protocol, chain bridge, peer network, security.
 
 See [docs.tribewarez.com/crates-and-api](https://docs.tribewarez.com/crates-and-api/) and [Implementation Mapping](https://docs.tribewarez.com/public/implementation-map) for details.
+
+## Architecture
+
+### v0.1.6-alpha (Current)
+- **Monolithic service design** with modular crate organization
+- **HTTP API** for proof submission and validation
+- **Device registry** for miner management
+- **Challenge generation** with MML and neural path validation
+- **Consensus engine** with difficulty adjustment
+
+### v0.2.0 (Planned - see MIGRATION_GUIDE.md)
+- **Dependency Injection** service architecture
+- **Service traits** for ProofValidator, ChallengeGenerator, ConsensusEngine
+- **ServiceRegistry** for flexible component composition
+- **Tensor Network Model** (REALMS Part IV) for entropy-based calculations
+- **Event system** for state tracking and off-chain monitoring
+
+## Documentation
+
+- **[CHANGELOG.md](CHANGELOG.md)** - Version history and feature timeline
+- **[MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)** - v0.1.x → v0.2.0 upgrade path
+- **[SECURITY.md](SECURITY.md)** - Security guidelines and vulnerability reporting
+
+## Error Handling
+
+All crates use **custom error types** and **Result<T> pattern**:
+
+```rust
+use pot_o_validator::{TribeError, TribeResult};
+
+// Example
+fn validate_proof() -> TribeResult<bool> {
+    // Returns Err(TribeError::...) on failure
+    Ok(true)
+}
+```
+
+## Service Architecture (v0.2.0 Pattern)
+
+```rust
+// TraitService abstractions (planned for v0.2.0)
+pub trait ProofValidator { ... }
+pub trait ChallengeGenerator { ... }
+pub trait ConsensusEngine { ... }
+
+// Multiple implementations
+impl ProofValidator for StandardValidator { ... }
+impl ProofValidator for TensorAwareValidator { ... }
+
+// ServiceRegistry for composition
+let registry = ServiceRegistry::new(config);
+let validator = registry.create_validator()?;
+```
 
 ## Build & run
 

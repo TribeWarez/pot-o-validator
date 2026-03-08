@@ -40,6 +40,14 @@ pub enum TribeError {
     /// I/O error (e.g. file or network).
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
+
+    /// Tensor network operation failed or reached capacity
+    #[error("Tensor network error: {0}")]
+    TensorNetworkError(String),
+
+    /// Tensor network is at maximum capacity
+    #[error("Tensor network is full: cannot add more vertices/edges")]
+    TensorNetworkFull,
 }
 
 /// Result type alias using [`TribeError`].

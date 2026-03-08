@@ -7,6 +7,8 @@
 
 Mining coordination and neural-path logic for PoT-O.
 
+**Current Version**: v0.1.6-alpha | **Planned**: v0.2.0 with ServiceRegistry
+
 - **Crate:** [crates.io/crates/pot-o-mining](https://crates.io/crates/pot-o-mining)
 - **Docs:** [docs.rs/pot-o-mining](https://docs.rs/pot-o-mining)
 - **Repository:** [github.com/TribeWarez/pot-o-mining](https://github.com/TribeWarez/pot-o-mining)
@@ -15,10 +17,71 @@ Mining coordination and neural-path logic for PoT-O.
 
 ```toml
 [dependencies]
-pot-o-mining = "0.1"
+pot-o-mining = "0.2"
 ```
 
 Depends on `pot-o-core` and `ai3-lib`.
+
+## Core Components
+
+### Challenge Generator
+- Generates mining challenges with MML (Minimal Memory Loss) thresholds
+- Manages neural path distance constraints
+- Tracks challenge expiration and validity windows
+
+### Proof Validator
+- Validates MML score meets threshold
+- Verifies neural path distances within limits
+- Checks proof computation hash
+
+### Consensus Engine
+- Manages proof-of-work difficulty adjustment
+- Tracks miner performance and reputation
+- Coordinates consensus state transitions
+
+## Service Architecture (v0.2.0)
+
+```rust
+pub trait ChallengeGenerator {
+    fn generate(&self) -> Challenge;
+    fn validate_mml(&self, score: u64) -> bool;
+}
+
+pub trait ProofValidator {
+    fn validate(&self, proof: &Proof) -> Result<(), ValidationError>;
+}
+
+pub trait ConsensusEngine {
+    fn process_proof(&mut self, proof: &Proof) -> Result<Block, ConsensusError>;
+}
+```
+
+## Example: Challenge Generation
+
+```rust
+use pot_o_mining::ChallengeGenerator;
+
+let generator = StandardChallengeGenerator::new(config)?;
+let challenge = generator.generate();
+println!("Challenge ID: {}", challenge.id);
+println!("MML Threshold: {}", challenge.mml_threshold);
+```
+
+## Testing
+
+Run tests:
+```bash
+cargo test --lib pot_o_mining
+```
+
+## Error Handling
+
+Common errors:
+- `ChallengeExpired`: Challenge no longer valid
+- `MmlThresholdNotMet`: Proof score too low
+- `PathDistanceTooLarge`: Neural path exceeds max
+
+All errors implement `std::error::Error` trait.
 
 ## Versioning
 

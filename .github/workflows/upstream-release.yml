@@ -21,6 +21,15 @@ jobs:
       mining-version: ${{ steps.get-versions.outputs.mining-version }}
       extensions-version: ${{ steps.get-versions.outputs.extensions-version }}
     steps:
+      - name: Check TRIBEWAREZ_PAT secret
+        run: |
+          if [ -z "${{ secrets.TRIBEWAREZ_PAT }}" ]; then
+            echo "ERROR: TRIBEWAREZ_PAT secret is not set in this repository.\n\nSet it in GitHub -> Settings -> Secrets and variables -> Actions or use 'gh secret set TRIBEWAREZ_PAT' and re-run the workflow." >&2
+            exit 1
+          else
+            echo "TRIBEWAREZ_PAT is set"
+          fi
+
       - name: Checkout main repo
         uses: actions/checkout@v4
         with:
