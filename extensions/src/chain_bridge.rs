@@ -338,6 +338,7 @@ impl ChainBridge for SolanaBridge {
             Pubkey::find_program_address(&[b"miner", miner_pubkey.as_ref()], &self.program_id);
 
         let rpc_url = self.rpc_url.clone();
+        let _program_id = self.program_id;
 
         let result = tokio::task::spawn_blocking(move || -> TribeResult<Option<MinerAccount>> {
             let client = RpcClient::new(&rpc_url);

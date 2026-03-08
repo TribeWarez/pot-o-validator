@@ -12,13 +12,16 @@ use axum::{
 };
 use pot_o_extensions::DefiClient;
 use pot_o_mining::{PotOProof, ProofPayload};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::consensus::AppState;
 use crate::device_registry::{
     normalize_device_type, spawn_persist_registry, CurrentCalculation, RegisteredDevice,
     DEVICE_TYPE_KEYS,
 };
+
+/// Aggregated stats per device type: (count, proofs_valid, tasks_processed, last_activity).
+type DeviceTypeStat = (u64, u64, u64, Option<chrono::DateTime<chrono::Utc>>);
 
 /// Builds the Axum router with all validator routes (health, status, challenge, submit, devices, DeFi).
 pub fn build_router(state: Arc<AppState>) -> Router {
@@ -232,10 +235,10 @@ async fn submit_proof(
                     if body.device_id.is_some() {
                         entry.device_type = device_type_normalized;
                         let pk = body.proof.miner_pubkey.as_str();
-                        if !entry.miner_pubkeys.iter().any(|p| p.as_str() == pk) {
-                            if entry.miner_pubkeys.len() < MAX_MINER_PUBKEYS_PER_DEVICE {
-                                entry.miner_pubkeys.push(body.proof.miner_pubkey.clone());
-                            }
+                        if !entry.miner_pubkeys.iter().any(|p| p.as_str() == pk)
+                            && entry.miner_pubkeys.len() < MAX_MINER_PUBKEYS_PER_DEVICE
+                        {
+                            entry.miner_pubkeys.push(body.proof.miner_pubkey.clone());
                         }
                     }
                 }
@@ -503,8 +506,7 @@ async fn device_progress(
 async fn get_devices(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     tracing::debug!("GET /devices");
     let reg = state.device_registry.read().await.clone();
-    let mut by_type: HashMap<String, (u64, u64, u64, Option<chrono::DateTime<chrono::Utc>>)> =
-        HashMap::new();
+    let mut by_type: HashMap<String, DeviceTypeStat> = HashMap::new();
     for key in DEVICE_TYPE_KEYS {
         by_type.insert((*key).to_string(), (0, 0, 0, None));
     }
