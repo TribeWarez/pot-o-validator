@@ -10,7 +10,7 @@ homepage = "https://pot.rpc.gateway.tribewarez.com"
 documentation = "https://docs.rs/pot-o-core"
 readme = "README.md"
 keywords = ["pot-o", "tribewarez", "blockchain", "tensor", "consensus"]
-categories = ["cryptography::cryptocurrency", "development-tools"]
+categories = ["cryptography::cryptocurrencies", "development-tools"]
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
