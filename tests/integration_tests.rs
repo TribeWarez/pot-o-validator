@@ -67,7 +67,12 @@ fn test_e2e_block_with_tensor_proof_transaction() {
 fn test_e2e_mining_reward_transaction_flow() {
     // Test: Challenge → Mining task → Reward transaction
     let gen = ChallengeGenerator::default();
-    let challenge = gen.generate(100, "hash").expect("generate");
+    let challenge = gen
+        .generate(
+            100,
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        )
+        .expect("generate");
 
     let task = challenge.to_mining_task("miner_address");
 
@@ -182,7 +187,12 @@ fn test_e2e_multiple_transaction_types_in_block() {
 fn test_e2e_challenge_expiry_workflow() {
     // Test: Challenge lifecycle from creation to expiry
     let gen = ChallengeGenerator::default();
-    let challenge = gen.generate(100, "hash").expect("generate");
+    let challenge = gen
+        .generate(
+            100,
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        )
+        .expect("generate");
 
     // New challenges should not be expired
     assert!(!challenge.is_expired());
@@ -205,7 +215,12 @@ fn test_e2e_core_to_mining_module_integration() {
 fn test_e2e_tensor_shape_in_mining_challenge() {
     // Test: Tensor shapes used in mining challenges
     let gen = ChallengeGenerator::default();
-    let challenge = gen.generate(100, "hash").expect("generate");
+    let challenge = gen
+        .generate(
+            100,
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        )
+        .expect("generate");
 
     let input_dims = &challenge.input_tensor.shape.dims;
     assert!(!input_dims.is_empty());
@@ -218,8 +233,18 @@ fn test_e2e_mining_difficulty_scaling() {
     let gen_easy = ChallengeGenerator::new(100, 64);
     let gen_hard = ChallengeGenerator::new(5000, 64);
 
-    let ch_easy = gen_easy.generate(100, "hash").expect("easy");
-    let ch_hard = gen_hard.generate(100, "hash").expect("hard");
+    let ch_easy = gen_easy
+        .generate(
+            100,
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        )
+        .expect("easy");
+    let ch_hard = gen_hard
+        .generate(
+            100,
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        )
+        .expect("hard");
 
     assert!(ch_hard.difficulty > ch_easy.difficulty);
     assert_eq!(ch_easy.max_tensor_dim, ch_hard.max_tensor_dim);
