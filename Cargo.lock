@@ -90,11 +90,28 @@ dependencies = [
 [[package]]
 name = "ai3-lib"
 version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "97a542e49f27b3fc30e7325119a6643d681098a949a10ec7ad9a97c59693ff1d"
 dependencies = [
  "chrono",
  "flate2",
  "hex",
- "pot-o-core",
+ "pot-o-core 0.2.0",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "uuid",
+]
+
+[[package]]
+name = "ai3-lib"
+version = "0.4.0"
+dependencies = [
+ "chrono",
+ "flate2",
+ "hex",
+ "pot-o-core 0.2.0",
  "rand 0.8.5",
  "serde",
  "serde_json",
@@ -2500,6 +2517,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "830b246a0e5f20af87141b25c173cd1b609bd7779a4617d6ec582abaf90870f3"
 
 [[package]]
+name = "octo-O-weaver"
+version = "0.1.0"
+dependencies = [
+ "ai3-lib 0.4.0",
+ "anyhow",
+ "axum",
+ "borsh 0.10.4",
+ "hex",
+ "pot-o-core 0.4.0",
+ "pot-o-extensions",
+ "pot-o-mining 0.4.0",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "solana-client",
+ "solana-sdk",
+ "thiserror",
+ "tokio",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "oid-registry"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2659,6 +2700,20 @@ checksum = "c33a9471896f1c69cecef8d20cbe2f7accd12527ce60845ff44c153bb2a21b49"
 [[package]]
 name = "pot-o-core"
 version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2be29e35177072a137f212754f106b9fb590f2db27447a6444d5c3e127d18205"
+dependencies = [
+ "chrono",
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror",
+]
+
+[[package]]
+name = "pot-o-core"
+version = "0.4.0"
 dependencies = [
  "approx",
  "chrono",
@@ -2673,16 +2728,16 @@ dependencies = [
 
 [[package]]
 name = "pot-o-extensions"
-version = "0.2.0"
+version = "0.4.0"
 dependencies = [
- "ai3-lib",
+ "ai3-lib 0.2.0",
  "anyhow",
  "async-trait",
  "borsh 0.10.4",
  "chrono",
  "hex",
- "pot-o-core",
- "pot-o-mining",
+ "pot-o-core 0.2.0",
+ "pot-o-mining 0.2.0",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -2696,12 +2751,31 @@ dependencies = [
 [[package]]
 name = "pot-o-mining"
 version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08b3ebf36ded346038515d0d3e3263dade0e56f42da0f241d992c58274cc8ec9"
 dependencies = [
- "ai3-lib",
+ "ai3-lib 0.2.0",
  "chrono",
  "flate2",
  "hex",
- "pot-o-core",
+ "pot-o-core 0.2.0",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "pot-o-mining"
+version = "0.4.0"
+dependencies = [
+ "ai3-lib 0.2.0",
+ "chrono",
+ "flate2",
+ "hex",
+ "pot-o-core 0.2.0",
  "rand 0.8.5",
  "serde",
  "serde_json",
@@ -2712,16 +2786,16 @@ dependencies = [
 
 [[package]]
 name = "pot-o-validator"
-version = "0.2.0"
+version = "0.4.0"
 dependencies = [
- "ai3-lib",
+ "ai3-lib 0.4.0",
  "anyhow",
  "axum",
  "chrono",
  "hex",
- "pot-o-core",
+ "pot-o-core 0.4.0",
  "pot-o-extensions",
- "pot-o-mining",
+ "pot-o-mining 0.4.0",
  "rand 0.8.5",
  "serde",
  "serde_json",
