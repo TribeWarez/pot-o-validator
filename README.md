@@ -1,6 +1,8 @@
 # 🧠 PoT-O Validator
 ### Proof of Tensor Optimizations
 
+![pot-o-validator logo](https://github.com/user-attachments/assets/6e84c8fa-0484-4edc-ab80-b40c77399271)
+
 [![crates.io](https://img.shields.io/crates/v/pot-o-validator.svg)](https://crates.io/crates/pot-o-validator)
 [![crates.io downloads](https://img.shields.io/crates/d/pot-o-validator.svg)](https://crates.io/crates/pot-o-validator)
 [![docs.rs](https://img.shields.io/docsrs/pot-o-validator)](https://docs.rs/pot-o-validator)
@@ -42,7 +44,7 @@ See [docs.tribewarez.com/crates-and-api](https://docs.tribewarez.com/crates-and-
 - **Challenge generation** with MML and neural path validation
 - **Consensus engine** with difficulty adjustment
 
-### v0.3.0 (Planned - see MIGRATION_GUIDE.md)
+### v0.3.0 (Planned)
 - **Quantum-inspired optimization** algorithms
 - **Cross-chain interoperability** enhancements
 - **Advanced pool strategies** with dynamic allocation
@@ -51,7 +53,6 @@ See [docs.tribewarez.com/crates-and-api](https://docs.tribewarez.com/crates-and-
 ## Documentation
 
 - **[CHANGELOG.md](CHANGELOG.md)** - Version history and feature timeline
-- **[MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)** - v0.1.x → v0.2.0 upgrade path
 - **[SECURITY.md](SECURITY.md)** - Security guidelines and vulnerability reporting
 
 ## Error Handling
