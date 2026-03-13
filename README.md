@@ -1,8 +1,6 @@
 # 🧠 PoT-O Validator
 ### Proof of Tensor Optimizations
 
-![PoT-O Logo](docs/pot-o-logo.png)
-
 [![crates.io](https://img.shields.io/crates/v/pot-o-validator.svg)](https://crates.io/crates/pot-o-validator)
 [![crates.io downloads](https://img.shields.io/crates/d/pot-o-validator.svg)](https://crates.io/crates/pot-o-validator)
 [![docs.rs](https://img.shields.io/docsrs/pot-o-validator)](https://docs.rs/pot-o-validator)
