@@ -54,7 +54,7 @@ fn default_node_id() -> String {
     uuid::Uuid::new_v4().to_string()
 }
 fn default_listen_addr() -> String {
-    "0.0.0.0".into()
+    "127.0.0.1".into()
 }
 fn default_port() -> u16 {
     8900
@@ -120,6 +120,9 @@ impl ValidatorConfig {
             if let Ok(p) = v.parse() {
                 cfg.port = p;
             }
+        }
+        if let Ok(v) = std::env::var("LISTEN_ADDR") {
+            cfg.listen_addr = v;
         }
         if let Ok(v) = std::env::var("PEER_NETWORK_MODE") {
             cfg.peer_network_mode = v;
