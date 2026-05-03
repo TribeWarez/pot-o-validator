@@ -122,14 +122,14 @@ impl ValidatorConfig {
             }
         }
         if let Ok(v) = std::env::var("LISTEN_ADDR") {
-            if v.contains(':') {
+            if v.parse::<std::net::IpAddr>().is_ok() {
+                cfg.listen_addr = v;
+            } else {
                 eprintln!(
-                    "LISTEN_ADDR must be a bare host/IP address (e.g. 0.0.0.0), \
+                    "LISTEN_ADDR must be a valid IP address (e.g. 0.0.0.0 or ::1), \
                      not a socket address. Ignoring invalid value: {:?}",
                     v
                 );
-            } else {
-                cfg.listen_addr = v;
             }
         }
         if let Ok(v) = std::env::var("PEER_NETWORK_MODE") {
