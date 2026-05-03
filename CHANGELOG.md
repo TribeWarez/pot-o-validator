@@ -4,6 +4,15 @@ All notable changes to pot-o-validator and related crates are documented in this
 
 ## [Unreleased]
 
+---
+
+## [0.2.1] - 2026-05-01
+
+Day of Work Security patch.
+
+### Security
+- Default HTTP bind address now `127.0.0.1` (use `LISTEN_ADDR` to override).
+
 ### Planned Features (v0.2.0)
 - Dependency Injection service architecture across all programs
 - Tensor Network Model integration from REALMS Part IV

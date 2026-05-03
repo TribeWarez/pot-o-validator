@@ -8,7 +8,7 @@ pub struct ValidatorConfig {
     /// Unique node identifier (default: random UUID).
     #[serde(default = "default_node_id")]
     pub node_id: String,
-    /// Bind address for the HTTP server (default: 0.0.0.0).
+    /// Bind address for the HTTP server (default: 127.0.0.1). Override with `LISTEN_ADDR` env var.
     #[serde(default = "default_listen_addr")]
     pub listen_addr: String,
     /// HTTP port (default: 8900).
@@ -54,7 +54,7 @@ fn default_node_id() -> String {
     uuid::Uuid::new_v4().to_string()
 }
 fn default_listen_addr() -> String {
-    "0.0.0.0".into()
+    "127.0.0.1".into()
 }
 fn default_port() -> u16 {
     8900
@@ -119,6 +119,17 @@ impl ValidatorConfig {
         if let Ok(v) = std::env::var("PORT") {
             if let Ok(p) = v.parse() {
                 cfg.port = p;
+            }
+        }
+        if let Ok(v) = std::env::var("LISTEN_ADDR") {
+            if v.parse::<std::net::IpAddr>().is_ok() {
+                cfg.listen_addr = v;
+            } else {
+                eprintln!(
+                    "LISTEN_ADDR must be a valid IP address (e.g. 0.0.0.0 or ::1), \
+                     not a socket address. Ignoring invalid value: {:?}",
+                    v
+                );
             }
         }
         if let Ok(v) = std::env::var("PEER_NETWORK_MODE") {
