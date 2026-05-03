@@ -8,7 +8,7 @@ pub struct ValidatorConfig {
     /// Unique node identifier (default: random UUID).
     #[serde(default = "default_node_id")]
     pub node_id: String,
-    /// Bind address for the HTTP server (default: 0.0.0.0).
+    /// Bind address for the HTTP server (default: 127.0.0.1). Override with `LISTEN_ADDR` env var.
     #[serde(default = "default_listen_addr")]
     pub listen_addr: String,
     /// HTTP port (default: 8900).
