@@ -137,7 +137,11 @@ mod tests {
     fn test_b_layer_upper_differs_from_a() {
         let a_n = get_neighbors(HCPCoord { q: 0, r: 0, s: 0 });
         let b_n = get_neighbors(HCPCoord { q: 0, r: 0, s: 1 });
-        assert_ne!(a_n[7..9], b_n[7..9], "B-layer upper should differ from A-layer");
+        assert_ne!(
+            a_n[7..9],
+            b_n[7..9],
+            "B-layer upper should differ from A-layer"
+        );
     }
 
     #[test]
@@ -215,8 +219,10 @@ mod tests {
         let planar_nb = get_neighbors(origin)[0]; // (4,-1,2)
         let nn = get_neighbors(planar_nb);
         let found = nn.iter().any(|&x| x == origin);
-        assert!(found, "({},{},{}) should include ({},{},{})",
-            planar_nb.q, planar_nb.r, planar_nb.s,
-            origin.q, origin.r, origin.s);
+        assert!(
+            found,
+            "({},{},{}) should include ({},{},{})",
+            planar_nb.q, planar_nb.r, planar_nb.s, origin.q, origin.r, origin.s
+        );
     }
 }

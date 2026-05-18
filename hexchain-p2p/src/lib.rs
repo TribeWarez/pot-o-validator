@@ -11,6 +11,8 @@ pub use block::HexBlock;
 pub use hex_consensus::{HexChallenge, HexConsensus, HexProof};
 pub use lattice_geometry::HCPCoord;
 pub use lattice_store::LatticeStore;
-pub use types::{BlockHash, ConsensusParams, MmlParams, TensorMeta, ValidationError, NEIGHBOR_SLOTS};
+pub use types::{
+    BlockHash, ConsensusParams, MmlParams, TensorMeta, ValidationError, NEIGHBOR_SLOTS,
+};
 pub use uint256::Uint256;
 pub use validator::validate_block;

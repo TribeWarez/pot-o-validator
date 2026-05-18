@@ -36,7 +36,9 @@ async fn post_hex_challenge(
     Json(body): Json<HexChallengeRequest>,
 ) -> impl IntoResponse {
     tracing::debug!(slot = body.slot, "POST /hexchain/challenge");
-    let challenge = state.hex_consensus.generate_challenge(body.slot, &body.slot_hash);
+    let challenge = state
+        .hex_consensus
+        .generate_challenge(body.slot, &body.slot_hash);
     {
         let mut current = state.hex_current_challenge.write().await;
         *current = Some(challenge.clone());
@@ -46,7 +48,10 @@ async fn post_hex_challenge(
         coord = ?challenge.coord,
         "POST /hexchain/challenge issued"
     );
-    (StatusCode::OK, Json(serde_json::to_value(&challenge).unwrap()))
+    (
+        StatusCode::OK,
+        Json(serde_json::to_value(&challenge).unwrap()),
+    )
 }
 
 async fn post_hex_submit(
@@ -56,48 +61,48 @@ async fn post_hex_submit(
     tracing::debug!(challenge_id = %proof.challenge_id, "POST /hexchain/submit");
 
     match state.hex_consensus.verify_proof(&proof) {
-        Ok(true) => {
-            match state.hex_consensus.submit_block(&proof) {
-                Ok(depth) => {
-                    tracing::info!(
-                        challenge_id = %proof.challenge_id,
-                        coord = ?proof.block.coord,
-                        depth = depth,
-                        "POST /hexchain/submit accepted"
-                    );
-                    (
-                        StatusCode::OK,
-                        Json(serde_json::json!({
-                            "accepted": true,
-                            "depth": depth,
-                            "block_hash": hex::encode(proof.block.pow_hash()),
-                        })),
-                    )
-                }
-                Err(e) => {
-                    tracing::warn!(error = ?e, "POST /hexchain/submit block insertion failed");
-                    (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        Json(serde_json::json!({ "accepted": false, "error": format!("{:?}", e) })),
-                    )
-                }
-            }
-        }
-        Ok(false) => {
-            tracing::info!(challenge_id = %proof.challenge_id, "POST /hexchain/submit rejected (genesis mode, no validation)");
-            match state.hex_consensus.submit_block(&proof) {
-                Ok(depth) => {
-                    (StatusCode::OK, Json(serde_json::json!({
+        Ok(true) => match state.hex_consensus.submit_block(&proof) {
+            Ok(depth) => {
+                tracing::info!(
+                    challenge_id = %proof.challenge_id,
+                    coord = ?proof.block.coord,
+                    depth = depth,
+                    "POST /hexchain/submit accepted"
+                );
+                (
+                    StatusCode::OK,
+                    Json(serde_json::json!({
                         "accepted": true,
                         "depth": depth,
                         "block_hash": hex::encode(proof.block.pow_hash()),
-                    })))
-                }
-                Err(e) => {
-                    (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({
+                    })),
+                )
+            }
+            Err(e) => {
+                tracing::warn!(error = ?e, "POST /hexchain/submit block insertion failed");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "accepted": false, "error": format!("{:?}", e) })),
+                )
+            }
+        },
+        Ok(false) => {
+            tracing::info!(challenge_id = %proof.challenge_id, "POST /hexchain/submit rejected (genesis mode, no validation)");
+            match state.hex_consensus.submit_block(&proof) {
+                Ok(depth) => (
+                    StatusCode::OK,
+                    Json(serde_json::json!({
+                        "accepted": true,
+                        "depth": depth,
+                        "block_hash": hex::encode(proof.block.pow_hash()),
+                    })),
+                ),
+                Err(e) => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({
                         "accepted": false, "error": format!("{:?}", e)
-                    })))
-                }
+                    })),
+                ),
             }
         }
         Err(e) => {
@@ -113,14 +118,20 @@ async fn post_hex_submit(
 async fn get_hex_status(State(state): State<Arc<AppState>>) -> HexApiResponse {
     let occupied = state.hex_consensus.store.all_coords().len();
     let all_blocks = state.hex_consensus.store.all_blocks();
-    let latest_depth = all_blocks.iter().filter_map(|(_, h)| state.hex_consensus.store.depth_of(h)).max();
+    let latest_depth = all_blocks
+        .iter()
+        .filter_map(|(_, h)| state.hex_consensus.store.depth_of(h))
+        .max();
     let current_challenge = state.hex_current_challenge.read().await.clone();
 
-    (StatusCode::OK, Json(serde_json::json!({
-        "occupied_coords": occupied,
-        "latest_depth": latest_depth,
-        "current_challenge": current_challenge,
-    })))
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "occupied_coords": occupied,
+            "latest_depth": latest_depth,
+            "current_challenge": current_challenge,
+        })),
+    )
 }
 
 async fn get_hex_lattice_all(State(state): State<Arc<AppState>>) -> HexApiResponse {
@@ -137,7 +148,10 @@ async fn get_hex_lattice_all(State(state): State<Arc<AppState>>) -> HexApiRespon
             }))
         })
         .collect();
-    (StatusCode::OK, Json(serde_json::json!({ "blocks": blocks })))
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({ "blocks": blocks })),
+    )
 }
 
 async fn get_hex_lattice_coord(
@@ -148,11 +162,14 @@ async fn get_hex_lattice_coord(
     match state.hex_consensus.store.hash_at(coord) {
         Some(hash) => {
             let depth = state.hex_consensus.store.depth_of(&hash);
-            (StatusCode::OK, Json(serde_json::json!({
-                "coord": coord,
-                "block_hash": hex::encode(hash),
-                "depth": depth,
-            })))
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "coord": coord,
+                    "block_hash": hex::encode(hash),
+                    "depth": depth,
+                })),
+            )
         }
         None => (
             StatusCode::NOT_FOUND,

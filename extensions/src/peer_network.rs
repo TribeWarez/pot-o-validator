@@ -217,12 +217,7 @@ impl HexchainNetwork {
     /// Create a new HexchainNetwork, spawn a TCP listener and bootstrap connections.
     ///
     /// `bootstrap_nodes` format: `pubkey_hex@host:port` per entry, comma-separated.
-    pub fn new(
-        node_id: String,
-        keypair: Keypair,
-        port: u16,
-        bootstrap_nodes: Vec<String>,
-    ) -> Self {
+    pub fn new(node_id: String, keypair: Keypair, port: u16, bootstrap_nodes: Vec<String>) -> Self {
         let pubkey_bytes = keypair.public.to_bytes();
         let coord = coord_from_pubkey(&pubkey_bytes);
         let keypair = Arc::new(keypair);
@@ -321,8 +316,8 @@ impl PeerNetwork for HexchainNetwork {
     }
 
     async fn relay_proof(&self, proof: &ProofPayload) -> TribeResult<()> {
-        let payload = serde_json::to_vec(proof)
-            .map_err(|e| TribeError::SerializationError(e.to_string()))?;
+        let payload =
+            serde_json::to_vec(proof).map_err(|e| TribeError::SerializationError(e.to_string()))?;
         self.flood(payload, 32, false).await;
         Ok(())
     }
@@ -398,7 +393,16 @@ async fn handle_incoming(
             coord_s,
             pubkey,
             signature,
-        }) => (peer_id, HCPCoord { q: coord_q, r: coord_r, s: coord_s }, pubkey, signature),
+        }) => (
+            peer_id,
+            HCPCoord {
+                q: coord_q,
+                r: coord_r,
+                s: coord_s,
+            },
+            pubkey,
+            signature,
+        ),
         Ok(_) => {
             warn!("Expected handshake from {}", remote_addr);
             return;
@@ -414,9 +418,9 @@ async fn handle_incoming(
     // Verify handshake signature
     let mut sighash = Sha256::new();
     sighash.update(peer_id.as_bytes());
-    sighash.update(&peer_coord.q.to_le_bytes());
-    sighash.update(&peer_coord.r.to_le_bytes());
-    sighash.update(&peer_coord.s.to_le_bytes());
+    sighash.update(peer_coord.q.to_le_bytes());
+    sighash.update(peer_coord.r.to_le_bytes());
+    sighash.update(peer_coord.s.to_le_bytes());
     let sighash = sighash.finalize();
 
     let verify_ok = ed25519_dalek::PublicKey::from_bytes(&peer_pubkey)
@@ -429,7 +433,10 @@ async fn handle_incoming(
         .unwrap_or(false);
 
     if !verify_ok {
-        warn!("Handshake signature verification failed from {}", remote_addr);
+        warn!(
+            "Handshake signature verification failed from {}",
+            remote_addr
+        );
         return;
     }
 
@@ -450,11 +457,7 @@ async fn handle_incoming(
 
     let peer_info = PeerInfo {
         node_id: peer_id.clone(),
-        address: format!(
-            "{}@{}",
-            hex::encode(peer_pubkey),
-            remote_addr
-        ),
+        address: format!("{}@{}", hex::encode(peer_pubkey), remote_addr),
         port: remote_addr.port(),
         last_seen: chrono::Utc::now(),
         version: "hexchain-0.1".into(),
@@ -472,7 +475,10 @@ async fn handle_incoming(
         );
     }
 
-    info!("P2P peer connected: {} at {} coord={:?}", peer_id, remote_addr, peer_coord);
+    info!(
+        "P2P peer connected: {} at {} coord={:?}",
+        peer_id, remote_addr, peer_coord
+    );
 
     // Writer task: drain channel and send to stream
     tokio::spawn(async move {
@@ -551,7 +557,10 @@ async fn connect_bootstrap(
         // Format: pubkey_hex@host:port
         let parts: Vec<&str> = entry.splitn(2, '@').collect();
         if parts.len() != 2 {
-            warn!("Invalid bootstrap node format (expected pubkey@host:port): {}", entry);
+            warn!(
+                "Invalid bootstrap node format (expected pubkey@host:port): {}",
+                entry
+            );
             continue;
         }
         let remote_addr = match parts[1].parse::<SocketAddr>() {
@@ -566,8 +575,12 @@ async fn connect_bootstrap(
         match TcpStream::connect(remote_addr).await {
             Ok(stream) => {
                 handle_outgoing(
-                    stream, remote_addr, peers.clone(), node_id.clone(),
-                    keypair.clone(), my_coord,
+                    stream,
+                    remote_addr,
+                    peers.clone(),
+                    node_id.clone(),
+                    keypair.clone(),
+                    my_coord,
                 )
                 .await;
             }
@@ -592,9 +605,9 @@ async fn handle_outgoing(
     // Build signed handshake
     let mut sighash = Sha256::new();
     sighash.update(node_id.as_bytes());
-    sighash.update(&my_coord.q.to_le_bytes());
-    sighash.update(&my_coord.r.to_le_bytes());
-    sighash.update(&my_coord.s.to_le_bytes());
+    sighash.update(my_coord.q.to_le_bytes());
+    sighash.update(my_coord.r.to_le_bytes());
+    sighash.update(my_coord.s.to_le_bytes());
     let sighash = sighash.finalize();
     let signature = keypair.sign(&sighash);
 
@@ -607,7 +620,10 @@ async fn handle_outgoing(
         signature: signature.to_bytes(),
     };
 
-    if send_message_to_writer(&mut writer, &handshake).await.is_err() {
+    if send_message_to_writer(&mut writer, &handshake)
+        .await
+        .is_err()
+    {
         warn!("Failed to send handshake to {}", remote_addr);
         return;
     }
@@ -619,7 +635,14 @@ async fn handle_outgoing(
             coord_q,
             coord_r,
             coord_s,
-        }) => (pid, HCPCoord { q: coord_q, r: coord_r, s: coord_s }),
+        }) => (
+            pid,
+            HCPCoord {
+                q: coord_q,
+                r: coord_r,
+                s: coord_s,
+            },
+        ),
         Ok(_) => {
             warn!("Expected HandshakeAck from {}", remote_addr);
             return;
@@ -652,7 +675,10 @@ async fn handle_outgoing(
         );
     }
 
-    info!("P2P connected to peer: {} at {} coord={:?}", peer_id, remote_addr, peer_coord);
+    info!(
+        "P2P connected to peer: {} at {} coord={:?}",
+        peer_id, remote_addr, peer_coord
+    );
 
     // Writer task
     tokio::spawn(async move {
@@ -730,31 +756,26 @@ async fn send_message_to_writer(
 ) -> Result<(), TribeError> {
     let bytes = borsh::to_vec(msg).map_err(|e| TribeError::SerializationError(e.to_string()))?;
     let len = (bytes.len() as u32).to_le_bytes();
-    writer
-        .write_all(&len)
-        .await
-        .map_err(|e| TribeError::IoError(e))?;
+    writer.write_all(&len).await.map_err(TribeError::IoError)?;
     writer
         .write_all(&bytes)
         .await
-        .map_err(|e| TribeError::IoError(e))?;
+        .map_err(TribeError::IoError)?;
     Ok(())
 }
 
-async fn recv_message_from_reader(
-    reader: &mut TcpReader,
-) -> Result<WireMessage, TribeError> {
+async fn recv_message_from_reader(reader: &mut TcpReader) -> Result<WireMessage, TribeError> {
     let mut len_buf = [0u8; 4];
     reader
         .read_exact(&mut len_buf)
         .await
-        .map_err(|e| TribeError::IoError(e))?;
+        .map_err(TribeError::IoError)?;
     let len = u32::from_le_bytes(len_buf) as usize;
     let mut buf = vec![0u8; len];
     reader
         .read_exact(&mut buf)
         .await
-        .map_err(|e| TribeError::IoError(e))?;
+        .map_err(TribeError::IoError)?;
     WireMessage::try_from_slice(&buf).map_err(|e| TribeError::SerializationError(e.to_string()))
 }
 

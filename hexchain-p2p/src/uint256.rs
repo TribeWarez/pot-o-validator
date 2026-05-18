@@ -31,14 +31,8 @@ impl Uint256 {
         }
 
         let mut a = [0u32; 8];
-        for i in 0..8 {
-            let base = i * 4;
-            a[i] = u32::from_be_bytes([
-                self.data[base],
-                self.data[base + 1],
-                self.data[base + 2],
-                self.data[base + 3],
-            ]);
+        for (chunk, limb) in self.data.chunks_exact(4).zip(a.iter_mut()) {
+            *limb = u32::from_be_bytes(chunk.try_into().unwrap());
         }
 
         let mut carry: u64 = 0;
@@ -59,20 +53,14 @@ impl Uint256 {
             rem = cur % div as u64;
         }
 
-        for i in 0..8 {
-            let base = i * 4;
-            let be = a[i].to_be_bytes();
-            self.data[base] = be[0];
-            self.data[base + 1] = be[1];
-            self.data[base + 2] = be[2];
-            self.data[base + 3] = be[3];
+        for (chunk, &limb) in self.data.chunks_exact_mut(4).zip(a.iter()) {
+            let be = limb.to_be_bytes();
+            chunk.copy_from_slice(&be);
         }
     }
 
     pub const fn max_value() -> Self {
-        Self {
-            data: [0xFFu8; 32],
-        }
+        Self { data: [0xFFu8; 32] }
     }
 }
 

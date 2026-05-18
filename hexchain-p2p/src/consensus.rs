@@ -10,7 +10,11 @@ pub fn calculate_target(
     let k = mature_neighbors.clamp(0, NEIGHBOR_SLOTS);
     let mut t = *base_target;
     let sn = symmetry_num as u32;
-    let sd = if symmetry_den == 0 { 1u32 } else { symmetry_den as u32 };
+    let sd = if symmetry_den == 0 {
+        1u32
+    } else {
+        symmetry_den as u32
+    };
     for _ in 0..k {
         t.mul_div(sn, sd);
     }
@@ -28,7 +32,7 @@ where
     neighbor_hashes
         .iter()
         .filter(|h| !crate::types::is_empty_neighbor_slot(h))
-        .filter_map(|h| depth_of(h))
+        .filter_map(depth_of)
         .filter(|&depth| depth > maturity_depth)
         .count()
 }
@@ -76,7 +80,12 @@ mod tests {
             v.mul_div(115, 1);
             v
         };
-        assert_eq!(t, expected, "den=0 should be treated as 1, so 1000*115/1 = {}", expected.as_be_bytes()[31]);
+        assert_eq!(
+            t,
+            expected,
+            "den=0 should be treated as 1, so 1000*115/1 = {}",
+            expected.as_be_bytes()[31]
+        );
     }
 
     #[test]
@@ -100,15 +109,16 @@ mod tests {
         hashes[1] = [2u8; 32];
         hashes[2] = [3u8; 32];
 
-        let count = count_mature_neighbors(&hashes, 10, |h| {
-            match h[0] {
-                1 => Some(50),
-                2 => Some(5),
-                3 => Some(20),
-                _ => None,
-            }
+        let count = count_mature_neighbors(&hashes, 10, |h| match h[0] {
+            1 => Some(50),
+            2 => Some(5),
+            3 => Some(20),
+            _ => None,
         });
-        assert_eq!(count, 2, "should count hashes[0] and hashes[2] (depth 50 and 20 > 10)");
+        assert_eq!(
+            count, 2,
+            "should count hashes[0] and hashes[2] (depth 50 and 20 > 10)"
+        );
     }
 
     #[test]
@@ -117,9 +127,8 @@ mod tests {
         hashes[0] = [1u8; 32];
         hashes[1] = [2u8; 32];
 
-        let count = count_mature_neighbors(&hashes, 10, |h| {
-            if h[0] == 1 { Some(50) } else { None }
-        });
+        let count =
+            count_mature_neighbors(&hashes, 10, |h| if h[0] == 1 { Some(50) } else { None });
         assert_eq!(count, 1, "should skip hash[1] since depth_of returns None");
     }
 

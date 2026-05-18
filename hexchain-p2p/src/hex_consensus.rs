@@ -48,11 +48,9 @@ impl HexConsensus {
     pub fn generate_challenge(&self, slot: u64, slot_hash: &str) -> HexChallenge {
         let coord = self.pick_coord();
         let neighbor_hashes = fill_neighbor_slots_from_store(coord, |c| self.store.hash_at(c));
-        let k = count_mature_neighbors(
-            &neighbor_hashes,
-            self.params.maturity_depth,
-            |h| self.store.depth_of(h),
-        );
+        let k = count_mature_neighbors(&neighbor_hashes, self.params.maturity_depth, |h| {
+            self.store.depth_of(h)
+        });
         let base = Uint256::from_be_bytes(self.params.base_target);
         let target = calculate_target(&base, k, self.params.symmetry_num, self.params.symmetry_den);
 
@@ -171,7 +169,10 @@ impl HexConsensus {
 
         let frontier: Vec<HCPCoord> = frontier_set.into_iter().collect();
         let mut rng = rand::thread_rng();
-        frontier.choose(&mut rng).copied().unwrap_or(HCPCoord { q: 0, r: 0, s: 0 })
+        frontier
+            .choose(&mut rng)
+            .copied()
+            .unwrap_or(HCPCoord { q: 0, r: 0, s: 0 })
     }
 }
 
@@ -217,10 +218,18 @@ mod tests {
         let proof = hc.mine(&chal, 100_000).expect("should find proof");
 
         let verify_result = hc.verify_proof(&proof);
-        assert!(verify_result.is_ok(), "proof should verify: {:?}", verify_result);
+        assert!(
+            verify_result.is_ok(),
+            "proof should verify: {:?}",
+            verify_result
+        );
 
         let depth = hc.submit_block(&proof).expect("submit should succeed");
-        assert_eq!(depth, hc.params.maturity_depth + 1, "genesis depth = maturity_depth + 1");
+        assert_eq!(
+            depth,
+            hc.params.maturity_depth + 1,
+            "genesis depth = maturity_depth + 1"
+        );
         assert!(hc.store.contains_coord(proof.block.coord));
     }
 
@@ -275,7 +284,11 @@ mod tests {
         };
 
         let verify_result = hc.verify_proof(&bad_proof);
-        assert!(verify_result.is_err(), "bad proof should fail: {:?}", verify_result);
+        assert!(
+            verify_result.is_err(),
+            "bad proof should fail: {:?}",
+            verify_result
+        );
     }
 
     #[test]
@@ -284,8 +297,11 @@ mod tests {
 
         for i in 0..3 {
             let chal = hc.generate_challenge(i, &format!("slot_{}", i));
-            let proof = hc.mine(&chal, 200_000).expect(&format!("should mine block {}", i));
-            hc.submit_block(&proof).expect(&format!("should submit block {}", i));
+            let proof = hc
+                .mine(&chal, 200_000)
+                .expect(&format!("should mine block {}", i));
+            hc.submit_block(&proof)
+                .expect(&format!("should submit block {}", i));
         }
 
         assert_eq!(hc.store.all_coords().len(), 3);

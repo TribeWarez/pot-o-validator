@@ -142,9 +142,10 @@ impl ProofAuthority for HexchainAuthority {
         // In production, the caller would verify against the actual challenge/proof data.
         // The signature parameter is the miner's signature over their proof data;
         // since the trait doesn't carry the signed data, we verify format + pubkey validity.
-        pk.verify(pubkey.as_bytes(), &sig).is_ok().then_some(true).ok_or_else(|| {
-            TribeError::InvalidOperation("signature does not match pubkey".into())
-        })
+        pk.verify(pubkey.as_bytes(), &sig)
+            .is_ok()
+            .then_some(true)
+            .ok_or_else(|| TribeError::InvalidOperation("signature does not match pubkey".into()))
     }
 
     fn sign_challenge(&self, challenge: &Challenge) -> TribeResult<Vec<u8>> {

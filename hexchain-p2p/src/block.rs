@@ -2,10 +2,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::lattice_geometry::{get_neighbors, HCPCoord};
-use crate::types::{
-    is_empty_neighbor_slot, BlockHash, TensorMeta, NEIGHBOR_SLOTS, HASH_BYTES,
-};
 use crate::types::NEIGHBOR_SLOT_EMPTY;
+use crate::types::{is_empty_neighbor_slot, BlockHash, TensorMeta, HASH_BYTES, NEIGHBOR_SLOTS};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HexBlock {
@@ -42,7 +40,7 @@ fn sha256_double_pair(a: &BlockHash, b: &BlockHash) -> BlockHash {
 pub fn merkle_root_neighbors(leaves: &[BlockHash; NEIGHBOR_SLOTS]) -> BlockHash {
     let mut level: Vec<BlockHash> = leaves.to_vec();
     while level.len() > 1 {
-        let mut next = Vec::with_capacity((level.len() + 1) / 2);
+        let mut next = Vec::with_capacity(level.len().div_ceil(2));
         for chunk in level.chunks(2) {
             if chunk.len() == 2 {
                 next.push(sha256_double_pair(&chunk[0], &chunk[1]));
@@ -86,7 +84,10 @@ impl HexBlock {
     }
 }
 
-pub fn fill_neighbor_slots_from_store<F>(coord: HCPCoord, mut lookup: F) -> [BlockHash; NEIGHBOR_SLOTS]
+pub fn fill_neighbor_slots_from_store<F>(
+    coord: HCPCoord,
+    mut lookup: F,
+) -> [BlockHash; NEIGHBOR_SLOTS]
 where
     F: FnMut(HCPCoord) -> Option<BlockHash>,
 {
@@ -236,7 +237,10 @@ mod tests {
             tensor: TensorMeta::default(),
         };
         let preimage = block.serialize_pow_preimage();
-        assert_eq!(preimage.len(), 32 + 32 + 8 + 8 + 4 + 4 + 4 + 32 + 8 + 8 + 8 + 8);
+        assert_eq!(
+            preimage.len(),
+            32 + 32 + 8 + 8 + 4 + 4 + 4 + 32 + 8 + 8 + 8 + 8
+        );
     }
 
     #[test]

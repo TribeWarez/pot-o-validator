@@ -72,10 +72,7 @@ mod tests {
     #[test]
     fn test_empty_store() {
         let store = LatticeStore::new();
-        assert_eq!(
-            store.hash_at(HCPCoord { q: 0, r: 0, s: 0 }),
-            None
-        );
+        assert_eq!(store.hash_at(HCPCoord { q: 0, r: 0, s: 0 }), None);
         assert_eq!(store.depth_of(&[0u8; 32]), None);
         assert!(!store.contains_coord(HCPCoord { q: 0, r: 0, s: 0 }));
     }
@@ -127,9 +124,18 @@ mod tests {
         store.insert(HCPCoord { q: 0, r: 1, s: 0 }, [2u8; 32], 10);
         store.insert(HCPCoord { q: 0, r: 0, s: 1 }, [3u8; 32], 15);
 
-        assert_eq!(store.hash_at(HCPCoord { q: 1, r: 0, s: 0 }), Some([1u8; 32]));
-        assert_eq!(store.hash_at(HCPCoord { q: 0, r: 1, s: 0 }), Some([2u8; 32]));
-        assert_eq!(store.hash_at(HCPCoord { q: 0, r: 0, s: 1 }), Some([3u8; 32]));
+        assert_eq!(
+            store.hash_at(HCPCoord { q: 1, r: 0, s: 0 }),
+            Some([1u8; 32])
+        );
+        assert_eq!(
+            store.hash_at(HCPCoord { q: 0, r: 1, s: 0 }),
+            Some([2u8; 32])
+        );
+        assert_eq!(
+            store.hash_at(HCPCoord { q: 0, r: 0, s: 1 }),
+            Some([3u8; 32])
+        );
     }
 
     #[test]

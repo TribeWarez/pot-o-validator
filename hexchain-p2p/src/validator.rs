@@ -1,9 +1,11 @@
+use crate::block::HexBlock;
 use crate::consensus::{calculate_target, count_mature_neighbors};
 use crate::lattice_geometry::get_neighbors;
 use crate::lattice_store::LatticeStore;
-use crate::types::{is_empty_neighbor_slot, ConsensusParams, TensorMeta, ValidationError, NEIGHBOR_SLOTS};
+use crate::types::{
+    is_empty_neighbor_slot, ConsensusParams, TensorMeta, ValidationError, NEIGHBOR_SLOTS,
+};
 use crate::uint256::Uint256;
-use crate::block::HexBlock;
 
 pub fn validate_mml(tensor: &TensorMeta, max_num: u64, max_den: u64) -> Option<ValidationError> {
     if tensor.compression_den == 0 || max_den == 0 {
@@ -24,8 +26,7 @@ pub fn validate_block(
     params: &ConsensusParams,
 ) -> Option<ValidationError> {
     let neighbors = get_neighbors(block.coord);
-    for i in 0..NEIGHBOR_SLOTS {
-        let nb = neighbors[i];
+    for (i, &nb) in neighbors.iter().enumerate().take(NEIGHBOR_SLOTS) {
         let claimed = block.neighbor_hashes[i];
         let at_lattice = store.hash_at(nb);
 
@@ -68,7 +69,7 @@ mod tests {
     use super::*;
     use crate::block::{fill_neighbor_slots_from_store, HexBlock};
     use crate::lattice_geometry::HCPCoord;
-    use crate::types::{MmlParams, NEIGHBOR_SLOT_EMPTY, TensorMeta};
+    use crate::types::{MmlParams, TensorMeta, NEIGHBOR_SLOT_EMPTY};
 
     fn make_genesis_block() -> HexBlock {
         HexBlock {
@@ -207,11 +208,9 @@ mod tests {
             },
         };
 
-        let k = count_mature_neighbors(
-            &block.neighbor_hashes,
-            params.maturity_depth,
-            |h| store.depth_of(h),
-        );
+        let k = count_mature_neighbors(&block.neighbor_hashes, params.maturity_depth, |h| {
+            store.depth_of(h)
+        });
 
         let base = Uint256::from_be_bytes(params.base_target);
         let target_eff = calculate_target(&base, k, params.symmetry_num, params.symmetry_den);
@@ -276,10 +275,11 @@ mod tests {
         // Very small target: only PoW hashes <= 0x10 are valid
         let params = ConsensusParams {
             maturity_depth: 0,
-            base_target: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                          0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                          0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                          0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10],
+            base_target: [
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x10,
+            ],
             ..demo_params()
         };
 
@@ -303,8 +303,11 @@ mod tests {
         };
 
         let result = validate_block(&block, &store, &params);
-        assert_eq!(result, Some(ValidationError::PowTooHigh),
-            "PoW should be too high for extremely small target");
+        assert_eq!(
+            result,
+            Some(ValidationError::PowTooHigh),
+            "PoW should be too high for extremely small target"
+        );
     }
 
     #[test]
