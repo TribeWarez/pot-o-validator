@@ -15,9 +15,9 @@ pub use defi::{
 pub use device_protocol::{
     DeviceProtocol, DeviceStatus, DeviceType, ESP32SDevice, ESP8266Device, NativeDevice, WasmDevice,
 };
-pub use peer_network::{LocalOnlyNetwork, PeerNetwork};
+pub use peer_network::{HexchainNetwork, LocalOnlyNetwork, PeerNetwork};
 pub use pool_strategy::{PoolStrategy, SoloStrategy};
-pub use security::{Ed25519Authority, ProofAuthority};
+pub use security::{Ed25519Authority, HexchainAuthority, ProofAuthority};
 
 /// Central registry that holds the active extension implementations.
 /// Constructed once at startup from config/env, then passed by reference.
