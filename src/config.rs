@@ -48,6 +48,26 @@ pub struct ValidatorConfig {
     /// Whether to auto-register miners on device registration when not yet on-chain.
     #[serde(default = "default_auto_register_miners")]
     pub auto_register_miners: bool,
+
+    // --- hexchain-specific fields ---
+    /// Listen port for hexchain P2P network (TCP, raw-borsh). 0 = P2P disabled.
+    #[serde(default = "default_p2p_port")]
+    pub p2p_listen_port: u16,
+    /// Comma-separated bootstrap node addresses for P2P discovery (format: "pubkey@host:port").
+    #[serde(default)]
+    pub p2p_bootstrap_nodes: String,
+    /// hexchain consensus: maturity depth (blocks before a neighbor is mature).
+    #[serde(default = "default_maturity_depth")]
+    pub maturity_depth: u64,
+    /// hexchain consensus: symmetry numerator (isolation penalty).
+    #[serde(default = "default_symmetry_num")]
+    pub symmetry_num: u64,
+    /// hexchain consensus: symmetry denominator.
+    #[serde(default = "default_symmetry_den")]
+    pub symmetry_den: u64,
+    /// hexchain consensus: base target (hex-encoded 32-byte BE target).
+    #[serde(default = "default_base_target")]
+    pub base_target: String,
 }
 
 fn default_node_id() -> String {
@@ -89,6 +109,21 @@ fn default_relayer_keypair_path() -> String {
 }
 fn default_auto_register_miners() -> bool {
     true
+}
+fn default_p2p_port() -> u16 {
+    0
+}
+fn default_maturity_depth() -> u64 {
+    10
+}
+fn default_symmetry_num() -> u64 {
+    115
+}
+fn default_symmetry_den() -> u64 {
+    100
+}
+fn default_base_target() -> String {
+    "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff".into()
 }
 
 impl ValidatorConfig {
@@ -151,6 +186,33 @@ impl ValidatorConfig {
             cfg.auto_register_miners = v != "0" && v.to_lowercase() != "false";
         }
 
+        if let Ok(v) = std::env::var("P2P_LISTEN_PORT") {
+            if let Ok(p) = v.parse() {
+                cfg.p2p_listen_port = p;
+            }
+        }
+        if let Ok(v) = std::env::var("P2P_BOOTSTRAP_NODES") {
+            cfg.p2p_bootstrap_nodes = v;
+        }
+        if let Ok(v) = std::env::var("MATURITY_DEPTH") {
+            if let Ok(d) = v.parse() {
+                cfg.maturity_depth = d;
+            }
+        }
+        if let Ok(v) = std::env::var("SYMMETRY_NUM") {
+            if let Ok(n) = v.parse() {
+                cfg.symmetry_num = n;
+            }
+        }
+        if let Ok(v) = std::env::var("SYMMETRY_DEN") {
+            if let Ok(d) = v.parse() {
+                cfg.symmetry_den = d;
+            }
+        }
+        if let Ok(v) = std::env::var("BASE_TARGET") {
+            cfg.base_target = v;
+        }
+
         cfg
     }
 
@@ -170,6 +232,12 @@ impl ValidatorConfig {
             device_protocol: default_device_protocol(),
             relayer_keypair_path: default_relayer_keypair_path(),
             auto_register_miners: default_auto_register_miners(),
+            p2p_listen_port: default_p2p_port(),
+            p2p_bootstrap_nodes: String::new(),
+            maturity_depth: default_maturity_depth(),
+            symmetry_num: default_symmetry_num(),
+            symmetry_den: default_symmetry_den(),
+            base_target: default_base_target(),
         }
     }
 }

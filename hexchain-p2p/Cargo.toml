@@ -1,0 +1,12 @@
+[package]
+name = "hexchain-p2p"
+version = "0.1.0"
+edition = "2021"
+authors = ["TribeWarez"]
+description = "hexchain 3D HCP lattice consensus — crystalline proof-of-work"
+license = "MIT"
+
+[dependencies]
+sha2 = "0.10"
+serde = { version = "1.0", features = ["derive"] }
+rand = "0.8"

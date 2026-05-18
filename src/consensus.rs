@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use hexchain_p2p::hex_consensus::{HexChallenge, HexConsensus};
 use pot_o_extensions::ExtensionRegistry;
 use pot_o_mining::PotOConsensus;
 use serde::Serialize;
@@ -46,6 +47,11 @@ pub struct AppState {
     pub device_registry: RwLock<HashMap<String, RegisteredDevice>>,
     /// Path to the device registry JSON file.
     pub registry_path: String,
+
+    /// hexchain 3D HCP lattice consensus engine.
+    pub hex_consensus: HexConsensus,
+    /// Current hexchain challenge (for miner discovery / status).
+    pub hex_current_challenge: RwLock<Option<HexChallenge>>,
 }
 
 /// Builds the shared application state used by the Axum router.
@@ -55,6 +61,7 @@ pub fn create_app_state(
     extensions: ExtensionRegistry,
     registry_path: String,
     device_registry: HashMap<String, RegisteredDevice>,
+    hex_consensus: HexConsensus,
 ) -> Arc<AppState> {
     Arc::new(AppState {
         config: cfg,
@@ -64,5 +71,7 @@ pub fn create_app_state(
         stats: RwLock::new(ValidatorStats::default()),
         device_registry: RwLock::new(device_registry),
         registry_path,
+        hex_consensus,
+        hex_current_challenge: RwLock::new(None),
     })
 }
