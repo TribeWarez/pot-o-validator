@@ -20,6 +20,9 @@ use hexchain_p2p::types::{ConsensusParams, MmlParams};
 use http_api::build_router;
 use pot_o_mining::PotOConsensus;
 
+/// Crate version (from Cargo.toml).
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 #[tokio::main]
 async fn main() {
     // Full info/debug by default; use RUST_LOG=pot_o_validator=trace for trace, or RUST_LOG=warn to reduce

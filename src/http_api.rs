@@ -887,7 +887,25 @@ mod tests {
             peer_timeout_secs: 30,
             challenge_relay_enabled: true,
             primary_validator_url: "http://localhost:8899".to_string(),
+            maturity_depth: 10,
+            symmetry_num: 1,
+            symmetry_den: 1,
+            base_target: "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff".to_string(),
         }
+    }
+
+    /// Helper to create a test HexConsensus
+    fn create_test_hex_consensus() -> hexchain_p2p::hex_consensus::HexConsensus {
+        use hexchain_p2p::types::{ConsensusParams, MmlParams};
+        let base_target_bytes: [u8; 32] = [0xFFu8; 32];
+        let params = ConsensusParams {
+            maturity_depth: 10,
+            symmetry_num: 1,
+            symmetry_den: 1,
+            base_target: base_target_bytes,
+            mml: MmlParams::default(),
+        };
+        hexchain_p2p::hex_consensus::HexConsensus::new(params)
     }
 
     /// Test that challenge generation succeeds with LocalOnlyNetwork (no broadcast)
@@ -908,6 +926,7 @@ mod tests {
             extensions,
             "/tmp/registry.json".to_string(),
             std::collections::HashMap::new(),
+            create_test_hex_consensus(),
         );
 
         // Generate a challenge
@@ -948,6 +967,7 @@ mod tests {
             extensions,
             "/tmp/registry.json".to_string(),
             std::collections::HashMap::new(),
+            create_test_hex_consensus(),
         );
 
         // Generate a challenge
@@ -983,6 +1003,7 @@ mod tests {
             extensions,
             "/tmp/registry.json".to_string(),
             std::collections::HashMap::new(),
+            create_test_hex_consensus(),
         );
 
         // Request with minimal/empty body (should use defaults)
@@ -1021,6 +1042,7 @@ mod tests {
             extensions,
             "/tmp/registry.json".to_string(),
             std::collections::HashMap::new(),
+            create_test_hex_consensus(),
         );
 
         // Verify initial stats
@@ -1071,6 +1093,7 @@ mod tests {
             extensions,
             "/tmp/registry.json".to_string(),
             std::collections::HashMap::new(),
+            create_test_hex_consensus(),
         );
 
         // Generate multiple challenges
@@ -1113,6 +1136,7 @@ mod tests {
             extensions,
             "/tmp/registry.json".to_string(),
             std::collections::HashMap::new(),
+            create_test_hex_consensus(),
         );
 
         // Generate a challenge

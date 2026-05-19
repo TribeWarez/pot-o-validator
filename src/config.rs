@@ -68,6 +68,18 @@ pub struct ValidatorConfig {
     /// URL of primary validator for on-chain submission (default: "http://localhost:8899").
     #[serde(default = "default_primary_validator_url")]
     pub primary_validator_url: String,
+    /// Maturity depth for hexchain consensus (default: 10).
+    #[serde(default = "default_maturity_depth")]
+    pub maturity_depth: u64,
+    /// Symmetry numerator for hexchain consensus (default: 1).
+    #[serde(default = "default_symmetry_num")]
+    pub symmetry_num: u64,
+    /// Symmetry denominator for hexchain consensus (default: 1).
+    #[serde(default = "default_symmetry_den")]
+    pub symmetry_den: u64,
+    /// Base target for hexchain consensus (hex-encoded 32 bytes, default: all 0xFF).
+    #[serde(default = "default_base_target")]
+    pub base_target: String,
 }
 
 fn default_node_id() -> String {
@@ -130,6 +142,18 @@ fn default_challenge_relay_enabled() -> bool {
 }
 fn default_primary_validator_url() -> String {
     "http://localhost:8899".into()
+}
+fn default_maturity_depth() -> u64 {
+    10
+}
+fn default_symmetry_num() -> u64 {
+    1
+}
+fn default_symmetry_den() -> u64 {
+    1
+}
+fn default_base_target() -> String {
+    "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff".into()
 }
 
 impl ValidatorConfig {
@@ -205,6 +229,24 @@ impl ValidatorConfig {
         if let Ok(v) = std::env::var("PRIMARY_VALIDATOR_URL") {
             cfg.primary_validator_url = v;
         }
+        if let Ok(v) = std::env::var("MATURITY_DEPTH") {
+            if let Ok(d) = v.parse() {
+                cfg.maturity_depth = d;
+            }
+        }
+        if let Ok(v) = std::env::var("SYMMETRY_NUM") {
+            if let Ok(n) = v.parse() {
+                cfg.symmetry_num = n;
+            }
+        }
+        if let Ok(v) = std::env::var("SYMMETRY_DEN") {
+            if let Ok(d) = v.parse() {
+                cfg.symmetry_den = d;
+            }
+        }
+        if let Ok(v) = std::env::var("BASE_TARGET") {
+            cfg.base_target = v;
+        }
 
         cfg
     }
@@ -232,6 +274,10 @@ impl ValidatorConfig {
             peer_timeout_secs: default_peer_timeout_secs(),
             challenge_relay_enabled: default_challenge_relay_enabled(),
             primary_validator_url: default_primary_validator_url(),
+            maturity_depth: default_maturity_depth(),
+            symmetry_num: default_symmetry_num(),
+            symmetry_den: default_symmetry_den(),
+            base_target: default_base_target(),
         }
     }
 }

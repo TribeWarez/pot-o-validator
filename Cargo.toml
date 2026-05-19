@@ -1,16 +1,17 @@
 [package]
 name = "pot-o-validator"
-version = "0.4.1"
+version = "0.1.0"
 edition = "2021"
 authors = ["TribeWarez"]
-description = "PoT-O (Proof of Tensor Optimizations) Validator Service with Octo-O-Weaver PaaS Integration"
+description = "PoT-O (Proof of Tensor Optimizations) Validator Service"
 license = "MIT"
+license-file = "LICENSE"
 repository = "https://github.com/tribewarez/pot-o-validator"
 homepage = "https://pot.rpc.gateway.tribewarez.com"
 documentation = "https://docs.rs/pot-o-validator"
 readme = "README.md"
-keywords = ["pot-o", "blockchain", "validator", "tensor", "mining", "octo-o-weaver"]
-categories = ["cryptography::cryptocurrencies", "development-tools"]
+keywords = ["pot-o", "tribewarez", "blockchain", "validator", "tensor", "mining"]
+categories = ["cryptography::cryptocurrency", "development-tools"]
 
 [workspace]
 members = [
@@ -21,19 +22,20 @@ members = [
     "hexchain-p2p",
 ]
 
-[workspace.dependencies]
-pot-o-core = { path = "core", version = "0.4.0" }
-ai3-lib = { path = "ai3-lib", version = "0.4.0" }
-pot-o-mining = { path = "mining", version = "0.4.0" }
-pot-o-extensions = { path = "extensions", version = "0.4.0" }
-hexchain-p2p = { path = "hexchain-p2p", version = "0.1.0" }
+# Use workspace members when building in-repo; published crates use crates.io
+[patch.crates-io]
+pot-o-core = { path = "core" }
+ai3-lib = { path = "ai3-lib" }
+pot-o-mining = { path = "mining" }
+pot-o-extensions = { path = "extensions" }
+hexchain-p2p = { path = "hexchain-p2p" }
 
 [dependencies]
-pot-o-core = { workspace = true }
-ai3-lib = { workspace = true }
-pot-o-mining = { workspace = true }
-pot-o-extensions = { workspace = true }
-hexchain-p2p = { workspace = true }
+pot-o-core = { path = "core" }
+ai3-lib = { path = "ai3-lib" }
+pot-o-mining = { path = "mining" }
+pot-o-extensions = { path = "extensions" }
+hexchain-p2p = { path = "hexchain-p2p" }
 
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -50,9 +52,11 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 anyhow = "1.0"
 thiserror = "1.0"
-ed25519-dalek = "1"
 solana-client = "1.18"
 solana-sdk = "1.18"
+
+[dev-dependencies]
+tempfile = "3.8"
 
 [[bin]]
 name = "pot-o-validator"
