@@ -12,6 +12,7 @@ COPY core/ core/
 COPY ai3-lib/ ai3-lib/
 COPY mining/ mining/
 COPY extensions/ extensions/
+COPY hexchain-p2p/ hexchain-p2p/
 COPY src/ src/
 
 RUN cargo build --release --bin pot-o-validator \
