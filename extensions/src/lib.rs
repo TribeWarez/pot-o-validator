@@ -3,6 +3,8 @@
 pub mod chain_bridge;
 pub mod defi;
 pub mod device_protocol;
+pub mod gossip_client;
+pub mod mdns_discovery;
 pub mod peer_network;
 pub mod pool_strategy;
 pub mod security;
@@ -15,9 +17,11 @@ pub use defi::{
 pub use device_protocol::{
     DeviceProtocol, DeviceStatus, DeviceType, ESP32SDevice, ESP8266Device, NativeDevice, WasmDevice,
 };
-pub use peer_network::{HexchainNetwork, LocalOnlyNetwork, PeerNetwork};
-pub use pool_strategy::{PoolStrategy, SoloStrategy};
-pub use security::{Ed25519Authority, HexchainAuthority, ProofAuthority};
+pub use gossip_client::GossipClient;
+pub use mdns_discovery::{MdnsDiscovery, PeerDiscovery};
+pub use peer_network::{LocalOnlyNetwork, PeerNetwork, VpnMeshNetwork, VpnMeshConfig};
+pub use pool_strategy::{PoolStrategy, SoloStrategy, ProportionalPool, PPLNSPool, PoolType};
+pub use security::{Ed25519Authority, ProofAuthority};
 
 /// Central registry that holds the active extension implementations.
 /// Constructed once at startup from config/env, then passed by reference.
@@ -41,6 +45,71 @@ impl ExtensionRegistry {
             device: Box::new(NativeDevice::new()),
             network: Box::new(LocalOnlyNetwork::new()),
             pool: Box::new(SoloStrategy),
+            chain: Box::new(SolanaBridge::new(
+                solana_rpc_url.to_string(),
+                program_id.to_string(),
+                relayer_keypair_path.to_string(),
+                auto_register_miners,
+            )),
+            auth: Box::new(Ed25519Authority),
+        }
+    }
+
+    /// Build the registry from config strings specifying peer network mode and pool strategy.
+    /// 
+    /// # Arguments
+    /// * `solana_rpc_url` - Solana RPC endpoint URL
+    /// * `program_id` - PoT-O program ID
+    /// * `relayer_keypair_path` - Path to relayer keypair
+    /// * `auto_register_miners` - Whether to auto-register miners
+    /// * `peer_network_mode` - Network mode: "local_only" or "vpn_mesh" (defaults to "local_only" if unknown)
+    /// * `pool_strategy` - Pool strategy: "solo", "proportional", or "pplns" (defaults to "solo" if unknown)
+    pub fn from_config(
+        solana_rpc_url: &str,
+        program_id: &str,
+        relayer_keypair_path: &str,
+        auto_register_miners: bool,
+        peer_network_mode: &str,
+        pool_strategy: &str,
+    ) -> Self {
+        // Parse network mode
+        let network: Box<dyn PeerNetwork> = match peer_network_mode {
+            "vpn_mesh" => {
+                let config = peer_network::VpnMeshConfig {
+                    wireguard_interface: "wg0".into(),
+                    peer_addresses: vec![],
+                    mdns_enabled: true,
+                    gossip_port: 8765,
+                };
+                match VpnMeshNetwork::new(
+                    uuid::Uuid::new_v4().to_string(),
+                    config,
+                    vec![],
+                    true,
+                    "pot-o-validator",
+                    30,
+                ) {
+                    Ok(network) => Box::new(network),
+                    Err(_) => Box::new(LocalOnlyNetwork::new()), // Fallback on error
+                }
+            }
+            _ => Box::new(LocalOnlyNetwork::new()), // Default: local_only
+        };
+
+        // Parse pool strategy
+        let pool: Box<dyn PoolStrategy> = match pool_strategy {
+            "proportional" => Box::new(ProportionalPool { min_stake: 1000 }),
+            "pplns" => Box::new(PPLNSPool {
+                window_size: 100,
+                min_stake: 1000,
+            }),
+            _ => Box::new(SoloStrategy), // Default: solo
+        };
+
+        Self {
+            device: Box::new(NativeDevice::new()),
+            network,
+            pool,
             chain: Box::new(SolanaBridge::new(
                 solana_rpc_url.to_string(),
                 program_id.to_string(),
