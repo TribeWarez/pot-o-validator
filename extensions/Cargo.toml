@@ -1,6 +1,6 @@
 [package]
 name = "pot-o-extensions"
-version = "0.4.0"
+version = "0.1.0"
 edition = "2021"
 authors = ["TribeWarez"]
 description = "DeFi, staking, and external-chain extensions for the PoT-O validator"
@@ -9,14 +9,13 @@ repository = "https://github.com/tribewarez/pot-o-extensions"
 homepage = "https://pot.rpc.gateway.tribewarez.com"
 documentation = "https://docs.rs/pot-o-extensions"
 readme = "README.md"
-keywords = ["pot-o", "blockchain", "defi", "staking", "extensions"]
-categories = ["cryptography::cryptocurrencies", "development-tools"]
+keywords = ["pot-o", "tribewarez", "blockchain", "defi", "staking", "extensions"]
+categories = ["cryptography::cryptocurrency", "development-tools"]
 
 [dependencies]
-pot-o-core = { workspace = true }
-ai3-lib = { workspace = true }
-pot-o-mining = { workspace = true }
-hexchain-p2p = { workspace = true }
+pot-o-core = "0.1"
+ai3-lib = "0.1"
+pot-o-mining = "0.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 async-trait = "0.1"
@@ -30,5 +29,9 @@ anyhow = "1.0"
 borsh = "0.10"
 hex = "0.4"
 sha2 = "0.10"
-ed25519-dalek = "1"
-rand = "0.8"
+reqwest = { version = "0.11", features = ["json"] }
+mdns-sd = "0.7"
+flume = "0.10"
+
+[dev-dependencies]
+mockito = "1.2"

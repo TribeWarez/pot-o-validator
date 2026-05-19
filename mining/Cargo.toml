@@ -1,6 +1,6 @@
 [package]
 name = "pot-o-mining"
-version = "0.4.0"
+version = "0.1.0"
 edition = "2021"
 authors = ["TribeWarez"]
 description = "Mining coordination and neural-path logic for PoT-O"
@@ -9,12 +9,12 @@ repository = "https://github.com/tribewarez/pot-o-mining"
 homepage = "https://pot.rpc.gateway.tribewarez.com"
 documentation = "https://docs.rs/pot-o-mining"
 readme = "README.md"
-keywords = ["pot-o", "blockchain", "tensor", "mining", "neural-path"]
-categories = ["cryptography::cryptocurrencies", "development-tools"]
+keywords = ["pot-o", "tribewarez", "blockchain", "tensor", "mining", "mml", "neural-path"]
+categories = ["cryptography::cryptocurrency", "development-tools"]
 
 [dependencies]
-pot-o-core = { workspace = true }
-ai3-lib = { workspace = true }
+pot-o-core = "0.1"
+ai3-lib = "0.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.10"

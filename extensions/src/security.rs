@@ -1,7 +1,8 @@
 //! Proof authority and node authentication: Ed25519, mTLS, HMAC device auth.
 
-use pot_o_core::{TribeError, TribeResult};
+use pot_o_core::TribeResult;
 use pot_o_mining::Challenge;
+use serde::{Deserialize, Serialize};
 
 use crate::peer_network::PeerInfo;
 
@@ -85,95 +86,5 @@ impl ProofAuthority for HmacDeviceAuth {
     }
     fn validate_node_connection(&self, _peer: &PeerInfo) -> TribeResult<bool> {
         todo!("HMAC node connection validation not yet implemented")
-    }
-}
-
-// ---------------------------------------------------------------------------
-// HexchainAuthority — ed25519 identity with lattice-coordinate binding
-// ---------------------------------------------------------------------------
-
-use ed25519_dalek::{Keypair, Signature, Signer, Verifier};
-use hexchain_p2p::lattice_geometry::HCPCoord;
-use sha2::{Digest, Sha256};
-
-/// Security authority for the hexchain P2P network.
-///
-/// - Miner identity: verifies ed25519 signatures on challenge data
-/// - Challenge signing: signs challenges with the node's keypair
-/// - Node connection: validates that a peer's pubkey maps to their
-///   claimed lattice coordinate via HASH(pubkey) → coord
-pub struct HexchainAuthority {
-    keypair: Keypair,
-}
-
-impl HexchainAuthority {
-    /// Create a new authority from an ed25519 keypair.
-    pub fn new(keypair: Keypair) -> Self {
-        Self { keypair }
-    }
-
-    /// Derive an HCP lattice coordinate from an ed25519 public key.
-    ///
-    /// SHA256(pubkey) → (q, r) from first 8 bytes, s = -(q + r).
-    /// Result modded to [-1023, 1023] so nodes start near the cluster.
-    pub fn coord_from_pubkey(pubkey: &[u8; 32]) -> HCPCoord {
-        let hash = Sha256::digest(pubkey);
-        let q = (i32::from_le_bytes(hash[0..4].try_into().unwrap()) % 1024).max(-1023);
-        let r = (i32::from_le_bytes(hash[4..8].try_into().unwrap()) % 1024).max(-1023);
-        let s = -(q + r);
-        HCPCoord { q, r, s }
-    }
-}
-
-impl ProofAuthority for HexchainAuthority {
-    fn verify_miner_identity(&self, pubkey: &str, signature: &[u8]) -> TribeResult<bool> {
-        let pubkey_bytes = hex::decode(pubkey)
-            .map_err(|e| TribeError::InvalidOperation(format!("hex decode: {}", e)))?;
-        if pubkey_bytes.len() != 32 {
-            return Ok(false);
-        }
-        let pk = ed25519_dalek::PublicKey::from_bytes(&pubkey_bytes)
-            .map_err(|e| TribeError::InvalidOperation(format!("invalid pubkey: {}", e)))?;
-        let sig = match Signature::from_bytes(signature) {
-            Ok(s) => s,
-            Err(_) => return Ok(false),
-        };
-        // Verify against the pubkey itself as the signed message.
-        // In production, the caller would verify against the actual challenge/proof data.
-        // The signature parameter is the miner's signature over their proof data;
-        // since the trait doesn't carry the signed data, we verify format + pubkey validity.
-        pk.verify(pubkey.as_bytes(), &sig)
-            .is_ok()
-            .then_some(true)
-            .ok_or_else(|| TribeError::InvalidOperation("signature does not match pubkey".into()))
-    }
-
-    fn sign_challenge(&self, challenge: &Challenge) -> TribeResult<Vec<u8>> {
-        let bytes = serde_json::to_vec(challenge)
-            .map_err(|e| TribeError::SerializationError(e.to_string()))?;
-        let sig = self.keypair.sign(&bytes);
-        Ok(sig.to_bytes().to_vec())
-    }
-
-    fn validate_node_connection(&self, peer: &PeerInfo) -> TribeResult<bool> {
-        // PeerInfo.address format for hexchain: "pubkey_hex@host:port"
-        let pubkey_hex = match peer.address.split('@').next() {
-            Some(pk) if !pk.is_empty() => pk,
-            _ => return Ok(false),
-        };
-        let pubkey_bytes = match hex::decode(pubkey_hex) {
-            Ok(b) if b.len() == 32 => b,
-            _ => return Ok(false),
-        };
-        let pk: [u8; 32] = match pubkey_bytes.try_into() {
-            Ok(a) => a,
-            Err(_) => return Ok(false),
-        };
-        let expected_coord = Self::coord_from_pubkey(&pk);
-        // The address must contain a valid pubkey whose coord derivation works.
-        // Actual coord matching requires the peer to advertise their coord;
-        // for now: valid pubkey → its lattice coordinate is well-formed.
-        let _ = expected_coord;
-        Ok(true)
     }
 }
