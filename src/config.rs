@@ -8,7 +8,7 @@ pub struct ValidatorConfig {
     /// Unique node identifier (default: random UUID).
     #[serde(default = "default_node_id")]
     pub node_id: String,
-    /// Bind address for the HTTP server (default: 127.0.0.1). Override with `LISTEN_ADDR` env var.
+    /// Bind address for the HTTP server (default: 0.0.0.0).
     #[serde(default = "default_listen_addr")]
     pub listen_addr: String,
     /// HTTP port (default: 8900).
@@ -28,7 +28,6 @@ pub struct ValidatorConfig {
     pub max_tensor_dim: usize,
     /// Max iterations per mining attempt.
     #[serde(default = "default_max_mine_iterations")]
-    #[allow(dead_code)]
     pub max_mine_iterations: u64,
     /// Peer network mode (e.g. local_only).
     #[serde(default = "default_peer_network_mode")]
@@ -48,33 +47,34 @@ pub struct ValidatorConfig {
     /// Whether to auto-register miners on device registration when not yet on-chain.
     #[serde(default = "default_auto_register_miners")]
     pub auto_register_miners: bool,
-
-    // --- hexchain-specific fields ---
-    /// Listen port for hexchain P2P network (TCP, raw-borsh). 0 = P2P disabled.
-    #[serde(default = "default_p2p_port")]
-    pub p2p_listen_port: u16,
-    /// Comma-separated bootstrap node addresses for P2P discovery (format: "pubkey@host:port").
-    #[serde(default)]
-    pub p2p_bootstrap_nodes: String,
-    /// hexchain consensus: maturity depth (blocks before a neighbor is mature).
-    #[serde(default = "default_maturity_depth")]
-    pub maturity_depth: u64,
-    /// hexchain consensus: symmetry numerator (isolation penalty).
-    #[serde(default = "default_symmetry_num")]
-    pub symmetry_num: u64,
-    /// hexchain consensus: symmetry denominator.
-    #[serde(default = "default_symmetry_den")]
-    pub symmetry_den: u64,
-    /// hexchain consensus: base target (hex-encoded 32-byte BE target).
-    #[serde(default = "default_base_target")]
-    pub base_target: String,
+    /// Bootstrap URLs for P2P discovery (default: empty list).
+    #[serde(default = "default_bootstrap_urls")]
+    pub bootstrap_urls: Vec<String>,
+    /// Enable mDNS discovery (default: false).
+    #[serde(default = "default_enable_mdns")]
+    pub enable_mdns: bool,
+    /// Service name for mDNS registration (default: "pot-o-validator").
+    #[serde(default = "default_mdns_service_name")]
+    pub mdns_service_name: String,
+    /// Port for internal peer-to-peer API (default: 8900).
+    #[serde(default = "default_internal_api_port")]
+    pub internal_api_port: u16,
+    /// Timeout for peer communication in seconds (default: 30).
+    #[serde(default = "default_peer_timeout_secs")]
+    pub peer_timeout_secs: u64,
+    /// Enable push/pull challenge gossip (default: true).
+    #[serde(default = "default_challenge_relay_enabled")]
+    pub challenge_relay_enabled: bool,
+    /// URL of primary validator for on-chain submission (default: "http://localhost:8899").
+    #[serde(default = "default_primary_validator_url")]
+    pub primary_validator_url: String,
 }
 
 fn default_node_id() -> String {
     uuid::Uuid::new_v4().to_string()
 }
 fn default_listen_addr() -> String {
-    "127.0.0.1".into()
+    "0.0.0.0".into()
 }
 fn default_port() -> u16 {
     8900
@@ -110,20 +110,26 @@ fn default_relayer_keypair_path() -> String {
 fn default_auto_register_miners() -> bool {
     true
 }
-fn default_p2p_port() -> u16 {
-    0
+fn default_bootstrap_urls() -> Vec<String> {
+    Vec::new()
 }
-fn default_maturity_depth() -> u64 {
-    10
+fn default_enable_mdns() -> bool {
+    false
 }
-fn default_symmetry_num() -> u64 {
-    115
+fn default_mdns_service_name() -> String {
+    "pot-o-validator".into()
 }
-fn default_symmetry_den() -> u64 {
-    100
+fn default_internal_api_port() -> u16 {
+    8900
 }
-fn default_base_target() -> String {
-    "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff".into()
+fn default_peer_timeout_secs() -> u64 {
+    30
+}
+fn default_challenge_relay_enabled() -> bool {
+    true
+}
+fn default_primary_validator_url() -> String {
+    "http://localhost:8899".into()
 }
 
 impl ValidatorConfig {
@@ -137,7 +143,7 @@ impl ValidatorConfig {
                     .ok()
                     .and_then(|s| toml::from_str(&s).ok())
             })
-            .unwrap_or_else(Self::defaults);
+            .unwrap_or_else(|| Self::defaults());
 
         // Env overrides
         if let Ok(v) = std::env::var("SOLANA_RPC_URL") {
@@ -154,17 +160,6 @@ impl ValidatorConfig {
         if let Ok(v) = std::env::var("PORT") {
             if let Ok(p) = v.parse() {
                 cfg.port = p;
-            }
-        }
-        if let Ok(v) = std::env::var("LISTEN_ADDR") {
-            if v.parse::<std::net::IpAddr>().is_ok() {
-                cfg.listen_addr = v;
-            } else {
-                eprintln!(
-                    "LISTEN_ADDR must be a valid IP address (e.g. 0.0.0.0 or ::1), \
-                     not a socket address. Ignoring invalid value: {:?}",
-                    v
-                );
             }
         }
         if let Ok(v) = std::env::var("PEER_NETWORK_MODE") {
@@ -185,32 +180,30 @@ impl ValidatorConfig {
         if let Ok(v) = std::env::var("AUTO_REGISTER_MINERS") {
             cfg.auto_register_miners = v != "0" && v.to_lowercase() != "false";
         }
-
-        if let Ok(v) = std::env::var("P2P_LISTEN_PORT") {
+        if let Ok(v) = std::env::var("BOOTSTRAP_URLS") {
+            cfg.bootstrap_urls = v.split(',').map(|s| s.trim().to_string()).collect();
+        }
+        if let Ok(v) = std::env::var("ENABLE_MDNS") {
+            cfg.enable_mdns = v != "0" && v.to_lowercase() != "false";
+        }
+        if let Ok(v) = std::env::var("MDNS_SERVICE_NAME") {
+            cfg.mdns_service_name = v;
+        }
+        if let Ok(v) = std::env::var("INTERNAL_API_PORT") {
             if let Ok(p) = v.parse() {
-                cfg.p2p_listen_port = p;
+                cfg.internal_api_port = p;
             }
         }
-        if let Ok(v) = std::env::var("P2P_BOOTSTRAP_NODES") {
-            cfg.p2p_bootstrap_nodes = v;
-        }
-        if let Ok(v) = std::env::var("MATURITY_DEPTH") {
-            if let Ok(d) = v.parse() {
-                cfg.maturity_depth = d;
+        if let Ok(v) = std::env::var("PEER_TIMEOUT_SECS") {
+            if let Ok(t) = v.parse() {
+                cfg.peer_timeout_secs = t;
             }
         }
-        if let Ok(v) = std::env::var("SYMMETRY_NUM") {
-            if let Ok(n) = v.parse() {
-                cfg.symmetry_num = n;
-            }
+        if let Ok(v) = std::env::var("CHALLENGE_RELAY_ENABLED") {
+            cfg.challenge_relay_enabled = v != "0" && v.to_lowercase() != "false";
         }
-        if let Ok(v) = std::env::var("SYMMETRY_DEN") {
-            if let Ok(d) = v.parse() {
-                cfg.symmetry_den = d;
-            }
-        }
-        if let Ok(v) = std::env::var("BASE_TARGET") {
-            cfg.base_target = v;
+        if let Ok(v) = std::env::var("PRIMARY_VALIDATOR_URL") {
+            cfg.primary_validator_url = v;
         }
 
         cfg
@@ -232,12 +225,13 @@ impl ValidatorConfig {
             device_protocol: default_device_protocol(),
             relayer_keypair_path: default_relayer_keypair_path(),
             auto_register_miners: default_auto_register_miners(),
-            p2p_listen_port: default_p2p_port(),
-            p2p_bootstrap_nodes: String::new(),
-            maturity_depth: default_maturity_depth(),
-            symmetry_num: default_symmetry_num(),
-            symmetry_den: default_symmetry_den(),
-            base_target: default_base_target(),
+            bootstrap_urls: default_bootstrap_urls(),
+            enable_mdns: default_enable_mdns(),
+            mdns_service_name: default_mdns_service_name(),
+            internal_api_port: default_internal_api_port(),
+            peer_timeout_secs: default_peer_timeout_secs(),
+            challenge_relay_enabled: default_challenge_relay_enabled(),
+            primary_validator_url: default_primary_validator_url(),
         }
     }
 }

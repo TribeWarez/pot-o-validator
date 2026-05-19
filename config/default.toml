@@ -1,7 +1,7 @@
 # PoT-O Validator default configuration
 # Env vars override these values (see config.rs for mapping).
 
-listen_addr = "127.0.0.1"
+listen_addr = "0.0.0.0"
 port = 8900
 solana_rpc_url = "http://testnet-solana-rpc-gateway:8899"
 pot_program_id = ""
@@ -14,3 +14,14 @@ peer_network_mode = "local_only"
 pool_strategy = "solo"
 chain_bridge = "solana"
 device_protocol = "native"
+
+# P2P network configuration
+bootstrap_urls = []
+enable_mdns = false
+mdns_service_name = "pot-o-validator"
+internal_api_port = 8900
+peer_timeout_secs = 30
+challenge_relay_enabled = true
+
+# Pool and validator configuration
+primary_validator_url = "http://localhost:8899"
