@@ -3,18 +3,10 @@
 //! Use this crate when building tooling or tests that need the same types as the validator binary.
 
 pub mod config;
+pub mod internal_api;
 
-// Re-export with explicit naming to avoid ambiguous glob conflicts
-pub use ai3_lib::{
-    AI3Engine, ActivationFunction, Convolution, ESPCompatibility, ESPDeviceType, ESPMiningConfig,
-    EngineConfig, EngineStats, MatrixMultiply, MinerCapabilities, MinerStats, MiningResult,
-    MiningTask, TaskDistributor, Tensor, TensorData, TensorEngine, TensorOp, TensorShape, VectorOp,
-};
-pub use pot_o_core::{
-    approximate_minimal_cut, coherence_probability, effective_distance, entropy_from_cut,
-    mutual_information, total_network_entropy, Block, EntanglementEdge, MinimalCut,
-    TensorNetworkState, TensorNetworkVertex, Transaction, TransactionType, TribeError, TribeResult,
-};
+pub use ai3_lib::*;
+pub use pot_o_core::*;
 pub use pot_o_extensions::*;
 pub use pot_o_mining::*;
 
