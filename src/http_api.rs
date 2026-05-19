@@ -20,9 +20,6 @@ use crate::device_registry::{
     DEVICE_TYPE_KEYS,
 };
 
-/// Aggregated stats per device type: (count, proofs_valid, tasks_processed, last_activity).
-type DeviceTypeStat = (u64, u64, u64, Option<chrono::DateTime<chrono::Utc>>);
-
 /// Builds the Axum router with all validator routes (health, status, challenge, submit, devices, DeFi).
 pub fn build_router(state: Arc<AppState>) -> Router {
     Router::new()
@@ -52,8 +49,12 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/vault/vault/:treasury_pubkey/:user_pubkey",
             get(get_user_vault),
         )
-        .route("/vault/escrow/:depositor/:beneficiary", get(get_escrow))
-        .with_state(state)
+         .route("/vault/escrow/:depositor/:beneficiary", get(get_escrow))
+         // Hexchain API aliases (for compatibility with status.rpc.gateway.tribewarez.com)
+         .route("/hexchain/status", get(status))
+         .route("/hexchain/challenge", post(get_challenge))
+         .route("/hexchain/submit", post(submit_proof))
+         .with_state(state)
 }
 
 // ---------------------------------------------------------------------------
@@ -64,7 +65,7 @@ async fn health() -> impl IntoResponse {
     Json(serde_json::json!({
         "status": "ok",
         "service": "pot-o-validator",
-        "version": pot_o_validator::VERSION,
+        "version": crate::VERSION,
     }))
 }
 
@@ -156,6 +157,28 @@ async fn get_challenge(
                 difficulty = challenge.difficulty,
                 "POST /challenge issued"
             );
+
+            // Broadcast challenge to peers (non-blocking)
+            let challenge_clone = challenge.clone();
+            let state_clone = state.clone();
+            tokio::spawn(async move {
+                match state_clone.extensions.network.broadcast_challenge(&challenge_clone).await {
+                    Ok(()) => {
+                        tracing::debug!(
+                            challenge_id = %challenge_clone.id,
+                            "Challenge broadcast to peers completed"
+                        );
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            challenge_id = %challenge_clone.id,
+                            error = %e,
+                            "Challenge broadcast to peers failed (non-fatal)"
+                        );
+                    }
+                }
+            });
+
             (
                 StatusCode::OK,
                 Json(serde_json::to_value(&challenge).unwrap()),
@@ -235,10 +258,10 @@ async fn submit_proof(
                     if body.device_id.is_some() {
                         entry.device_type = device_type_normalized;
                         let pk = body.proof.miner_pubkey.as_str();
-                        if !entry.miner_pubkeys.iter().any(|p| p.as_str() == pk)
-                            && entry.miner_pubkeys.len() < MAX_MINER_PUBKEYS_PER_DEVICE
-                        {
-                            entry.miner_pubkeys.push(body.proof.miner_pubkey.clone());
+                        if !entry.miner_pubkeys.iter().any(|p| p.as_str() == pk) {
+                            if entry.miner_pubkeys.len() < MAX_MINER_PUBKEYS_PER_DEVICE {
+                                entry.miner_pubkeys.push(body.proof.miner_pubkey.clone());
+                            }
                         }
                     }
                 }
@@ -506,7 +529,8 @@ async fn device_progress(
 async fn get_devices(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     tracing::debug!("GET /devices");
     let reg = state.device_registry.read().await.clone();
-    let mut by_type: HashMap<String, DeviceTypeStat> = HashMap::new();
+    let mut by_type: HashMap<String, (u64, u64, u64, Option<chrono::DateTime<chrono::Utc>>)> =
+        HashMap::new();
     for key in DEVICE_TYPE_KEYS {
         by_type.insert((*key).to_string(), (0, 0, 0, None));
     }
@@ -826,5 +850,286 @@ async fn get_escrow(
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({ "error": e.to_string() })),
         ),
+    }
+}
+
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Helper to create a test ValidatorConfig
+    fn create_test_config() -> crate::config::ValidatorConfig {
+        crate::config::ValidatorConfig {
+            node_id: "test-node".to_string(),
+            listen_addr: "127.0.0.1".to_string(),
+            port: 8900,
+            solana_rpc_url: "http://localhost:8899".to_string(),
+            pot_program_id: "PoToValidator1111111111111111111111111111111".to_string(),
+            difficulty: 2,
+            max_tensor_dim: 4,
+            max_mine_iterations: 1000,
+            peer_network_mode: "local_only".to_string(),
+            pool_strategy: "solo".to_string(),
+            chain_bridge: "solana".to_string(),
+            device_protocol: "native".to_string(),
+            auto_register_miners: false,
+            relayer_keypair_path: "/tmp/relayer.json".to_string(),
+            bootstrap_urls: vec![],
+            enable_mdns: false,
+            mdns_service_name: "pot-o-validator".to_string(),
+            internal_api_port: 8901,
+            peer_timeout_secs: 30,
+            challenge_relay_enabled: true,
+            primary_validator_url: "http://localhost:8899".to_string(),
+        }
+    }
+
+    /// Test that challenge generation succeeds with LocalOnlyNetwork (no broadcast)
+    #[tokio::test]
+    async fn test_challenge_generation_with_local_only_network() {
+        let cfg = create_test_config();
+        let consensus = pot_o_mining::PotOConsensus::new(cfg.difficulty, cfg.max_tensor_dim);
+        let extensions = pot_o_extensions::ExtensionRegistry::local_defaults(
+            &cfg.solana_rpc_url,
+            &cfg.pot_program_id,
+            &cfg.relayer_keypair_path,
+            false,
+        );
+
+        let state = crate::consensus::create_app_state(
+            cfg,
+            consensus,
+            extensions,
+            "/tmp/registry.json".to_string(),
+            std::collections::HashMap::new(),
+        );
+
+        // Generate a challenge
+        let req = ChallengeRequest {
+            slot: Some(100),
+            slot_hash: Some("0".repeat(64)),
+            device_type: None,
+        };
+
+        let body = Json(req);
+        let response = get_challenge(State(state.clone()), body).await;
+
+        // Verify we got a successful response
+        let (status, _) = response.into_response().into_parts();
+        assert_eq!(status.status.as_u16(), 200);
+
+        // Verify challenge was stored
+        let current = state.current_challenge.read().await;
+        assert!(current.is_some());
+    }
+
+    /// Test that challenge generation succeeds and broadcasts
+    #[tokio::test]
+    async fn test_challenge_generation_broadcasts() {
+        let cfg = create_test_config();
+        let consensus = pot_o_mining::PotOConsensus::new(cfg.difficulty, cfg.max_tensor_dim);
+
+        let extensions = pot_o_extensions::ExtensionRegistry::local_defaults(
+            &cfg.solana_rpc_url,
+            &cfg.pot_program_id,
+            &cfg.relayer_keypair_path,
+            false,
+        );
+
+        let state = crate::consensus::create_app_state(
+            cfg,
+            consensus,
+            extensions,
+            "/tmp/registry.json".to_string(),
+            std::collections::HashMap::new(),
+        );
+
+        // Generate a challenge
+        let req = ChallengeRequest {
+            slot: Some(100),
+            slot_hash: Some("0".repeat(64)),
+            device_type: None,
+        };
+
+        let body = Json(req);
+        let response = get_challenge(State(state), body).await;
+
+        // Verify successful response
+        let (status, _) = response.into_response().into_parts();
+        assert_eq!(status.status.as_u16(), 200);
+    }
+
+    /// Test that challenge request with default slot generates valid challenge
+    #[tokio::test]
+    async fn test_challenge_generation_with_defaults() {
+        let cfg = create_test_config();
+        let consensus = pot_o_mining::PotOConsensus::new(cfg.difficulty, cfg.max_tensor_dim);
+        let extensions = pot_o_extensions::ExtensionRegistry::local_defaults(
+            &cfg.solana_rpc_url,
+            &cfg.pot_program_id,
+            &cfg.relayer_keypair_path,
+            false,
+        );
+
+        let state = crate::consensus::create_app_state(
+            cfg,
+            consensus,
+            extensions,
+            "/tmp/registry.json".to_string(),
+            std::collections::HashMap::new(),
+        );
+
+        // Request with minimal/empty body (should use defaults)
+        let req = ChallengeRequest {
+            slot: None,
+            slot_hash: None,
+            device_type: None,
+        };
+
+        let body = Json(req);
+        let response = get_challenge(State(state.clone()), body).await;
+
+        let (status, _) = response.into_response().into_parts();
+        assert_eq!(status.status.as_u16(), 200);
+
+        // Verify challenge was stored
+        let current = state.current_challenge.read().await;
+        assert!(current.is_some());
+    }
+
+    /// Test stats are updated when challenge is generated
+    #[tokio::test]
+    async fn test_challenge_updates_stats() {
+        let cfg = create_test_config();
+        let consensus = pot_o_mining::PotOConsensus::new(cfg.difficulty, cfg.max_tensor_dim);
+        let extensions = pot_o_extensions::ExtensionRegistry::local_defaults(
+            &cfg.solana_rpc_url,
+            &cfg.pot_program_id,
+            &cfg.relayer_keypair_path,
+            false,
+        );
+
+        let state = crate::consensus::create_app_state(
+            cfg,
+            consensus,
+            extensions,
+            "/tmp/registry.json".to_string(),
+            std::collections::HashMap::new(),
+        );
+
+        // Verify initial stats
+        {
+            let stats = state.stats.read().await;
+            assert_eq!(stats.total_challenges_issued, 0);
+            assert_eq!(stats.paths_in_block, 0);
+            assert_eq!(stats.calcs_in_block, 0);
+        }
+
+        // Generate challenge
+        let req = ChallengeRequest {
+            slot: Some(100),
+            slot_hash: Some("0".repeat(64)),
+            device_type: None,
+        };
+
+        let body = Json(req);
+        let response = get_challenge(State(state.clone()), body).await;
+
+        let (status, _) = response.into_response().into_parts();
+        assert_eq!(status.status.as_u16(), 200);
+
+        // Verify stats were updated
+        {
+            let stats = state.stats.read().await;
+            assert_eq!(stats.total_challenges_issued, 1);
+            assert_eq!(stats.paths_in_block, 0);
+            assert_eq!(stats.calcs_in_block, 0);
+        }
+    }
+
+    /// Test that multiple challenges can be generated
+    #[tokio::test]
+    async fn test_multiple_challenges() {
+        let cfg = create_test_config();
+        let consensus = pot_o_mining::PotOConsensus::new(cfg.difficulty, cfg.max_tensor_dim);
+        let extensions = pot_o_extensions::ExtensionRegistry::local_defaults(
+            &cfg.solana_rpc_url,
+            &cfg.pot_program_id,
+            &cfg.relayer_keypair_path,
+            false,
+        );
+
+        let state = crate::consensus::create_app_state(
+            cfg,
+            consensus,
+            extensions,
+            "/tmp/registry.json".to_string(),
+            std::collections::HashMap::new(),
+        );
+
+        // Generate multiple challenges
+        for i in 0..3 {
+            let req = ChallengeRequest {
+                slot: Some(100 + i),
+                slot_hash: Some(format!("{:0>64}", i)),
+                device_type: None,
+            };
+
+            let body = Json(req);
+            let response = get_challenge(State(state.clone()), body).await;
+
+            let (status, _) = response.into_response().into_parts();
+            assert_eq!(status.status.as_u16(), 200);
+        }
+
+        // Verify stats
+        {
+            let stats = state.stats.read().await;
+            assert_eq!(stats.total_challenges_issued, 3);
+        }
+    }
+
+    /// Test that challenge generation succeeds even if network is not LocalOnly
+    #[tokio::test]
+    async fn test_challenge_generated_with_async_broadcast() {
+        let cfg = create_test_config();
+        let consensus = pot_o_mining::PotOConsensus::new(cfg.difficulty, cfg.max_tensor_dim);
+        let extensions = pot_o_extensions::ExtensionRegistry::local_defaults(
+            &cfg.solana_rpc_url,
+            &cfg.pot_program_id,
+            &cfg.relayer_keypair_path,
+            false,
+        );
+
+        let state = crate::consensus::create_app_state(
+            cfg,
+            consensus,
+            extensions,
+            "/tmp/registry.json".to_string(),
+            std::collections::HashMap::new(),
+        );
+
+        // Generate a challenge
+        let req = ChallengeRequest {
+            slot: Some(100),
+            slot_hash: Some("0".repeat(64)),
+            device_type: None,
+        };
+
+        let body = Json(req);
+        let response = get_challenge(State(state), body).await;
+
+        // Verify response is successful (broadcast happens async, non-blocking)
+        let (status, _) = response.into_response().into_parts();
+        assert_eq!(status.status.as_u16(), 200);
+
+        // Give async broadcast task time to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     }
 }

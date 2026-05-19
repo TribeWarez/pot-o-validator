@@ -3,6 +3,9 @@
 //! Use this crate when building tooling or tests that need the same types as the validator binary.
 
 pub mod config;
+pub mod consensus;
+pub mod device_registry;
+pub mod http_api;
 pub mod internal_api;
 
 pub use ai3_lib::*;
