@@ -50,10 +50,6 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             get(get_user_vault),
         )
          .route("/vault/escrow/:depositor/:beneficiary", get(get_escrow))
-         // Hexchain API aliases (for compatibility with status.rpc.gateway.tribewarez.com)
-         .route("/hexchain/status", get(status))
-         .route("/hexchain/challenge", post(get_challenge))
-         .route("/hexchain/submit", post(submit_proof))
          .with_state(state)
 }
 
