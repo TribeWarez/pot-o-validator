@@ -7,6 +7,7 @@ pub mod consensus;
 pub mod device_registry;
 pub mod http_api;
 pub mod internal_api;
+pub mod pool_coordinator;
 
 pub use ai3_lib::*;
 pub use pot_o_core::*;

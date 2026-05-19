@@ -54,6 +54,7 @@ anyhow = "1.0"
 thiserror = "1.0"
 solana-client = "1.18"
 solana-sdk = "1.18"
+reqwest = { version = "0.11", features = ["json"] }
 
 [dev-dependencies]
 tempfile = "3.8"
