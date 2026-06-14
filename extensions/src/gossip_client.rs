@@ -2,8 +2,8 @@
 
 use serde_json;
 use std::sync::Arc;
-use tokio::sync::RwLock;
 use std::time::Duration;
+use tokio::sync::RwLock;
 
 /// Async HTTP-based gossip client for broadcasting challenges to peers.
 pub struct GossipClient {
@@ -48,7 +48,7 @@ impl GossipClient {
         for peer_url in peers {
             let result = self
                 .client
-                .post(&format!("{}/challenge", peer_url))
+                .post(format!("{}/challenge", peer_url))
                 .timeout(self.timeout)
                 .json(&serde_json::json!({
                     "challenge_id": challenge_id,
@@ -78,7 +78,7 @@ impl GossipClient {
     ) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
         let response = self
             .client
-            .get(&format!("{}/challenge", peer_url))
+            .get(format!("{}/challenge", peer_url))
             .timeout(self.timeout)
             .send()
             .await?;
@@ -100,7 +100,7 @@ impl GossipClient {
         node_id: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
         self.client
-            .post(&format!("{}/register", peer_url))
+            .post(format!("{}/register", peer_url))
             .timeout(self.timeout)
             .json(&serde_json::json!({
                 "node_id": node_id,
@@ -119,7 +119,7 @@ impl GossipClient {
     pub async fn health_check(&self, peer_url: &str) -> bool {
         let result = self
             .client
-            .get(&format!("{}/health", peer_url))
+            .get(format!("{}/health", peer_url))
             .timeout(self.timeout)
             .send()
             .await;
@@ -167,7 +167,7 @@ mod tests {
     async fn test_broadcast_challenge_counts_successful_peers() {
         let mut server = mockito::Server::new_async().await;
         let peer1_url = server.url();
-        
+
         // Mock successful response for peer1
         let _m = server
             .mock("POST", "/challenge")
@@ -181,8 +181,10 @@ mod tests {
         let challenge_id = "test-challenge-123";
         let challenge_json = json!({"difficulty": 100, "nonce": 42});
 
-        let result = gossip.broadcast_challenge(challenge_id, &challenge_json).await;
-        
+        let result = gossip
+            .broadcast_challenge(challenge_id, &challenge_json)
+            .await;
+
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), 1);
     }
@@ -191,7 +193,7 @@ mod tests {
     async fn test_broadcast_challenge_handles_partial_failures() {
         let mut server1 = mockito::Server::new_async().await;
         let mut server2 = mockito::Server::new_async().await;
-        
+
         let peer1_url = server1.url();
         let peer2_url = server2.url();
 
@@ -215,8 +217,10 @@ mod tests {
         let challenge_id = "test-challenge";
         let challenge_json = json!({"difficulty": 100});
 
-        let result = gossip.broadcast_challenge(challenge_id, &challenge_json).await;
-        
+        let result = gossip
+            .broadcast_challenge(challenge_id, &challenge_json)
+            .await;
+
         // Should succeed with count of successful peers
         assert!(result.is_ok());
         // Only 1 peer succeeded
@@ -268,7 +272,9 @@ mod tests {
             .await;
 
         let gossip = GossipClient::new(vec![], 5);
-        let result = gossip.register_peer(&peer_url, "http://our-node", "node-123").await;
+        let result = gossip
+            .register_peer(&peer_url, "http://our-node", "node-123")
+            .await;
 
         assert!(result.is_ok());
     }
@@ -295,7 +301,7 @@ mod tests {
     #[tokio::test]
     async fn test_health_check_returns_false_for_unreachable_peer() {
         let gossip = GossipClient::new(vec![], 1); // 1 second timeout
-        
+
         // Try to reach a non-existent peer (should timeout/fail)
         let result = gossip.health_check("http://127.0.0.1:1").await;
 
@@ -351,15 +357,14 @@ mod tests {
             .create_async()
             .await;
 
-        let gossip = GossipClient::new(
-            vec![peer1_url, peer2_url, peer3_url],
-            5,
-        );
+        let gossip = GossipClient::new(vec![peer1_url, peer2_url, peer3_url], 5);
 
         let challenge_id = "test-ch";
         let challenge_json = json!({"difficulty": 100});
 
-        let result = gossip.broadcast_challenge(challenge_id, &challenge_json).await;
+        let result = gossip
+            .broadcast_challenge(challenge_id, &challenge_json)
+            .await;
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), 3);

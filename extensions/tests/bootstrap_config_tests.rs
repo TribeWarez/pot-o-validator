@@ -13,6 +13,8 @@ fn test_registry_from_config_defaults_to_local_solo() {
         false,
         "local_only", // peer_network_mode
         "solo",       // pool_strategy
+        "",
+        None,
     );
 
     // Verify the network is LocalOnlyNetwork
@@ -37,6 +39,8 @@ fn test_registry_from_config_vpn_mesh_network() {
         false,
         "vpn_mesh", // peer_network_mode
         "solo",     // pool_strategy
+        "",
+        None,
     );
 
     // Verify the network can be used (should be VpnMeshNetwork)
@@ -57,6 +61,8 @@ fn test_registry_from_config_proportional_pool() {
         false,
         "local_only",   // peer_network_mode
         "proportional", // pool_strategy
+        "",
+        None,
     );
 
     // Verify the pool is ProportionalPool by checking pool_info
@@ -74,6 +80,8 @@ fn test_registry_from_config_pplns_pool() {
         false,
         "local_only", // peer_network_mode
         "pplns",      // pool_strategy
+        "",
+        None,
     );
 
     // Verify the pool is PPLNSPool by checking pool_info
@@ -91,6 +99,8 @@ fn test_registry_from_config_unknown_network_defaults_to_local_only() {
         false,
         "unknown_network", // peer_network_mode (invalid)
         "solo",            // pool_strategy
+        "",
+        None,
     );
 
     // Should fall back to LocalOnlyNetwork
@@ -108,6 +118,8 @@ fn test_registry_from_config_unknown_pool_defaults_to_solo() {
         false,
         "local_only",       // peer_network_mode
         "unknown_strategy", // pool_strategy (invalid)
+        "",
+        None,
     );
 
     // Should fall back to SoloStrategy

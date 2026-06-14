@@ -8,7 +8,7 @@ fn test_build_registry_from_config_respects_network_mode() {
     // Simulates what build_extension_registry does
     let network_mode = "vpn_mesh";
     let pool_strategy = "solo";
-    
+
     let registry = ExtensionRegistry::from_config(
         "https://api.devnet.solana.com",
         "11111111111111111111111111111111",
@@ -16,6 +16,8 @@ fn test_build_registry_from_config_respects_network_mode() {
         false,
         network_mode,
         pool_strategy,
+        "",
+        None,
     );
 
     // Verify VpnMeshNetwork is used
@@ -28,7 +30,7 @@ fn test_build_registry_from_config_respects_pool_strategy() {
     // Simulates what build_extension_registry does
     let network_mode = "local_only";
     let pool_strategy = "proportional";
-    
+
     let registry = ExtensionRegistry::from_config(
         "https://api.devnet.solana.com",
         "11111111111111111111111111111111",
@@ -36,6 +38,8 @@ fn test_build_registry_from_config_respects_pool_strategy() {
         false,
         network_mode,
         pool_strategy,
+        "",
+        None,
     );
 
     // Verify ProportionalPool is used
@@ -53,14 +57,16 @@ fn test_config_defaults_preserve_backward_compatibility() {
         "11111111111111111111111111111111",
         "/path/to/keypair.json",
         false,
-        "local_only",  // Default from config.rs
-        "solo",        // Default from config.rs
+        "local_only", // Default from config.rs
+        "solo",       // Default from config.rs
+        "",
+        None,
     );
 
     // Should work like the old local_defaults() function
     let network_node_id = registry.network.node_id();
     assert!(!network_node_id.is_empty());
-    
+
     let pool_info = registry.pool.pool_info(0, 0);
     assert_eq!(pool_info.pool_type, "solo");
 }

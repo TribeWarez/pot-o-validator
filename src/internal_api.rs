@@ -67,10 +67,7 @@ pub struct ApiResponse {
 /// Builds the Axum router for internal API endpoints.
 pub fn internal_router(state: InternalApiState) -> Router {
     Router::new()
-        .route(
-            "/internal/peer/register",
-            post(handle_peer_register),
-        )
+        .route("/internal/peer/register", post(handle_peer_register))
         .route("/internal/peers", get(handle_list_peers))
         .route(
             "/internal/challenge/broadcast",
@@ -86,7 +83,11 @@ async fn handle_peer_register(
     Json(req): Json<RegisterPeerRequest>,
 ) -> impl IntoResponse {
     if req.node_id.is_empty() || req.url.is_empty() {
-        return (StatusCode::BAD_REQUEST, Json(json!({"error": "node_id and url are required"}))).into_response();
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "node_id and url are required"})),
+        )
+            .into_response();
     }
 
     let peer_info = PeerInfo {
@@ -116,9 +117,7 @@ async fn handle_peer_register(
 
 /// Handler: GET /internal/peers
 /// Returns a list of all known peers in JSON format.
-async fn handle_list_peers(
-    State(state): State<InternalApiState>,
-) -> impl IntoResponse {
+async fn handle_list_peers(State(state): State<InternalApiState>) -> impl IntoResponse {
     let peers = state.peers.read().await.clone();
     (StatusCode::OK, Json(peers)).into_response()
 }

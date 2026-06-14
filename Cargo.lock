@@ -2921,6 +2921,7 @@ dependencies = [
  "sha2 0.10.9",
  "solana-client",
  "solana-sdk",
+ "tempfile",
  "tokio",
  "tracing",
  "uuid",

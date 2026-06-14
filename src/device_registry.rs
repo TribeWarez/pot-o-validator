@@ -2,7 +2,6 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use tokio::sync::RwLock;
 
 use crate::config::ValidatorConfig;
 
@@ -36,6 +35,7 @@ pub struct RegisteredDevice {
 pub type DeviceRegistry = HashMap<String, RegisteredDevice>;
 
 /// Logical interface for device registry persistence and queries.
+#[allow(dead_code)]
 pub trait DeviceStore: Send + Sync {
     fn load(&self) -> DeviceRegistry;
     fn persist(&self, registry: &DeviceRegistry);
@@ -101,6 +101,7 @@ pub fn spawn_persist_registry(reg: DeviceRegistry, path: String) {
 }
 
 /// Simple JSON-on-disk implementation of `DeviceStore` backed by a single file.
+#[allow(dead_code)]
 pub struct JsonFileDeviceStore {
     path: String,
     node_id: String,
@@ -108,6 +109,7 @@ pub struct JsonFileDeviceStore {
 
 impl JsonFileDeviceStore {
     /// Creates a store that uses the given path and node_id from config.
+    #[allow(dead_code)]
     pub fn new_from_config(cfg: &ValidatorConfig, path: String) -> Self {
         Self {
             path,

@@ -10,6 +10,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use pot_o_core::TokenType;
 use pot_o_extensions::DefiClient;
 use pot_o_mining::{PotOProof, ProofPayload};
 use serde::Deserialize;
@@ -34,6 +35,13 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/devices/progress", post(device_progress))
         .route("/devices", get(get_devices))
         .route("/network/peers", get(get_peers))
+        // Token ledger
+        .route(
+            "/token/balance/{address}/{token_type}",
+            get(get_token_balance),
+        )
+        .route("/token/transfer", post(post_token_transfer))
+        .route("/token/tx/{address}", get(get_token_tx_history))
         // Staking (tribewarez-staking)
         .route("/staking/pool/:token_mint", get(get_staking_pool))
         .route(
@@ -49,8 +57,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/vault/vault/:treasury_pubkey/:user_pubkey",
             get(get_user_vault),
         )
-         .route("/vault/escrow/:depositor/:beneficiary", get(get_escrow))
-         .with_state(state)
+        .route("/vault/escrow/:depositor/:beneficiary", get(get_escrow))
+        .with_state(state)
 }
 
 // ---------------------------------------------------------------------------
@@ -158,7 +166,12 @@ async fn get_challenge(
             let challenge_clone = challenge.clone();
             let state_clone = state.clone();
             tokio::spawn(async move {
-                match state_clone.extensions.network.broadcast_challenge(&challenge_clone).await {
+                match state_clone
+                    .extensions
+                    .network
+                    .broadcast_challenge(&challenge_clone)
+                    .await
+                {
                     Ok(()) => {
                         tracing::debug!(
                             challenge_id = %challenge_clone.id,
@@ -254,10 +267,10 @@ async fn submit_proof(
                     if body.device_id.is_some() {
                         entry.device_type = device_type_normalized;
                         let pk = body.proof.miner_pubkey.as_str();
-                        if !entry.miner_pubkeys.iter().any(|p| p.as_str() == pk) {
-                            if entry.miner_pubkeys.len() < MAX_MINER_PUBKEYS_PER_DEVICE {
-                                entry.miner_pubkeys.push(body.proof.miner_pubkey.clone());
-                            }
+                        if !entry.miner_pubkeys.iter().any(|p| p.as_str() == pk)
+                            && entry.miner_pubkeys.len() < MAX_MINER_PUBKEYS_PER_DEVICE
+                        {
+                            entry.miner_pubkeys.push(body.proof.miner_pubkey.clone());
                         }
                     }
                 }
@@ -522,6 +535,7 @@ async fn device_progress(
     )
 }
 
+#[allow(clippy::type_complexity)]
 async fn get_devices(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     tracing::debug!("GET /devices");
     let reg = state.device_registry.read().await.clone();
@@ -850,6 +864,120 @@ async fn get_escrow(
 }
 
 // ---------------------------------------------------------------------------
+// Token ledger handlers
+// ---------------------------------------------------------------------------
+
+async fn get_token_balance(
+    State(state): State<Arc<AppState>>,
+    Path((address, token_type_str)): Path<(String, String)>,
+) -> impl IntoResponse {
+    tracing::debug!(address = %address, token = %token_type_str, "GET /token/balance");
+
+    let token = match token_type_from_str(&token_type_str) {
+        Some(t) => t,
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(
+                    serde_json::json!({ "error": format!("Unknown token type: {}", token_type_str) }),
+                ),
+            );
+        }
+    };
+
+    let balance = state
+        .extensions
+        .ledger
+        .read()
+        .await
+        .balance_of(&address, &token);
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "address": address,
+            "token": token_type_str,
+            "balance": balance,
+        })),
+    )
+}
+
+#[derive(Debug, Deserialize)]
+struct TransferRequest {
+    from: String,
+    to: String,
+    token_type: String,
+    amount: u64,
+    fee: u64,
+}
+
+async fn post_token_transfer(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<TransferRequest>,
+) -> impl IntoResponse {
+    tracing::debug!(
+        from = %body.from, to = %body.to,
+        token = %body.token_type, amount = body.amount, fee = body.fee,
+        "POST /token/transfer"
+    );
+
+    let token = match token_type_from_str(&body.token_type) {
+        Some(t) => t,
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(
+                    serde_json::json!({ "error": format!("Unknown token type: {}", body.token_type) }),
+                ),
+            );
+        }
+    };
+
+    let receipt = {
+        let mut ledger = state.extensions.ledger.write().await;
+        ledger.transfer(&body.from, &body.to, &token, body.amount, body.fee)
+    };
+
+    match receipt {
+        Ok(r) => (StatusCode::OK, Json(serde_json::to_value(&r).unwrap())),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": e })),
+        ),
+    }
+}
+
+async fn get_token_tx_history(
+    State(state): State<Arc<AppState>>,
+    Path(address): Path<String>,
+) -> impl IntoResponse {
+    tracing::debug!(address = %address, "GET /token/tx");
+
+    let txs = state
+        .extensions
+        .ledger
+        .read()
+        .await
+        .tx_history_for(&address);
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({ "address": address, "transactions": txs })),
+    )
+}
+
+/// Parse a token type string (case-insensitive) into a `TokenType`.
+fn token_type_from_str(s: &str) -> Option<TokenType> {
+    match s.to_lowercase().as_str() {
+        "tribechain" | "native" => Some(TokenType::TribeChain),
+        "pttc" => Some(TokenType::PTtC),
+        "nmtc" => Some(TokenType::NMTC),
+        "stomp" => Some(TokenType::STOMP),
+        "aum" => Some(TokenType::AUM),
+        "ai3" => Some(TokenType::AI3),
+        _ => None,
+    }
+}
+
+// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -886,7 +1014,9 @@ mod tests {
             maturity_depth: 10,
             symmetry_num: 1,
             symmetry_den: 1,
-            base_target: "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff".to_string(),
+            base_target: "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                .to_string(),
+            protocol_fee_address: String::new(),
         }
     }
 

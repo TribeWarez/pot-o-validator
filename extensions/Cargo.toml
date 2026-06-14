@@ -34,4 +34,6 @@ mdns-sd = "0.7"
 flume = "0.10"
 
 [dev-dependencies]
+chrono = { version = "0.4", features = ["serde"] }
 mockito = "1.2"
+tempfile = "3.8"

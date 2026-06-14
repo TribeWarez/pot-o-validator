@@ -2,6 +2,7 @@
 //!
 //! Validates extension types and trait implementations
 
+use chrono::Utc;
 use pot_o_extensions::{
     ChainBridge, DefiClient, DeviceProtocol, DeviceStatus, DeviceType, Ed25519Authority,
     ExtensionRegistry, LocalOnlyNetwork, NativeDevice, PeerNetwork, PoolStrategy, ProofAuthority,
@@ -11,21 +12,37 @@ use pot_o_extensions::{
 #[test]
 fn test_device_type_variants() {
     let types = vec![
-        DeviceType::NativeX86_64,
+        DeviceType::Native,
         DeviceType::ESP32S,
         DeviceType::ESP8266,
         DeviceType::WASM,
+        DeviceType::Custom,
     ];
 
-    assert_eq!(types.len(), 4);
+    assert_eq!(types.len(), 5);
 }
 
 #[test]
 fn test_device_status_variants() {
     let statuses = vec![
-        DeviceStatus::Idle,
-        DeviceStatus::Mining,
-        DeviceStatus::Disconnected,
+        DeviceStatus {
+            device_type: DeviceType::Native,
+            online: true,
+            uptime_secs: 0,
+            last_heartbeat: Utc::now(),
+        },
+        DeviceStatus {
+            device_type: DeviceType::Native,
+            online: false,
+            uptime_secs: 0,
+            last_heartbeat: Utc::now(),
+        },
+        DeviceStatus {
+            device_type: DeviceType::ESP32S,
+            online: true,
+            uptime_secs: 3600,
+            last_heartbeat: Utc::now(),
+        },
     ];
 
     assert_eq!(statuses.len(), 3);
@@ -164,28 +181,43 @@ fn test_extension_registry_has_auth() {
 
 #[test]
 fn test_native_device_type() {
-    let device_type = DeviceType::NativeX86_64;
+    let device_type = DeviceType::Native;
 
     // Device type should be usable
     let _: DeviceType = device_type;
 }
 
 #[test]
-fn test_device_status_idle() {
-    let status = DeviceStatus::Idle;
-    let _ = &status;
+fn test_device_status_online() {
+    let status = DeviceStatus {
+        device_type: DeviceType::Native,
+        online: true,
+        uptime_secs: 0,
+        last_heartbeat: Utc::now(),
+    };
+    assert!(status.online);
 }
 
 #[test]
-fn test_device_status_mining() {
-    let status = DeviceStatus::Mining;
-    let _ = &status;
+fn test_device_status_offline() {
+    let status = DeviceStatus {
+        device_type: DeviceType::ESP32S,
+        online: false,
+        uptime_secs: 0,
+        last_heartbeat: Utc::now(),
+    };
+    assert!(!status.online);
 }
 
 #[test]
-fn test_device_status_disconnected() {
-    let status = DeviceStatus::Disconnected;
-    let _ = &status;
+fn test_device_status_custom_device_type() {
+    let status = DeviceStatus {
+        device_type: DeviceType::Custom,
+        online: true,
+        uptime_secs: 0,
+        last_heartbeat: Utc::now(),
+    };
+    assert_eq!(status.device_type, DeviceType::Custom);
 }
 
 #[test]

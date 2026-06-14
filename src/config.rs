@@ -28,6 +28,7 @@ pub struct ValidatorConfig {
     pub max_tensor_dim: usize,
     /// Max iterations per mining attempt.
     #[serde(default = "default_max_mine_iterations")]
+    #[allow(dead_code)]
     pub max_mine_iterations: u64,
     /// Peer network mode (e.g. local_only).
     #[serde(default = "default_peer_network_mode")]
@@ -80,6 +81,9 @@ pub struct ValidatorConfig {
     /// Base target for hexchain consensus (hex-encoded 32 bytes, default: all 0xFF).
     #[serde(default = "default_base_target")]
     pub base_target: String,
+    /// Address that collects protocol fees from token transfers (default: empty = no fee).
+    #[serde(default)]
+    pub protocol_fee_address: String,
 }
 
 fn default_node_id() -> String {
@@ -155,6 +159,9 @@ fn default_symmetry_den() -> u64 {
 fn default_base_target() -> String {
     "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff".into()
 }
+fn default_protocol_fee_address() -> String {
+    String::new()
+}
 
 impl ValidatorConfig {
     /// Load config from TOML file, then override with env vars.
@@ -167,7 +174,7 @@ impl ValidatorConfig {
                     .ok()
                     .and_then(|s| toml::from_str(&s).ok())
             })
-            .unwrap_or_else(|| Self::defaults());
+            .unwrap_or_else(Self::defaults);
 
         // Env overrides
         if let Ok(v) = std::env::var("SOLANA_RPC_URL") {
@@ -247,6 +254,9 @@ impl ValidatorConfig {
         if let Ok(v) = std::env::var("BASE_TARGET") {
             cfg.base_target = v;
         }
+        if let Ok(v) = std::env::var("PROTOCOL_FEE_ADDRESS") {
+            cfg.protocol_fee_address = v;
+        }
 
         cfg
     }
@@ -278,6 +288,7 @@ impl ValidatorConfig {
             symmetry_num: default_symmetry_num(),
             symmetry_den: default_symmetry_den(),
             base_target: default_base_target(),
+            protocol_fee_address: default_protocol_fee_address(),
         }
     }
 }

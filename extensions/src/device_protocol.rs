@@ -1,7 +1,6 @@
 //! Device protocol abstraction: native, ESP32-S, ESP8266, and WASM device types and status.
 
 use pot_o_core::TribeResult;
-use pot_o_mining::PotOProof;
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;

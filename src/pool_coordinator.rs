@@ -6,7 +6,7 @@
 
 use pot_o_core::{TribeError, TribeResult};
 use pot_o_extensions::pool_strategy::ProofRecord;
-use std::time::{SystemTime, Duration};
+use std::time::{Duration, SystemTime};
 
 // ---------------------------------------------------------------------------
 // PoolCoordinator Struct
@@ -154,9 +154,7 @@ impl PoolCoordinator {
             || self
                 .primary_validator_url
                 .as_ref()
-                .map_or(false, |url| {
-                    url.contains("localhost") || url.contains("127.0.0.1")
-                })
+                .is_some_and(|url| url.contains("localhost") || url.contains("127.0.0.1"))
     }
 
     /// Submit a batch of proofs for on-chain processing.
@@ -183,9 +181,7 @@ impl PoolCoordinator {
 
         // Otherwise relay to primary validator
         if let Some(ref primary_url) = self.primary_validator_url {
-            return self
-                .submit_batch_to_url(primary_url, &batch)
-                .await;
+            return self.submit_batch_to_url(primary_url, &batch).await;
         }
 
         Err(TribeError::NetworkError(
@@ -208,12 +204,10 @@ impl PoolCoordinator {
     /// Sort proofs deterministically by (miner_pubkey, timestamp).
     ///
     /// Ensures all validators produce same batch order for consistency.
-    fn sort_proofs_deterministically(&self, proofs: &mut Vec<ProofRecord>) {
-        proofs.sort_by(|a, b| {
-            match a.miner_pubkey.cmp(&b.miner_pubkey) {
-                std::cmp::Ordering::Equal => a.timestamp.cmp(&b.timestamp),
-                other => other,
-            }
+    fn sort_proofs_deterministically(&self, proofs: &mut [ProofRecord]) {
+        proofs.sort_by(|a, b| match a.miner_pubkey.cmp(&b.miner_pubkey) {
+            std::cmp::Ordering::Equal => a.timestamp.cmp(&b.timestamp),
+            other => other,
         });
     }
 
@@ -247,16 +241,14 @@ impl PoolCoordinator {
         });
 
         // Submit to primary validator
-        let url = format!("{}/api/pool/submit-batch", primary_url.trim_end_matches('/'));
+        let url = format!(
+            "{}/api/pool/submit-batch",
+            primary_url.trim_end_matches('/')
+        );
 
-        let response = client
-            .post(&url)
-            .json(&payload)
-            .send()
-            .await
-            .map_err(|e| {
-                TribeError::NetworkError(format!("failed to submit batch to primary: {}", e))
-            })?;
+        let response = client.post(&url).json(&payload).send().await.map_err(|e| {
+            TribeError::NetworkError(format!("failed to submit batch to primary: {}", e))
+        })?;
 
         if !response.status().is_success() {
             return Err(TribeError::NetworkError(format!(
@@ -268,17 +260,13 @@ impl PoolCoordinator {
         let resp_body: serde_json::Value = response
             .json()
             .await
-            .map_err(|e| {
-                TribeError::NetworkError(format!("failed to parse response: {}", e))
-            })?;
+            .map_err(|e| TribeError::NetworkError(format!("failed to parse response: {}", e)))?;
 
         resp_body
             .get("submission_id")
             .and_then(|id| id.as_str())
             .map(|id| id.to_string())
-            .ok_or_else(|| {
-                TribeError::NetworkError("no submission_id in response".to_string())
-            })
+            .ok_or_else(|| TribeError::NetworkError("no submission_id in response".to_string()))
     }
 }
 
@@ -474,7 +462,9 @@ mod tests {
         let mut coordinator = create_coordinator("solo", None).unwrap();
         assert!(coordinator.batch_start_time.is_none());
 
-        coordinator.add_proof(create_proof("miner1", Utc::now())).unwrap();
+        coordinator
+            .add_proof(create_proof("miner1", Utc::now()))
+            .unwrap();
         assert!(coordinator.batch_start_time.is_some());
     }
 
@@ -483,10 +473,14 @@ mod tests {
         let mut coordinator = create_coordinator("solo", None).unwrap();
         let first_time = Utc::now();
 
-        coordinator.add_proof(create_proof("miner1", first_time)).unwrap();
+        coordinator
+            .add_proof(create_proof("miner1", first_time))
+            .unwrap();
         let first_batch_time = coordinator.batch_start_time;
 
-        coordinator.add_proof(create_proof("miner2", Utc::now())).unwrap();
+        coordinator
+            .add_proof(create_proof("miner2", Utc::now()))
+            .unwrap();
         let second_batch_time = coordinator.batch_start_time;
 
         // Should be same start time
@@ -519,8 +513,8 @@ mod tests {
 
     #[test]
     fn test_is_primary_validator_remote_url() {
-        let coordinator = create_coordinator("solo", Some("http://primary.cluster:8900".to_string()))
-            .unwrap();
+        let coordinator =
+            create_coordinator("solo", Some("http://primary.cluster:8900".to_string())).unwrap();
         assert!(!coordinator.is_primary_validator());
     }
 
@@ -656,11 +650,8 @@ mod tests {
 
     #[test]
     fn test_full_workflow_secondary() {
-        let mut coordinator = create_coordinator(
-            "pplns",
-            Some("http://primary.cluster:8900".to_string()),
-        )
-        .unwrap();
+        let mut coordinator =
+            create_coordinator("pplns", Some("http://primary.cluster:8900".to_string())).unwrap();
         let now = Utc::now();
 
         assert!(!coordinator.is_primary_validator());

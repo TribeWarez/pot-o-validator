@@ -28,6 +28,9 @@ challenge_relay_enabled = true
 # Pool and validator configuration
 primary_validator_url = "http://validator-1.tribewarez.com:8899"
 
+# Token ledger
+protocol_fee_address = ""
+
 # Hexchain consensus parameters
 maturity_depth = 10
 symmetry_num = 1

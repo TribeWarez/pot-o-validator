@@ -1,13 +1,13 @@
 //! Peer network: local-only and optional VPN mesh for multi-node discovery.
 
+use super::gossip_client::GossipClient;
+use super::mdns_discovery::MdnsDiscovery;
 use async_trait::async_trait;
 use pot_o_core::TribeResult;
 use pot_o_mining::{Challenge, ProofPayload};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use super::gossip_client::GossipClient;
-use super::mdns_discovery::MdnsDiscovery;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -58,6 +58,12 @@ impl LocalOnlyNetwork {
         Self {
             node_id: uuid::Uuid::new_v4().to_string(),
         }
+    }
+}
+
+impl Default for LocalOnlyNetwork {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -256,23 +262,33 @@ impl PeerNetwork for VpnMeshNetwork {
 
     async fn broadcast_challenge(&self, challenge: &Challenge) -> TribeResult<()> {
         // Serialize challenge to JSON
-        let challenge_json = serde_json::to_value(challenge)
-            .map_err(|e| pot_o_core::TribeError::SerializationError(format!("Failed to serialize challenge: {}", e)))?;
+        let challenge_json = serde_json::to_value(challenge).map_err(|e| {
+            pot_o_core::TribeError::SerializationError(format!(
+                "Failed to serialize challenge: {}",
+                e
+            ))
+        })?;
 
         // Use gossip client to broadcast
         let _success_count = self
             .gossip_client
             .broadcast_challenge(&self.node_id, &challenge_json)
             .await
-            .map_err(|e| pot_o_core::TribeError::NetworkError(format!("Failed to broadcast challenge: {}", e)))?;
+            .map_err(|e| {
+                pot_o_core::TribeError::NetworkError(format!(
+                    "Failed to broadcast challenge: {}",
+                    e
+                ))
+            })?;
 
         Ok(())
     }
 
     async fn relay_proof(&self, proof: &ProofPayload) -> TribeResult<()> {
         // Serialize proof to JSON
-        let proof_json = serde_json::to_value(proof)
-            .map_err(|e| pot_o_core::TribeError::SerializationError(format!("Failed to serialize proof: {}", e)))?;
+        let proof_json = serde_json::to_value(proof).map_err(|e| {
+            pot_o_core::TribeError::SerializationError(format!("Failed to serialize proof: {}", e))
+        })?;
 
         // Create proof payload for sending
         let payload = serde_json::json!({
@@ -285,7 +301,7 @@ impl PeerNetwork for VpnMeshNetwork {
         for peer in peers.iter() {
             let peer_url = format!("http://{}:{}", peer.address, peer.port);
             let _result = reqwest::Client::new()
-                .post(&format!("{}/proof", peer_url))
+                .post(format!("{}/proof", peer_url))
                 .timeout(std::time::Duration::from_secs(self.peer_timeout_secs))
                 .json(&payload)
                 .send()
@@ -407,8 +423,15 @@ mod tests {
         };
 
         let node_id = "my-test-node".to_string();
-        let network = VpnMeshNetwork::new(node_id.clone(), config, vec![], false, "pot-o-validator", 30)
-            .unwrap();
+        let network = VpnMeshNetwork::new(
+            node_id.clone(),
+            config,
+            vec![],
+            false,
+            "pot-o-validator",
+            30,
+        )
+        .unwrap();
 
         assert_eq!(network.node_id(), &node_id);
     }
@@ -480,8 +503,15 @@ mod tests {
         };
 
         let node_id = "test-node-6".to_string();
-        let network = VpnMeshNetwork::new(node_id.clone(), config, vec![], false, "pot-o-validator", 30)
-            .unwrap();
+        let network = VpnMeshNetwork::new(
+            node_id.clone(),
+            config,
+            vec![],
+            false,
+            "pot-o-validator",
+            30,
+        )
+        .unwrap();
 
         // Manually set peer list including ourselves and one other peer
         {

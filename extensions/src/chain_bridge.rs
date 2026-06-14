@@ -297,6 +297,7 @@ impl ChainBridge for SolanaBridge {
         let proof_clone = proof.clone();
 
         let rpc_url_slot = rpc_url.clone();
+        #[allow(clippy::result_large_err)]
         let challenge_slot = tokio::task::spawn_blocking(move || {
             let client = RpcClient::new(&rpc_url_slot);
             client.get_slot()
@@ -338,7 +339,7 @@ impl ChainBridge for SolanaBridge {
             Pubkey::find_program_address(&[b"miner", miner_pubkey.as_ref()], &self.program_id);
 
         let rpc_url = self.rpc_url.clone();
-        let program_id = self.program_id;
+        let _program_id = self.program_id;
 
         let result = tokio::task::spawn_blocking(move || -> TribeResult<Option<MinerAccount>> {
             let client = RpcClient::new(&rpc_url);

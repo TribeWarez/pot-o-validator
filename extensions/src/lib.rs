@@ -1,9 +1,11 @@
-//! PoT-O extensions: chain bridge, DeFi client, device protocol, peer network, pool strategy, and proof authority.
+//! PoT-O extensions: chain bridge, DeFi client, device protocol, peer network, pool strategy,
+//! proof authority, and token ledger.
 
 pub mod chain_bridge;
 pub mod defi;
 pub mod device_protocol;
 pub mod gossip_client;
+pub mod ledger;
 pub mod mdns_discovery;
 pub mod peer_network;
 pub mod pool_strategy;
@@ -18,10 +20,16 @@ pub use device_protocol::{
     DeviceProtocol, DeviceStatus, DeviceType, ESP32SDevice, ESP8266Device, NativeDevice, WasmDevice,
 };
 pub use gossip_client::GossipClient;
+pub use ledger::{
+    load_ledger, spawn_persist_ledger, Ledger, LedgerEntry, TxReceipt, DEFAULT_LEDGER_PATH,
+};
 pub use mdns_discovery::{MdnsDiscovery, PeerDiscovery};
-pub use peer_network::{LocalOnlyNetwork, PeerNetwork, VpnMeshNetwork, VpnMeshConfig};
-pub use pool_strategy::{PoolStrategy, SoloStrategy, ProportionalPool, PPLNSPool, PoolType};
+pub use peer_network::{LocalOnlyNetwork, PeerNetwork, VpnMeshConfig, VpnMeshNetwork};
+pub use pool_strategy::{PPLNSPool, PoolStrategy, PoolType, ProportionalPool, SoloStrategy};
 pub use security::{Ed25519Authority, ProofAuthority};
+
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 /// Central registry that holds the active extension implementations.
 /// Constructed once at startup from config/env, then passed by reference.
@@ -31,6 +39,7 @@ pub struct ExtensionRegistry {
     pub pool: Box<dyn PoolStrategy>,
     pub chain: Box<dyn ChainBridge>,
     pub auth: Box<dyn ProofAuthority>,
+    pub ledger: Arc<RwLock<Ledger>>,
 }
 
 impl ExtensionRegistry {
@@ -52,11 +61,12 @@ impl ExtensionRegistry {
                 auto_register_miners,
             )),
             auth: Box::new(Ed25519Authority),
+            ledger: Arc::new(RwLock::new(Ledger::new(String::new()))),
         }
     }
 
     /// Build the registry from config strings specifying peer network mode and pool strategy.
-    /// 
+    ///
     /// # Arguments
     /// * `solana_rpc_url` - Solana RPC endpoint URL
     /// * `program_id` - PoT-O program ID
@@ -64,6 +74,7 @@ impl ExtensionRegistry {
     /// * `auto_register_miners` - Whether to auto-register miners
     /// * `peer_network_mode` - Network mode: "local_only" or "vpn_mesh" (defaults to "local_only" if unknown)
     /// * `pool_strategy` - Pool strategy: "solo", "proportional", or "pplns" (defaults to "solo" if unknown)
+    #[allow(clippy::too_many_arguments)]
     pub fn from_config(
         solana_rpc_url: &str,
         program_id: &str,
@@ -71,6 +82,8 @@ impl ExtensionRegistry {
         auto_register_miners: bool,
         peer_network_mode: &str,
         pool_strategy: &str,
+        protocol_fee_address: &str,
+        ledger: Option<Ledger>,
     ) -> Self {
         // Parse network mode
         let network: Box<dyn PeerNetwork> = match peer_network_mode {
@@ -106,6 +119,8 @@ impl ExtensionRegistry {
             _ => Box::new(SoloStrategy), // Default: solo
         };
 
+        let ledger = ledger.unwrap_or_else(|| Ledger::new(protocol_fee_address.to_string()));
+
         Self {
             device: Box::new(NativeDevice::new()),
             network,
@@ -117,6 +132,7 @@ impl ExtensionRegistry {
                 auto_register_miners,
             )),
             auth: Box::new(Ed25519Authority),
+            ledger: Arc::new(RwLock::new(ledger)),
         }
     }
 }

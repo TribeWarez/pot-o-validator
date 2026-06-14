@@ -18,6 +18,7 @@ use device_registry::{load_registry, DEFAULT_REGISTRY_PATH};
 use hexchain_p2p::hex_consensus::HexConsensus;
 use hexchain_p2p::types::{ConsensusParams, MmlParams};
 use http_api::build_router;
+use pot_o_extensions::{spawn_persist_ledger, DEFAULT_LEDGER_PATH};
 use pot_o_mining::PotOConsensus;
 
 /// Crate version (from Cargo.toml).
@@ -46,6 +47,10 @@ async fn main() {
 
     let consensus = PotOConsensus::new(cfg.difficulty, cfg.max_tensor_dim);
     let extensions = extensions_bootstrap::build_extension_registry(&cfg);
+
+    let ledger_path =
+        std::env::var("LEDGER_PATH").unwrap_or_else(|_| DEFAULT_LEDGER_PATH.to_string());
+    spawn_persist_ledger(extensions.ledger.clone(), ledger_path);
 
     let registry_path =
         std::env::var("DEVICE_REGISTRY_PATH").unwrap_or_else(|_| DEFAULT_REGISTRY_PATH.to_string());

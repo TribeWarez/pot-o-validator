@@ -63,12 +63,10 @@ mod p2p_integration_tests {
         let client = reqwest::Client::new();
         // POST to /challenge endpoint to request a new challenge
         match client.post(validator.challenge_endpoint()).send().await {
-            Ok(resp) => {
-                match resp.json::<serde_json::Value>().await {
-                    Ok(json) => Ok(json),
-                    Err(e) => Err(format!("Failed to parse response: {}", e)),
-                }
-            }
+            Ok(resp) => match resp.json::<serde_json::Value>().await {
+                Ok(json) => Ok(json),
+                Err(e) => Err(format!("Failed to parse response: {}", e)),
+            },
             Err(e) => Err(format!("Failed to get challenge: {}", e)),
         }
     }
@@ -77,12 +75,10 @@ mod p2p_integration_tests {
     async fn get_status(validator: &TestValidator) -> Result<serde_json::Value, String> {
         let client = reqwest::Client::new();
         match client.get(validator.status_endpoint()).send().await {
-            Ok(resp) => {
-                match resp.json::<serde_json::Value>().await {
-                    Ok(json) => Ok(json),
-                    Err(e) => Err(format!("Failed to parse status: {}", e)),
-                }
-            }
+            Ok(resp) => match resp.json::<serde_json::Value>().await {
+                Ok(json) => Ok(json),
+                Err(e) => Err(format!("Failed to parse status: {}", e)),
+            },
             Err(e) => Err(format!("Failed to get status: {}", e)),
         }
     }
@@ -162,7 +158,8 @@ mod p2p_integration_tests {
 
                         match get_status(&v2).await {
                             Ok(v2_status) => {
-                                if let Some(current_challenge) = v2_status.get("current_challenge") {
+                                if let Some(current_challenge) = v2_status.get("current_challenge")
+                                {
                                     if let Some(v2_id) = current_challenge.get("id") {
                                         if v2_id == id {
                                             tracing::info!(
@@ -192,7 +189,10 @@ mod p2p_integration_tests {
                 }
             }
             Err(e) => {
-                tracing::warn!("Could not generate challenge on V1: {} (expected if not running)", e);
+                tracing::warn!(
+                    "Could not generate challenge on V1: {} (expected if not running)",
+                    e
+                );
             }
         }
     }
@@ -253,20 +253,18 @@ mod p2p_integration_tests {
             .send()
             .await
         {
-            Ok(resp) => {
-                match resp.json::<serde_json::Value>().await {
-                    Ok(peers) => {
-                        tracing::info!("V2 peers: {:?}", peers);
-                        assert!(
-                            peers.is_array() || peers.is_object(),
-                            "Peers response should be array or object"
-                        );
-                    }
-                    Err(e) => {
-                        tracing::warn!("Failed to parse V2 peers: {}", e);
-                    }
+            Ok(resp) => match resp.json::<serde_json::Value>().await {
+                Ok(peers) => {
+                    tracing::info!("V2 peers: {:?}", peers);
+                    assert!(
+                        peers.is_array() || peers.is_object(),
+                        "Peers response should be array or object"
+                    );
                 }
-            }
+                Err(e) => {
+                    tracing::warn!("Failed to parse V2 peers: {}", e);
+                }
+            },
             Err(e) => {
                 tracing::warn!(
                     "Failed to fetch V2 peers: {} (expected if /network/peers not available)",

@@ -20,7 +20,7 @@ pub const BLOCK_TIME_TARGET: u64 = 60;
 pub const ESP_MAX_TENSOR_DIM: usize = 64;
 
 /// Token type identifier on the chain.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum TokenType {
     /// Native chain token.
     TribeChain,
