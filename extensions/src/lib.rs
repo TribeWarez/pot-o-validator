@@ -8,6 +8,7 @@ pub mod gossip_client;
 pub mod ledger;
 pub mod marketplace;
 pub mod mdns_discovery;
+pub mod messaging;
 pub mod peer_network;
 pub mod pool_strategy;
 pub mod security;
@@ -28,6 +29,7 @@ pub use marketplace::{
     parse_market_asset, MarketAsset, Marketplace, Order, OrderBook, OrderSide, OrderStatus, Trade,
 };
 pub use mdns_discovery::{MdnsDiscovery, PeerDiscovery};
+pub use messaging::{Messaging, MinerMessage, ValidatorMessage};
 pub use peer_network::{LocalOnlyNetwork, PeerNetwork, VpnMeshConfig, VpnMeshNetwork};
 pub use pool_strategy::{PPLNSPool, PoolStrategy, PoolType, ProportionalPool, SoloStrategy};
 pub use security::{Ed25519Authority, ProofAuthority};
@@ -45,6 +47,7 @@ pub struct ExtensionRegistry {
     pub auth: Box<dyn ProofAuthority>,
     pub ledger: Arc<RwLock<Ledger>>,
     pub marketplace: Arc<RwLock<Marketplace>>,
+    pub messaging: Arc<Messaging>,
 }
 
 impl ExtensionRegistry {
@@ -68,6 +71,7 @@ impl ExtensionRegistry {
             auth: Box::new(Ed25519Authority),
             ledger: Arc::new(RwLock::new(Ledger::new(String::new()))),
             marketplace: Arc::new(RwLock::new(Marketplace::new(25, String::new()))),
+            messaging: Messaging::new(),
         }
     }
 
@@ -144,6 +148,7 @@ impl ExtensionRegistry {
                 marketplace_fee_bps,
                 protocol_fee_address.to_string(),
             ))),
+            messaging: Messaging::new(),
         }
     }
 }

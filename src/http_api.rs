@@ -4,7 +4,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::{
-    extract::{Path, Query, State},
+    extract::{
+        ws::{Message, WebSocket, WebSocketUpgrade},
+        Path, Query, State,
+    },
     http::StatusCode,
     response::{IntoResponse, Redirect},
     routing::{delete, get, post},
@@ -53,6 +56,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         )
         .route("/marketplace/orders/{maker}", get(get_marketplace_orders))
         .route("/marketplace/trades", get(get_marketplace_trades))
+        // Messaging protocol (WebSocket)
+        .route("/ws", get(ws_handler))
         // Staking (tribewarez-staking)
         .route("/staking/pool/:token_mint", get(get_staking_pool))
         .route(
@@ -197,6 +202,17 @@ async fn get_challenge(
                         );
                     }
                 }
+            });
+
+            // Push challenge to connected WebSocket miners
+            let state_clone = state.clone();
+            let challenge_json = serde_json::to_string(&challenge).unwrap_or_default();
+            tokio::spawn(async move {
+                state_clone
+                    .extensions
+                    .messaging
+                    .broadcast(&pot_o_extensions::ValidatorMessage::Challenge { challenge_json })
+                    .await;
             });
 
             (
@@ -1173,6 +1189,116 @@ fn token_type_from_str(s: &str) -> Option<TokenType> {
 }
 
 // ---------------------------------------------------------------------------
+// WebSocket — Messaging Protocol
+// ---------------------------------------------------------------------------
+
+/// WebSocket upgrade handler for the miner messaging protocol.
+async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    tracing::debug!("WS upgrade requested");
+    ws.on_upgrade(move |socket| handle_ws_socket(socket, state))
+}
+
+/// Per-connection message loop. Reads JSON `MinerMessage` frames and dispatches.
+async fn handle_ws_socket(mut socket: WebSocket, state: Arc<AppState>) {
+    let (msg_tx, mut msg_rx) = tokio::sync::mpsc::unbounded_channel();
+
+    let mut device_id: Option<String> = None;
+
+    loop {
+        tokio::select! {
+            ws_msg = socket.recv() => {
+                match ws_msg {
+                    Some(Ok(Message::Text(text))) => {
+                        if handle_ws_text(
+                            &text, &state, &msg_tx, &mut device_id,
+                        ).await.is_err() {
+                            break;
+                        }
+                    }
+                    Some(Ok(Message::Close(_))) | None => break,
+                    _ => {}
+                }
+            }
+            json = msg_rx.recv() => {
+                match json {
+                    Some(json) => {
+                        if socket.send(Message::Text(json)).await.is_err() {
+                            break;
+                        }
+                    }
+                    None => break,
+                }
+            }
+        }
+    }
+
+    if let Some(did) = device_id {
+        state.extensions.messaging.unregister(&did).await;
+    }
+}
+
+/// Process a single Text message from the WebSocket.
+/// Returns `Ok(())` to continue or `Err(())` to close the connection.
+async fn handle_ws_text(
+    text: &str,
+    state: &Arc<AppState>,
+    msg_tx: &tokio::sync::mpsc::UnboundedSender<String>,
+    device_id: &mut Option<String>,
+) -> Result<(), ()> {
+    match serde_json::from_str::<pot_o_extensions::MinerMessage>(text) {
+        Ok(miner_msg) => match miner_msg {
+            pot_o_extensions::MinerMessage::Subscribe {
+                device_id: did,
+                device_type: _,
+            } => {
+                let did_clone = did.clone();
+                state
+                    .extensions
+                    .messaging
+                    .register(did.clone(), msg_tx.clone())
+                    .await;
+                *device_id = Some(did_clone.clone());
+                let _ = msg_tx.send(
+                    pot_o_extensions::ValidatorMessage::Subscribed {
+                        device_id: did_clone,
+                    }
+                    .to_json(),
+                );
+                Ok(())
+            }
+            pot_o_extensions::MinerMessage::Unsubscribe { device_id: did } => {
+                state.extensions.messaging.unregister(&did).await;
+                *device_id = None;
+                Err(())
+            }
+            pot_o_extensions::MinerMessage::Heartbeat { device_id: _ } => {
+                let _ = msg_tx.send(pot_o_extensions::ValidatorMessage::HeartbeatAck.to_json());
+                Ok(())
+            }
+            pot_o_extensions::MinerMessage::SubmitProof { .. } => {
+                let _ = msg_tx.send(
+                    pot_o_extensions::ValidatorMessage::Error {
+                        code: "use_http_submit".into(),
+                        message: "Use POST /submit for proof submission".into(),
+                    }
+                    .to_json(),
+                );
+                Ok(())
+            }
+            pot_o_extensions::MinerMessage::Progress { .. } => Ok(()),
+        },
+        Err(e) => {
+            let _ = msg_tx.send(
+                pot_o_extensions::ValidatorMessage::Error {
+                    code: "parse_error".into(),
+                    message: format!("Invalid message: {e}"),
+                }
+                .to_json(),
+            );
+            Ok(())
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Tests

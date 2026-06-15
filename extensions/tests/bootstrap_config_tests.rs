@@ -14,6 +14,7 @@ fn test_registry_from_config_defaults_to_local_solo() {
         "local_only", // peer_network_mode
         "solo",       // pool_strategy
         "",
+        25,
         None,
     );
 
@@ -40,6 +41,7 @@ fn test_registry_from_config_vpn_mesh_network() {
         "vpn_mesh", // peer_network_mode
         "solo",     // pool_strategy
         "",
+        25,
         None,
     );
 
@@ -62,6 +64,7 @@ fn test_registry_from_config_proportional_pool() {
         "local_only",   // peer_network_mode
         "proportional", // pool_strategy
         "",
+        25,
         None,
     );
 
@@ -81,6 +84,7 @@ fn test_registry_from_config_pplns_pool() {
         "local_only", // peer_network_mode
         "pplns",      // pool_strategy
         "",
+        25,
         None,
     );
 
@@ -100,6 +104,7 @@ fn test_registry_from_config_unknown_network_defaults_to_local_only() {
         "unknown_network", // peer_network_mode (invalid)
         "solo",            // pool_strategy
         "",
+        25,
         None,
     );
 
@@ -119,6 +124,7 @@ fn test_registry_from_config_unknown_pool_defaults_to_solo() {
         "local_only",       // peer_network_mode
         "unknown_strategy", // pool_strategy (invalid)
         "",
+        25,
         None,
     );
 
