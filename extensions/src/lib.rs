@@ -6,6 +6,7 @@ pub mod defi;
 pub mod device_protocol;
 pub mod gossip_client;
 pub mod ledger;
+pub mod marketplace;
 pub mod mdns_discovery;
 pub mod peer_network;
 pub mod pool_strategy;
@@ -22,6 +23,9 @@ pub use device_protocol::{
 pub use gossip_client::GossipClient;
 pub use ledger::{
     load_ledger, spawn_persist_ledger, Ledger, LedgerEntry, TxReceipt, DEFAULT_LEDGER_PATH,
+};
+pub use marketplace::{
+    parse_market_asset, MarketAsset, Marketplace, Order, OrderBook, OrderSide, OrderStatus, Trade,
 };
 pub use mdns_discovery::{MdnsDiscovery, PeerDiscovery};
 pub use peer_network::{LocalOnlyNetwork, PeerNetwork, VpnMeshConfig, VpnMeshNetwork};
@@ -40,6 +44,7 @@ pub struct ExtensionRegistry {
     pub chain: Box<dyn ChainBridge>,
     pub auth: Box<dyn ProofAuthority>,
     pub ledger: Arc<RwLock<Ledger>>,
+    pub marketplace: Arc<RwLock<Marketplace>>,
 }
 
 impl ExtensionRegistry {
@@ -62,6 +67,7 @@ impl ExtensionRegistry {
             )),
             auth: Box::new(Ed25519Authority),
             ledger: Arc::new(RwLock::new(Ledger::new(String::new()))),
+            marketplace: Arc::new(RwLock::new(Marketplace::new(25, String::new()))),
         }
     }
 
@@ -133,6 +139,10 @@ impl ExtensionRegistry {
             )),
             auth: Box::new(Ed25519Authority),
             ledger: Arc::new(RwLock::new(ledger)),
+            marketplace: Arc::new(RwLock::new(Marketplace::new(
+                25,
+                protocol_fee_address.to_string(),
+            ))),
         }
     }
 }

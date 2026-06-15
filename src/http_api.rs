@@ -7,10 +7,11 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Redirect},
-    routing::{get, post},
+    routing::{delete, get, post},
     Json, Router,
 };
 use pot_o_core::TokenType;
+use pot_o_extensions::marketplace::{parse_market_asset, OrderSide};
 use pot_o_extensions::DefiClient;
 use pot_o_mining::{PotOProof, ProofPayload};
 use serde::Deserialize;
@@ -42,6 +43,16 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         )
         .route("/token/transfer", post(post_token_transfer))
         .route("/token/tx/{address}", get(get_token_tx_history))
+        // Marketplace (v0.5.1+)
+        .route("/marketplace/order", post(post_marketplace_order))
+        .route("/marketplace/order/{id}", delete(delete_marketplace_order))
+        .route("/marketplace/order/{id}", get(get_marketplace_order))
+        .route(
+            "/marketplace/orderbook/{sell_asset}/{buy_asset}",
+            get(get_marketplace_orderbook),
+        )
+        .route("/marketplace/orders/{maker}", get(get_marketplace_orders))
+        .route("/marketplace/trades", get(get_marketplace_trades))
         // Staking (tribewarez-staking)
         .route("/staking/pool/:token_mint", get(get_staking_pool))
         .route(
@@ -961,6 +972,190 @@ async fn get_token_tx_history(
     (
         StatusCode::OK,
         Json(serde_json::json!({ "address": address, "transactions": txs })),
+    )
+}
+
+// ---------------------------------------------------------------------------
+// Marketplace handlers
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+struct PlaceOrderRequest {
+    maker: String,
+    side: String,
+    sell_asset: String,
+    buy_asset: String,
+    amount: u64,
+    price: u64,
+}
+
+async fn post_marketplace_order(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<PlaceOrderRequest>,
+) -> impl IntoResponse {
+    tracing::debug!(
+        maker = %body.maker, side = %body.side,
+        sell = %body.sell_asset, buy = %body.buy_asset,
+        amount = body.amount, price = body.price,
+        "POST /marketplace/order"
+    );
+
+    let side = match body.side.to_lowercase().as_str() {
+        "buy" => OrderSide::Buy,
+        "sell" => OrderSide::Sell,
+        _ => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": "side must be 'buy' or 'sell'" })),
+            )
+        }
+    };
+
+    let sell_asset = match parse_market_asset(&body.sell_asset) {
+        Ok(a) => a,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": e })),
+            )
+        }
+    };
+    let buy_asset = match parse_market_asset(&body.buy_asset) {
+        Ok(a) => a,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": e })),
+            )
+        }
+    };
+
+    let (order_id, trades) = {
+        let mut mp = state.extensions.marketplace.write().await;
+        mp.place_and_match(
+            &body.maker,
+            side,
+            sell_asset,
+            buy_asset,
+            body.amount,
+            body.price,
+        )
+    };
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "order_id": order_id,
+            "trades": trades,
+        })),
+    )
+}
+
+async fn delete_marketplace_order(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    tracing::debug!(order_id = %id, "DELETE /marketplace/order");
+    let cancelled = {
+        let mut mp = state.extensions.marketplace.write().await;
+        mp.cancel_order(&id)
+    };
+    if cancelled {
+        (
+            StatusCode::OK,
+            Json(serde_json::json!({ "status": "cancelled", "order_id": id })),
+        )
+    } else {
+        (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "Order not found or already filled/cancelled" })),
+        )
+    }
+}
+
+async fn get_marketplace_order(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    tracing::debug!(order_id = %id, "GET /marketplace/order");
+    let order = {
+        let mp = state.extensions.marketplace.read().await;
+        mp.get_order(&id).cloned()
+    };
+    match order {
+        Some(o) => (StatusCode::OK, Json(serde_json::to_value(&o).unwrap())),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "Order not found" })),
+        ),
+    }
+}
+
+async fn get_marketplace_orderbook(
+    State(state): State<Arc<AppState>>,
+    Path((sell_asset_str, buy_asset_str)): Path<(String, String)>,
+) -> impl IntoResponse {
+    tracing::debug!(sell = %sell_asset_str, buy = %buy_asset_str, "GET /marketplace/orderbook");
+
+    let sell_asset = match parse_market_asset(&sell_asset_str) {
+        Ok(a) => a,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": e })),
+            )
+        }
+    };
+    let buy_asset = match parse_market_asset(&buy_asset_str) {
+        Ok(a) => a,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": e })),
+            )
+        }
+    };
+
+    let ob = {
+        let mp = state.extensions.marketplace.read().await;
+        mp.order_book(&sell_asset, &buy_asset)
+    };
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "sell_asset": sell_asset_str,
+            "buy_asset": buy_asset_str,
+            "bids": ob.bids,
+            "asks": ob.asks,
+        })),
+    )
+}
+
+async fn get_marketplace_orders(
+    State(state): State<Arc<AppState>>,
+    Path(maker): Path<String>,
+) -> impl IntoResponse {
+    tracing::debug!(maker = %maker, "GET /marketplace/orders");
+    let orders: Vec<_> = {
+        let mp = state.extensions.marketplace.read().await;
+        mp.orders_for_maker(&maker).into_iter().cloned().collect()
+    };
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({ "maker": maker, "orders": orders })),
+    )
+}
+
+async fn get_marketplace_trades(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    tracing::debug!("GET /marketplace/trades");
+    let trades = {
+        let mp = state.extensions.marketplace.read().await;
+        mp.trades().to_vec()
+    };
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({ "trades": trades })),
     )
 }
 
