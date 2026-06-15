@@ -17,6 +17,7 @@ fn test_build_registry_from_config_respects_network_mode() {
         network_mode,
         pool_strategy,
         "",
+        25,
         None,
     );
 
@@ -39,6 +40,7 @@ fn test_build_registry_from_config_respects_pool_strategy() {
         network_mode,
         pool_strategy,
         "",
+        25,
         None,
     );
 
@@ -60,6 +62,7 @@ fn test_config_defaults_preserve_backward_compatibility() {
         "local_only", // Default from config.rs
         "solo",       // Default from config.rs
         "",
+        25,
         None,
     );
 

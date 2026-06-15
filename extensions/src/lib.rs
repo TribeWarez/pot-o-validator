@@ -89,6 +89,7 @@ impl ExtensionRegistry {
         peer_network_mode: &str,
         pool_strategy: &str,
         protocol_fee_address: &str,
+        marketplace_fee_bps: u64,
         ledger: Option<Ledger>,
     ) -> Self {
         // Parse network mode
@@ -140,7 +141,7 @@ impl ExtensionRegistry {
             auth: Box::new(Ed25519Authority),
             ledger: Arc::new(RwLock::new(ledger)),
             marketplace: Arc::new(RwLock::new(Marketplace::new(
-                25,
+                marketplace_fee_bps,
                 protocol_fee_address.to_string(),
             ))),
         }

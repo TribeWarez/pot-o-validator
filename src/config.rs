@@ -84,6 +84,9 @@ pub struct ValidatorConfig {
     /// Address that collects protocol fees from token transfers (default: empty = no fee).
     #[serde(default)]
     pub protocol_fee_address: String,
+    /// Marketplace fee in basis points (e.g. 25 = 0.25%).
+    #[serde(default = "default_marketplace_fee_bps")]
+    pub marketplace_fee_bps: u64,
 }
 
 fn default_node_id() -> String {
@@ -161,6 +164,9 @@ fn default_base_target() -> String {
 }
 fn default_protocol_fee_address() -> String {
     String::new()
+}
+fn default_marketplace_fee_bps() -> u64 {
+    25
 }
 
 impl ValidatorConfig {
@@ -257,6 +263,11 @@ impl ValidatorConfig {
         if let Ok(v) = std::env::var("PROTOCOL_FEE_ADDRESS") {
             cfg.protocol_fee_address = v;
         }
+        if let Ok(v) = std::env::var("MARKETPLACE_FEE_BPS") {
+            if let Ok(bps) = v.parse() {
+                cfg.marketplace_fee_bps = bps;
+            }
+        }
 
         cfg
     }
@@ -289,6 +300,7 @@ impl ValidatorConfig {
             symmetry_den: default_symmetry_den(),
             base_target: default_base_target(),
             protocol_fee_address: default_protocol_fee_address(),
+            marketplace_fee_bps: default_marketplace_fee_bps(),
         }
     }
 }

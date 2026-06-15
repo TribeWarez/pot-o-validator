@@ -1212,6 +1212,7 @@ mod tests {
             base_target: "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
                 .to_string(),
             protocol_fee_address: String::new(),
+            marketplace_fee_bps: 25,
         }
     }
 

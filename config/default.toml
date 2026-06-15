@@ -31,6 +31,9 @@ primary_validator_url = "http://validator-1.tribewarez.com:8899"
 # Token ledger
 protocol_fee_address = ""
 
+# Marketplace
+marketplace_fee_bps = 25
+
 # Hexchain consensus parameters
 maturity_depth = 10
 symmetry_num = 1

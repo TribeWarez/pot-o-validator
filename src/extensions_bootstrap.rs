@@ -18,6 +18,7 @@ pub fn build_extension_registry(cfg: &ValidatorConfig) -> ExtensionRegistry {
         &cfg.peer_network_mode,
         &cfg.pool_strategy,
         &cfg.protocol_fee_address,
+        cfg.marketplace_fee_bps,
         Some(ledger),
     )
 }
