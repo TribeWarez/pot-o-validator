@@ -9,6 +9,7 @@ mod device_registry;
 mod extensions_bootstrap;
 mod hex_api;
 mod http_api;
+mod internal_api;
 
 use std::sync::Arc;
 
@@ -20,6 +21,7 @@ use hexchain_p2p::types::{ConsensusParams, MmlParams};
 use http_api::build_router;
 use pot_o_extensions::{spawn_persist_ledger, DEFAULT_LEDGER_PATH};
 use pot_o_mining::PotOConsensus;
+use tokio::sync::RwLock;
 
 /// Crate version (from Cargo.toml).
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -83,7 +85,15 @@ async fn main() {
         hex_consensus,
     );
 
-    let app = build_router(Arc::clone(&state)).merge(hex_api::hex_routes(Arc::clone(&state)));
+    let internal_state = internal_api::InternalApiState {
+        node_id: cfg.node_id.clone(),
+        peers: Arc::new(RwLock::new(Vec::new())),
+        current_challenge: Arc::new(RwLock::new(None)),
+    };
+
+    let app = build_router(Arc::clone(&state))
+        .merge(hex_api::hex_routes(Arc::clone(&state)))
+        .merge(internal_api::internal_router(internal_state));
 
     let addr = format!("{}:{}", cfg.listen_addr, cfg.port);
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();

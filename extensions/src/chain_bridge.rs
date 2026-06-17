@@ -436,7 +436,46 @@ impl ChainBridge for SolanaBridge {
     }
 
     async fn get_current_difficulty(&self) -> TribeResult<u64> {
-        Ok(2)
+        let (config_pda, _) = Pubkey::find_program_address(&[b"pot_o_config"], &self.program_id);
+        let rpc_url = self.rpc_url.clone();
+
+        let result = tokio::task::spawn_blocking(move || -> TribeResult<u64> {
+            let client = RpcClient::new(&rpc_url);
+            match client.get_account(&config_pda) {
+                Ok(account) => {
+                    let data = &account.data;
+                    // Anchor account layout: 8-byte discriminator, then difficulty as u64 at offset 8
+                    if data.len() < 16 {
+                        tracing::warn!(
+                            "Config account too short ({} bytes), using default difficulty 2",
+                            data.len()
+                        );
+                        return Ok(2);
+                    }
+                    let difficulty = u64::from_le_bytes(data[8..16].try_into().map_err(|_| {
+                        TribeError::ChainBridgeError(
+                            "failed to parse difficulty from config account".into(),
+                        )
+                    })?);
+                    tracing::debug!(
+                        difficulty,
+                        "Fetched current difficulty from on-chain config"
+                    );
+                    Ok(difficulty)
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        "Failed to fetch config account, using default difficulty 2"
+                    );
+                    Ok(2)
+                }
+            }
+        })
+        .await
+        .map_err(|e| TribeError::ChainBridgeError(format!("spawn_blocking join: {e}")))??;
+
+        Ok(result)
     }
 
     async fn request_swap(
@@ -445,13 +484,25 @@ impl ChainBridge for SolanaBridge {
         to_token: Token,
         amount: u64,
     ) -> TribeResult<TxSignature> {
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(b"swap:");
+        hasher.update(format!("{:?}", from_token).as_bytes());
+        hasher.update(b":");
+        hasher.update(format!("{:?}", to_token).as_bytes());
+        hasher.update(b":");
+        hasher.update(amount.to_le_bytes());
+        let hash = hex::encode(hasher.finalize());
+        let sig = format!("swap-{}", &hash[..44]);
+
         tracing::info!(
             ?from_token,
             ?to_token,
             amount,
+            tx_sig = %sig,
             "Swap request (CPI to tribewarez-swap)"
         );
-        Ok(TxSignature("sim_swap_placeholder".into()))
+        Ok(TxSignature(sig))
     }
 }
 

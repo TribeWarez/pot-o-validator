@@ -89,7 +89,7 @@ dependencies = [
 
 [[package]]
 name = "ai3-lib"
-version = "0.1.0"
+version = "0.7.0"
 dependencies = [
  "chrono",
  "flate2",
@@ -1726,7 +1726,7 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "hexchain-p2p"
-version = "0.1.0"
+version = "0.7.0"
 dependencies = [
  "rand 0.8.5",
  "serde",
@@ -2899,7 +2899,7 @@ checksum = "c33a9471896f1c69cecef8d20cbe2f7accd12527ce60845ff44c153bb2a21b49"
 
 [[package]]
 name = "pot-o-core"
-version = "0.1.0"
+version = "0.7.0"
 dependencies = [
  "chrono",
  "hex",
@@ -2911,13 +2911,14 @@ dependencies = [
 
 [[package]]
 name = "pot-o-extensions"
-version = "0.1.0"
+version = "0.7.0"
 dependencies = [
  "ai3-lib",
  "anyhow",
  "async-trait",
  "borsh 0.10.4",
  "chrono",
+ "ed25519-dalek",
  "flume",
  "hex",
  "mdns-sd",
@@ -2938,7 +2939,7 @@ dependencies = [
 
 [[package]]
 name = "pot-o-mining"
-version = "0.1.0"
+version = "0.7.0"
 dependencies = [
  "ai3-lib",
  "chrono",
@@ -2955,7 +2956,7 @@ dependencies = [
 
 [[package]]
 name = "pot-o-validator"
-version = "0.1.0"
+version = "0.7.0"
 dependencies = [
  "ai3-lib",
  "anyhow",

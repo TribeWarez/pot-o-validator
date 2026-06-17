@@ -68,7 +68,7 @@ impl ExtensionRegistry {
                 relayer_keypair_path.to_string(),
                 auto_register_miners,
             )),
-            auth: Box::new(Ed25519Authority),
+            auth: Box::new(Ed25519Authority::new(relayer_keypair_path)),
             ledger: Arc::new(RwLock::new(Ledger::new(String::new()))),
             marketplace: Arc::new(RwLock::new(Marketplace::new(25, String::new()))),
             messaging: Messaging::new(),
@@ -84,6 +84,7 @@ impl ExtensionRegistry {
     /// * `auto_register_miners` - Whether to auto-register miners
     /// * `peer_network_mode` - Network mode: "local_only" or "vpn_mesh" (defaults to "local_only" if unknown)
     /// * `pool_strategy` - Pool strategy: "solo", "proportional", or "pplns" (defaults to "solo" if unknown)
+    /// * `device_protocol` - Device protocol: "native", "esp32s", "esp8266", or "wasm" (defaults to "native" if unknown)
     #[allow(clippy::too_many_arguments)]
     pub fn from_config(
         solana_rpc_url: &str,
@@ -92,6 +93,7 @@ impl ExtensionRegistry {
         auto_register_miners: bool,
         peer_network_mode: &str,
         pool_strategy: &str,
+        device_protocol: &str,
         protocol_fee_address: &str,
         marketplace_fee_bps: u64,
         ledger: Option<Ledger>,
@@ -130,10 +132,18 @@ impl ExtensionRegistry {
             _ => Box::new(SoloStrategy), // Default: solo
         };
 
+        // Parse device protocol
+        let device: Box<dyn DeviceProtocol> = match device_protocol {
+            "esp32s" => Box::new(ESP32SDevice::new(uuid::Uuid::new_v4().to_string())),
+            "esp8266" => Box::new(ESP8266Device::new(uuid::Uuid::new_v4().to_string())),
+            "wasm" => Box::new(WasmDevice),
+            _ => Box::new(NativeDevice::new()), // Default: native
+        };
+
         let ledger = ledger.unwrap_or_else(|| Ledger::new(protocol_fee_address.to_string()));
 
         Self {
-            device: Box::new(NativeDevice::new()),
+            device,
             network,
             pool,
             chain: Box::new(SolanaBridge::new(
@@ -142,7 +152,7 @@ impl ExtensionRegistry {
                 relayer_keypair_path.to_string(),
                 auto_register_miners,
             )),
-            auth: Box::new(Ed25519Authority),
+            auth: Box::new(Ed25519Authority::new(relayer_keypair_path)),
             ledger: Arc::new(RwLock::new(ledger)),
             marketplace: Arc::new(RwLock::new(Marketplace::new(
                 marketplace_fee_bps,

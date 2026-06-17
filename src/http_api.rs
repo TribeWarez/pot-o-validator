@@ -411,6 +411,17 @@ async fn register_device(
         .device_id
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     let device_type_normalized = normalize_device_type(&body.device_type);
+
+    // Validate device type against our protocol implementation
+    let our_type = state.extensions.device.device_type();
+    let our_type_str = format!("{:?}", our_type).to_lowercase();
+    if device_type_normalized != our_type_str && body.device_type != "any" {
+        tracing::warn!(
+            requested = %device_type_normalized,
+            configured = %our_type_str,
+            "Device type mismatch — requested device type differs from configured protocol"
+        );
+    }
     let now = chrono::Utc::now();
     let is_new = {
         let mut reg = state.device_registry.write().await;

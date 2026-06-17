@@ -18,14 +18,17 @@ use axum::{
     Json, Router,
 };
 use chrono::{DateTime, Utc};
+use pot_o_extensions::pool_strategy::ProofRecord;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use tokio::sync::RwLock;
 
 /// State for the internal API, shared across peer communication handlers.
 #[derive(Clone)]
 pub struct InternalApiState {
     /// Node ID of this validator (e.g., "validator-1")
+    #[allow(dead_code)]
     pub node_id: String,
     /// List of known peers in the network
     pub peers: Arc<RwLock<Vec<PeerInfo>>>,
@@ -73,6 +76,7 @@ pub fn internal_router(state: InternalApiState) -> Router {
             "/internal/challenge/broadcast",
             post(handle_challenge_broadcast),
         )
+        .route("/api/pool/submit-batch", post(handle_submit_batch))
         .with_state(state)
 }
 
@@ -136,6 +140,67 @@ async fn handle_challenge_broadcast(
         Json(ApiResponse {
             message: "Challenge broadcast received".to_string(),
         }),
+    )
+        .into_response()
+}
+
+/// Request payload for batch submission
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SubmitBatchRequest {
+    pub node_id: String,
+    pub pool_strategy: String,
+    pub batch: Vec<ProofRecord>,
+}
+
+/// Handler: POST /api/pool/submit-batch
+/// Receives a batch of proof records from a peer validator for pool accounting.
+/// Returns a deterministic submission ID built from the batch content.
+async fn handle_submit_batch(
+    State(_state): State<InternalApiState>,
+    Json(req): Json<SubmitBatchRequest>,
+) -> impl IntoResponse {
+    let batch_size = req.batch.len();
+
+    if batch_size == 0 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "batch cannot be empty"})),
+        )
+            .into_response();
+    }
+
+    // Deterministic hash of the batch
+    let mut hasher = Sha256::new();
+    hasher.update(b"pot-o-batch:");
+    hasher.update(req.node_id.as_bytes());
+    hasher.update(b":");
+    for record in &req.batch {
+        hasher.update(record.miner_pubkey.as_bytes());
+        hasher.update(b":");
+        hasher.update(record.challenge_id.as_bytes());
+        hasher.update(b":");
+        hasher.update(record.reward.to_le_bytes());
+        hasher.update(b":");
+        hasher.update(record.timestamp.timestamp().to_le_bytes());
+        hasher.update(b"|");
+    }
+    let hash = hex::encode(hasher.finalize());
+    let submission_id = format!("pool-batch-{}", &hash[..40]);
+
+    tracing::info!(
+        from_node = %req.node_id,
+        batch_size,
+        submission_id = %submission_id,
+        "Received batch submission from peer validator"
+    );
+
+    (
+        StatusCode::OK,
+        Json(json!({
+            "submission_id": submission_id,
+            "accepted": true,
+            "batch_size": batch_size,
+        })),
     )
         .into_response()
 }

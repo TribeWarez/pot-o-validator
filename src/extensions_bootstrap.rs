@@ -17,6 +17,7 @@ pub fn build_extension_registry(cfg: &ValidatorConfig) -> ExtensionRegistry {
         cfg.auto_register_miners,
         &cfg.peer_network_mode,
         &cfg.pool_strategy,
+        &cfg.device_protocol,
         &cfg.protocol_fee_address,
         cfg.marketplace_fee_bps,
         Some(ledger),

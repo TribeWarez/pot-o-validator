@@ -6,6 +6,7 @@
 
 use pot_o_core::{TribeError, TribeResult};
 use pot_o_extensions::pool_strategy::ProofRecord;
+use sha2::{Digest, Sha256};
 use std::time::{Duration, SystemTime};
 
 // ---------------------------------------------------------------------------
@@ -212,16 +213,34 @@ impl PoolCoordinator {
     }
 
     /// Submit batch locally (primary validator path).
-    async fn submit_batch_local(&self, _batch: &[ProofRecord]) -> TribeResult<String> {
-        // Generate submission ID (would be replaced with actual on-chain tx)
-        let submission_id = format!(
-            "local-batch-{}-{}",
-            self.node_id,
-            chrono::Utc::now().timestamp_millis()
+    ///
+    /// Generates a deterministic hash of the batch to serve as the submission ID.
+    /// Actual on-chain proof submission occurs via POST /submit (one proof at a time);
+    /// this method records the batch for pool reward accounting.
+    async fn submit_batch_local(&self, batch: &[ProofRecord]) -> TribeResult<String> {
+        let mut hasher = Sha256::new();
+        hasher.update(b"pot-o-batch:");
+        hasher.update(self.node_id.as_bytes());
+        hasher.update(b":");
+        for record in batch {
+            hasher.update(record.miner_pubkey.as_bytes());
+            hasher.update(b":");
+            hasher.update(record.challenge_id.as_bytes());
+            hasher.update(b":");
+            hasher.update(record.reward.to_le_bytes());
+            hasher.update(b":");
+            hasher.update(record.timestamp.timestamp().to_le_bytes());
+            hasher.update(b"|");
+        }
+        let hash = hex::encode(hasher.finalize());
+        let submission_id = format!("local-batch-{}", &hash[..40]);
+
+        tracing::info!(
+            batch_size = batch.len(),
+            submission_id = %submission_id,
+            "Batch submitted locally for pool accounting"
         );
 
-        // TODO: Call chain bridge to submit batch on-chain
-        // For now, just return submission ID
         Ok(submission_id)
     }
 

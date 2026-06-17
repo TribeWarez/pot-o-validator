@@ -87,7 +87,7 @@ fn test_solo_strategy_creation() {
 
 #[test]
 fn test_ed25519_authority_creation() {
-    let auth = Ed25519Authority;
+    let auth = Ed25519Authority::new("/tmp/nonexistent-keypair.json");
 
     // Auth should be created
     let _: Box<dyn ProofAuthority> = Box::new(auth);
@@ -234,7 +234,7 @@ fn test_solo_strategy_type() {
 
 #[test]
 fn test_ed25519_authority_type() {
-    let auth: Box<dyn ProofAuthority> = Box::new(Ed25519Authority);
+    let auth: Box<dyn ProofAuthority> = Box::new(Ed25519Authority::new("/tmp/nonexistent.json"));
     let _ = auth;
 }
 
@@ -313,7 +313,7 @@ fn test_pool_strategy_trait_object() {
 
 #[test]
 fn test_proof_authority_trait_object() {
-    let auth: Box<dyn ProofAuthority> = Box::new(Ed25519Authority);
+    let auth: Box<dyn ProofAuthority> = Box::new(Ed25519Authority::new("/tmp/nonexistent.json"));
     let _ = auth;
 }
 

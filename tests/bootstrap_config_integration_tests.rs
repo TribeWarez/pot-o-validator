@@ -16,6 +16,7 @@ fn test_build_registry_from_config_respects_network_mode() {
         false,
         network_mode,
         pool_strategy,
+        "native",
         "",
         25,
         None,
@@ -39,6 +40,7 @@ fn test_build_registry_from_config_respects_pool_strategy() {
         false,
         network_mode,
         pool_strategy,
+        "native",
         "",
         25,
         None,
@@ -61,6 +63,7 @@ fn test_config_defaults_preserve_backward_compatibility() {
         false,
         "local_only", // Default from config.rs
         "solo",       // Default from config.rs
+        "native",
         "",
         25,
         None,
