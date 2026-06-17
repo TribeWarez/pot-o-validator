@@ -80,7 +80,7 @@ jobs:
             fi
             echo "Waiting for indexing... attempt $i/20"
             sleep 15
-           done
+          done
 
       - name: Publish pot-o-extensions
         run: cargo publish -p pot-o-extensions ${{ inputs.dry_run == 'true' && '--dry-run' || '' }} || true
@@ -92,6 +92,22 @@ jobs:
           for i in $(seq 1 20); do
             if cargo search "pot-o-extensions" --limit 1 2>/dev/null | grep -q "pot-o-extensions"; then
               echo "pot-o-extensions is indexed on crates.io"
+              break
+            fi
+            echo "Waiting for indexing... attempt $i/20"
+            sleep 15
+          done
+
+      - name: Publish hexchain-p2p
+        run: cargo publish -p hexchain-p2p ${{ inputs.dry_run == 'true' && '--dry-run' || '' }} || true
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Wait for hexchain-p2p to be indexed
+        run: |
+          for i in $(seq 1 20); do
+            if cargo search "hexchain-p2p" --limit 1 2>/dev/null | grep -q "hexchain-p2p"; then
+              echo "hexchain-p2p is indexed on crates.io"
               break
             fi
             echo "Waiting for indexing... attempt $i/20"
