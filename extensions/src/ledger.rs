@@ -153,6 +153,15 @@ impl Ledger {
     pub fn protocol_fee_address(&self) -> &str {
         &self.protocol_fee_address
     }
+
+    /// Total issued supply for a given token type across all addresses.
+    pub fn total_supply(&self, token: &TokenType) -> u64 {
+        self.balances
+            .iter()
+            .filter(|((_, t), _)| t == token)
+            .map(|(_, bal)| *bal)
+            .sum()
+    }
 }
 
 /// Load ledger from a JSON file.

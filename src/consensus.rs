@@ -29,6 +29,10 @@ pub struct ValidatorStats {
     pub paths_in_block: u64,
     /// Tensor computations completed in the current challenge round (reset on new challenge).
     pub calcs_in_block: u64,
+    /// Total TRIBE tokens minted through mining rewards.
+    pub total_tribe_minted: u64,
+    /// Total reward payouts (count of distribution events).
+    pub total_rewards_paid: u64,
 }
 
 /// Shared state for the validator HTTP app (config, consensus, extensions, registry).
@@ -52,6 +56,9 @@ pub struct AppState {
     pub hex_consensus: HexConsensus,
     /// Current hexchain challenge (for miner discovery / status).
     pub hex_current_challenge: RwLock<Option<HexChallenge>>,
+
+    /// TRIBE mint address (base58-encoded public key of the mint keypair).
+    pub tribe_mint_address: String,
 }
 
 /// Builds the shared application state used by the Axum router.
@@ -62,6 +69,7 @@ pub fn create_app_state(
     registry_path: String,
     device_registry: HashMap<String, RegisteredDevice>,
     hex_consensus: HexConsensus,
+    tribe_mint_address: String,
 ) -> Arc<AppState> {
     Arc::new(AppState {
         config: cfg,
@@ -73,5 +81,6 @@ pub fn create_app_state(
         registry_path,
         hex_consensus,
         hex_current_challenge: RwLock::new(None),
+        tribe_mint_address,
     })
 }

@@ -21,5 +21,10 @@ pub fn build_extension_registry(cfg: &ValidatorConfig) -> ExtensionRegistry {
         &cfg.protocol_fee_address,
         cfg.marketplace_fee_bps,
         Some(ledger),
+        &cfg.bootstrap_urls,
+        cfg.enable_mdns,
+        &cfg.mdns_service_name,
+        cfg.peer_timeout_secs,
+        cfg.challenge_relay_enabled,
     )
 }

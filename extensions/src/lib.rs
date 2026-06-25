@@ -11,6 +11,7 @@ pub mod mdns_discovery;
 pub mod messaging;
 pub mod peer_network;
 pub mod pool_strategy;
+pub mod rewards;
 pub mod security;
 
 pub use chain_bridge::{ChainBridge, SolanaBridge};
@@ -31,7 +32,10 @@ pub use marketplace::{
 pub use mdns_discovery::{MdnsDiscovery, PeerDiscovery};
 pub use messaging::{Messaging, MinerMessage, ValidatorMessage};
 pub use peer_network::{LocalOnlyNetwork, PeerNetwork, VpnMeshConfig, VpnMeshNetwork};
-pub use pool_strategy::{PPLNSPool, PoolStrategy, PoolType, ProportionalPool, SoloStrategy};
+pub use pool_strategy::{
+    MinerShare, PPLNSPool, PoolStrategy, PoolType, ProofRecord, ProportionalPool, SoloStrategy,
+};
+pub use rewards::{calculate_mining_reward, load_or_create_tribe_mint, BASE_REWARD};
 pub use security::{Ed25519Authority, ProofAuthority};
 
 use std::sync::Arc;
@@ -85,6 +89,11 @@ impl ExtensionRegistry {
     /// * `peer_network_mode` - Network mode: "local_only" or "vpn_mesh" (defaults to "local_only" if unknown)
     /// * `pool_strategy` - Pool strategy: "solo", "proportional", or "pplns" (defaults to "solo" if unknown)
     /// * `device_protocol` - Device protocol: "native", "esp32s", "esp8266", or "wasm" (defaults to "native" if unknown)
+    /// * `bootstrap_urls` - URLs for P2P bootstrap discovery (defaults to empty)
+    /// * `enable_mdns` - Enable mDNS peer discovery (defaults to false)
+    /// * `mdns_service_name` - Service name for mDNS registration
+    /// * `peer_timeout_secs` - Timeout for peer communication in seconds
+    /// * `challenge_relay_enabled` - Enable push/pull challenge gossip
     #[allow(clippy::too_many_arguments)]
     pub fn from_config(
         solana_rpc_url: &str,
@@ -97,6 +106,11 @@ impl ExtensionRegistry {
         protocol_fee_address: &str,
         marketplace_fee_bps: u64,
         ledger: Option<Ledger>,
+        bootstrap_urls: &[String],
+        enable_mdns: bool,
+        mdns_service_name: &str,
+        peer_timeout_secs: u64,
+        challenge_relay_enabled: bool,
     ) -> Self {
         // Parse network mode
         let network: Box<dyn PeerNetwork> = match peer_network_mode {
@@ -104,16 +118,16 @@ impl ExtensionRegistry {
                 let config = peer_network::VpnMeshConfig {
                     wireguard_interface: "wg0".into(),
                     peer_addresses: vec![],
-                    mdns_enabled: true,
+                    mdns_enabled: enable_mdns,
                     gossip_port: 8765,
                 };
                 match VpnMeshNetwork::new(
                     uuid::Uuid::new_v4().to_string(),
                     config,
-                    vec![],
-                    true,
-                    "pot-o-validator",
-                    30,
+                    bootstrap_urls.to_vec(),
+                    enable_mdns,
+                    mdns_service_name,
+                    peer_timeout_secs,
                 ) {
                     Ok(network) => Box::new(network),
                     Err(_) => Box::new(LocalOnlyNetwork::new()), // Fallback on error

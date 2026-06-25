@@ -20,6 +20,11 @@ fn test_build_registry_from_config_respects_network_mode() {
         "",
         25,
         None,
+        &["http://bootstrap.tribewarez.com/peers".to_string()],
+        true,
+        "pot-o-validator",
+        30,
+        true,
     );
 
     // Verify VpnMeshNetwork is used
@@ -44,6 +49,11 @@ fn test_build_registry_from_config_respects_pool_strategy() {
         "",
         25,
         None,
+        &[],
+        false,
+        "pot-o-validator",
+        30,
+        true,
     );
 
     // Verify ProportionalPool is used
@@ -67,6 +77,11 @@ fn test_config_defaults_preserve_backward_compatibility() {
         "",
         25,
         None,
+        &[],
+        false,
+        "pot-o-validator",
+        30,
+        true,
     );
 
     // Should work like the old local_defaults() function

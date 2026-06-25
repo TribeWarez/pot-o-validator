@@ -87,6 +87,9 @@ pub struct ValidatorConfig {
     /// Marketplace fee in basis points (e.g. 25 = 0.25%).
     #[serde(default = "default_marketplace_fee_bps")]
     pub marketplace_fee_bps: u64,
+    /// Path to the TRIBE mint Ed25519 keypair JSON file (auto-generated if missing).
+    #[serde(default = "default_tribe_mint_keypair_path")]
+    pub tribe_mint_keypair_path: String,
 }
 
 fn default_node_id() -> String {
@@ -167,6 +170,9 @@ fn default_protocol_fee_address() -> String {
 }
 fn default_marketplace_fee_bps() -> u64 {
     25
+}
+fn default_tribe_mint_keypair_path() -> String {
+    "tribe_mint_keypair.json".into()
 }
 
 impl ValidatorConfig {
@@ -268,6 +274,9 @@ impl ValidatorConfig {
                 cfg.marketplace_fee_bps = bps;
             }
         }
+        if let Ok(v) = std::env::var("TRIBE_MINT_KEYPAIR_PATH") {
+            cfg.tribe_mint_keypair_path = v;
+        }
 
         cfg
     }
@@ -301,6 +310,7 @@ impl ValidatorConfig {
             base_target: default_base_target(),
             protocol_fee_address: default_protocol_fee_address(),
             marketplace_fee_bps: default_marketplace_fee_bps(),
+            tribe_mint_keypair_path: default_tribe_mint_keypair_path(),
         }
     }
 }

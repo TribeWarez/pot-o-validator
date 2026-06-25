@@ -15,14 +15,14 @@ use axum::{
 };
 use pot_o_core::TokenType;
 use pot_o_extensions::marketplace::{parse_market_asset, OrderSide};
-use pot_o_extensions::DefiClient;
+use pot_o_extensions::{calculate_mining_reward, DefiClient, ProofRecord};
 use pot_o_mining::{PotOProof, ProofPayload};
 use serde::Deserialize;
 
 use crate::consensus::AppState;
 use crate::device_registry::{
-    normalize_device_type, spawn_persist_registry, CurrentCalculation, RegisteredDevice,
-    DEVICE_TYPE_KEYS,
+    normalize_device_type, prune_stale_devices, spawn_persist_registry, CurrentCalculation,
+    RegisteredDevice, DEVICE_TYPE_KEYS,
 };
 
 /// Builds the Axum router with all validator routes (health, status, challenge, submit, devices, DeFi).
@@ -33,7 +33,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/status", get(status))
         .route("/challenge", post(get_challenge))
         .route("/submit", post(submit_proof))
-        .route("/miners/{pubkey}", get(get_miner))
+        .route("/miners/:pubkey", get(get_miner))
         .route("/pool", get(pool_info))
         .route("/devices/register", post(register_device))
         .route("/devices/progress", post(device_progress))
@@ -41,11 +41,13 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/network/peers", get(get_peers))
         // Token ledger
         .route(
-            "/token/balance/{address}/{token_type}",
+            "/token/balance/:address/:token_type",
             get(get_token_balance),
         )
         .route("/token/transfer", post(post_token_transfer))
-        .route("/token/tx/{address}", get(get_token_tx_history))
+        .route("/token/tx/:address", get(get_token_tx_history))
+        .route("/token/tribe/address", get(get_tribe_mint_address))
+        .route("/token/tribe/supply", get(get_tribe_supply))
         // Marketplace (v0.5.1+)
         .route("/marketplace/order", post(post_marketplace_order))
         .route("/marketplace/order/{id}", delete(delete_marketplace_order))
@@ -94,13 +96,14 @@ async fn status(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let stats = state.stats.read().await.clone();
     let engine_stats = state.consensus.engine_stats();
     let network = state.extensions.network.sync_state().await.ok();
-    let peers = state
-        .extensions
-        .network
-        .discover_peers()
-        .await
-        .ok()
-        .unwrap_or_default();
+    let peers = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        state.extensions.network.discover_peers(),
+    )
+    .await
+    .ok()
+    .and_then(|r| r.ok())
+    .unwrap_or_default();
     let current_challenge = state.current_challenge.read().await.as_ref().map(|c| {
         let (expected_paths, expected_calcs) = state.consensus.expected_paths_and_calcs(c);
         serde_json::json!({
@@ -121,6 +124,7 @@ async fn status(State(state): State<Arc<AppState>>) -> impl IntoResponse {
         "max_tensor_dim": state.config.max_tensor_dim,
         "peer_network_mode": state.config.peer_network_mode,
         "pool_strategy": state.config.pool_strategy,
+        "tribe_mint_address": state.tribe_mint_address,
         "stats": stats,
         "engine": {
             "tasks_processed": engine_stats.total_tasks_processed,
@@ -279,6 +283,7 @@ async fn submit_proof(
                 const MAX_MINER_PUBKEYS_PER_DEVICE: usize = 100;
                 {
                     let mut reg = state.device_registry.write().await;
+                    prune_stale_devices(&mut reg);
                     let entry = reg.entry(registry_key).or_insert_with(|| RegisteredDevice {
                         device_type: device_type_normalized.clone(),
                         node_id: state.config.node_id.clone(),
@@ -304,6 +309,41 @@ async fn submit_proof(
                 {
                     let reg = state.device_registry.read().await.clone();
                     spawn_persist_registry(reg, state.registry_path.clone());
+                }
+
+                // TRIBE mining reward calculation and distribution
+                let path_distance = body.proof.path_distance;
+                let reward_amount = calculate_mining_reward(chal.difficulty, path_distance);
+                let proof_record = ProofRecord {
+                    miner_pubkey: body.proof.miner_pubkey.clone(),
+                    challenge_id: body.proof.challenge_id.clone(),
+                    reward: reward_amount,
+                    timestamp: chrono::Utc::now(),
+                };
+                if let Ok(shares) = state
+                    .extensions
+                    .pool
+                    .calculate_shares(&[proof_record], reward_amount)
+                {
+                    {
+                        let mut ledger = state.extensions.ledger.write().await;
+                        for share in &shares {
+                            ledger.issue(
+                                &share.miner_pubkey,
+                                &TokenType::TribeChain,
+                                share.reward_amount,
+                            );
+                        }
+                    }
+                    let mut stats = state.stats.write().await;
+                    stats.total_tribe_minted = stats.total_tribe_minted.saturating_add(reward_amount);
+                    stats.total_rewards_paid = stats.total_rewards_paid.saturating_add(1);
+                    tracing::debug!(
+                        miner = %body.proof.miner_pubkey,
+                        reward = reward_amount,
+                        shares = shares.len(),
+                        "TRIBE mining reward distributed"
+                    );
                 }
 
                 let payload = ProofPayload {
@@ -425,6 +465,7 @@ async fn register_device(
     let now = chrono::Utc::now();
     let is_new = {
         let mut reg = state.device_registry.write().await;
+        prune_stale_devices(&mut reg);
         if let Some(prev) = reg.get_mut(&device_id) {
             prev.last_activity = now;
             prev.device_type = device_type_normalized.clone();
@@ -546,6 +587,7 @@ async fn device_progress(
     };
     let updated = {
         let mut reg = state.device_registry.write().await;
+        prune_stale_devices(&mut reg);
         let entry = reg
             .entry(registry_key.clone())
             .or_insert_with(|| RegisteredDevice {
@@ -576,6 +618,10 @@ async fn device_progress(
 #[allow(clippy::type_complexity)]
 async fn get_devices(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     tracing::debug!("GET /devices");
+    {
+        let mut reg = state.device_registry.write().await;
+        prune_stale_devices(&mut reg);
+    }
     let reg = state.device_registry.read().await.clone();
     let mut by_type: HashMap<String, (u64, u64, u64, Option<chrono::DateTime<chrono::Utc>>)> =
         HashMap::new();
@@ -1002,6 +1048,38 @@ async fn get_token_tx_history(
     )
 }
 
+async fn get_tribe_mint_address(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    tracing::debug!("GET /token/tribe/address");
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "address": state.tribe_mint_address,
+        })),
+    )
+}
+
+async fn get_tribe_supply(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    tracing::debug!("GET /token/tribe/supply");
+    let supply = state
+        .extensions
+        .ledger
+        .read()
+        .await
+        .total_supply(&TokenType::TribeChain);
+    let minted = {
+        let stats = state.stats.read().await;
+        stats.total_tribe_minted
+    };
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "supply": supply,
+            "total_minted": minted,
+            "token": "TribeChain",
+        })),
+    )
+}
+
 // ---------------------------------------------------------------------------
 // Marketplace handlers
 // ---------------------------------------------------------------------------
@@ -1350,6 +1428,7 @@ mod tests {
                 .to_string(),
             protocol_fee_address: String::new(),
             marketplace_fee_bps: 25,
+            tribe_mint_keypair_path: "/tmp/test_tribe_mint.json".to_string(),
         }
     }
 
@@ -1386,6 +1465,7 @@ mod tests {
             "/tmp/registry.json".to_string(),
             std::collections::HashMap::new(),
             create_test_hex_consensus(),
+            "test-tribe-mint".to_string(),
         );
 
         // Generate a challenge
@@ -1427,6 +1507,7 @@ mod tests {
             "/tmp/registry.json".to_string(),
             std::collections::HashMap::new(),
             create_test_hex_consensus(),
+            "test-tribe-mint".to_string(),
         );
 
         // Generate a challenge
@@ -1463,6 +1544,7 @@ mod tests {
             "/tmp/registry.json".to_string(),
             std::collections::HashMap::new(),
             create_test_hex_consensus(),
+            "test-tribe-mint".to_string(),
         );
 
         // Request with minimal/empty body (should use defaults)
@@ -1502,6 +1584,7 @@ mod tests {
             "/tmp/registry.json".to_string(),
             std::collections::HashMap::new(),
             create_test_hex_consensus(),
+            "test-tribe-mint".to_string(),
         );
 
         // Verify initial stats
@@ -1553,6 +1636,7 @@ mod tests {
             "/tmp/registry.json".to_string(),
             std::collections::HashMap::new(),
             create_test_hex_consensus(),
+            "test-tribe-mint".to_string(),
         );
 
         // Generate multiple challenges
@@ -1596,6 +1680,7 @@ mod tests {
             "/tmp/registry.json".to_string(),
             std::collections::HashMap::new(),
             create_test_hex_consensus(),
+            "test-tribe-mint".to_string(),
         );
 
         // Generate a challenge

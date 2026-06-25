@@ -17,6 +17,11 @@ fn test_registry_from_config_defaults_to_local_solo() {
         "",
         25,
         None,
+        &[],
+        false,
+        "pot-o-validator",
+        30,
+        true,
     );
 
     // Verify the network is LocalOnlyNetwork
@@ -45,6 +50,11 @@ fn test_registry_from_config_vpn_mesh_network() {
         "",
         25,
         None,
+        &[],
+        false,
+        "pot-o-validator",
+        30,
+        true,
     );
 
     // Verify the network can be used (should be VpnMeshNetwork)
@@ -69,6 +79,11 @@ fn test_registry_from_config_proportional_pool() {
         "",
         25,
         None,
+        &[],
+        false,
+        "pot-o-validator",
+        30,
+        true,
     );
 
     // Verify the pool is ProportionalPool by checking pool_info
@@ -90,6 +105,11 @@ fn test_registry_from_config_pplns_pool() {
         "",
         25,
         None,
+        &[],
+        false,
+        "pot-o-validator",
+        30,
+        true,
     );
 
     // Verify the pool is PPLNSPool by checking pool_info
@@ -111,6 +131,11 @@ fn test_registry_from_config_unknown_network_defaults_to_local_only() {
         "",
         25,
         None,
+        &[],
+        false,
+        "pot-o-validator",
+        30,
+        true,
     );
 
     // Should fall back to LocalOnlyNetwork
@@ -132,6 +157,11 @@ fn test_registry_from_config_unknown_pool_defaults_to_solo() {
         "",
         25,
         None,
+        &[],
+        false,
+        "pot-o-validator",
+        30,
+        true,
     );
 
     // Should fall back to SoloStrategy

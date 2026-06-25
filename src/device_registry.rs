@@ -47,6 +47,9 @@ pub const DEVICE_TYPE_KEYS: &[&str] = &["esp32", "esp8266", "gpu", "cpu", "nativ
 /// Default path for the JSON device registry file.
 pub const DEFAULT_REGISTRY_PATH: &str = "device_registry.json";
 
+/// TTL for device entries: devices not heard from in this many seconds are pruned.
+pub const DEVICE_TTL_SECS: i64 = 300;
+
 /// Normalizes a device type string to one of [`DEVICE_TYPE_KEYS`] (e.g. esp32s -> esp32).
 pub fn normalize_device_type(s: &str) -> String {
     let lower = s.to_lowercase();
@@ -98,6 +101,18 @@ pub fn spawn_persist_registry(reg: DeviceRegistry, path: String) {
             }
         }
     });
+}
+
+/// Remove devices whose `last_activity` is older than `DEVICE_TTL_SECS`.
+/// Reports the number of pruned entries via tracing.
+pub fn prune_stale_devices(reg: &mut DeviceRegistry) {
+    let cutoff = chrono::Utc::now() - chrono::Duration::seconds(DEVICE_TTL_SECS);
+    let before = reg.len();
+    reg.retain(|_key, dev| dev.last_activity >= cutoff);
+    let pruned = before - reg.len();
+    if pruned > 0 {
+        tracing::info!(before, after = reg.len(), pruned, "Pruned stale devices");
+    }
 }
 
 /// Simple JSON-on-disk implementation of `DeviceStore` backed by a single file.

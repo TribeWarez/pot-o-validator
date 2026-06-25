@@ -4,7 +4,7 @@
 listen_addr = "0.0.0.0"
 port = 8900
 solana_rpc_url = "http://testnet-solana-rpc-gateway:8899"
-pot_program_id = ""
+pot_program_id = "PoToVa1idator11111111111111111111111111111"
 difficulty = 2
 max_tensor_dim = 64
 max_mine_iterations = 10000

@@ -19,7 +19,7 @@ use device_registry::{load_registry, DEFAULT_REGISTRY_PATH};
 use hexchain_p2p::hex_consensus::HexConsensus;
 use hexchain_p2p::types::{ConsensusParams, MmlParams};
 use http_api::build_router;
-use pot_o_extensions::{spawn_persist_ledger, DEFAULT_LEDGER_PATH};
+use pot_o_extensions::{load_or_create_tribe_mint, spawn_persist_ledger, DEFAULT_LEDGER_PATH};
 use pot_o_mining::PotOConsensus;
 use tokio::sync::RwLock;
 
@@ -76,6 +76,9 @@ async fn main() {
 
     let hex_consensus = HexConsensus::new(consensus_params);
 
+    let tribe_mint_address = load_or_create_tribe_mint(&cfg.tribe_mint_keypair_path);
+    tracing::info!(address = %tribe_mint_address, "TRIBE mint");
+
     let state = create_app_state(
         cfg.clone(),
         consensus,
@@ -83,6 +86,7 @@ async fn main() {
         registry_path,
         device_registry,
         hex_consensus,
+        tribe_mint_address,
     );
 
     let internal_state = internal_api::InternalApiState {

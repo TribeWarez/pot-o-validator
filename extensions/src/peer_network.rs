@@ -110,7 +110,7 @@ pub struct VpnMeshNetwork {
     pub node_id: NodeId,
     pub config: VpnMeshConfig,
     gossip_client: GossipClient,
-    mdns_discovery: Option<MdnsDiscovery>,
+    mdns_discovery: Option<Arc<MdnsDiscovery>>,
     bootstrap_urls: Vec<String>,
     peer_list: Arc<RwLock<Vec<PeerInfo>>>,
     peer_timeout_secs: u64,
@@ -140,9 +140,9 @@ impl VpnMeshNetwork {
         // Create gossip client with bootstrap URLs as initial peers
         let gossip_client = GossipClient::new(bootstrap_urls.clone(), peer_timeout_secs);
 
-        // Create optional mDNS discovery
+        // Create optional mDNS discovery (wrapped in Arc for spawn_blocking)
         let mdns_discovery = if mdns_enabled && config.mdns_enabled {
-            Some(MdnsDiscovery::new(&node_id, config.gossip_port)?)
+            Some(Arc::new(MdnsDiscovery::new(&node_id, config.gossip_port)?))
         } else {
             None
         };
@@ -189,28 +189,6 @@ impl VpnMeshNetwork {
         Ok(peers)
     }
 
-    /// Discover peers from mDNS with timeout.
-    fn discover_mdns_peers(&self) -> Result<Vec<PeerInfo>, Box<dyn std::error::Error>> {
-        let mut peers = Vec::new();
-
-        if let Some(mdns) = &self.mdns_discovery {
-            if let Ok(discovered) = mdns.discover_peers(5) {
-                // Convert MdnsDiscovery peers to PeerInfo
-                for peer_discovery in discovered {
-                    let peer_info = PeerInfo {
-                        node_id: peer_discovery.node_id,
-                        address: peer_discovery.ip.to_string(),
-                        port: peer_discovery.port,
-                        last_seen: chrono::Utc::now(),
-                        version: "1.0".to_string(),
-                    };
-                    peers.push(peer_info);
-                }
-            }
-        }
-
-        Ok(peers)
-    }
 }
 
 #[async_trait]
@@ -222,15 +200,24 @@ impl PeerNetwork for VpnMeshNetwork {
     async fn discover_peers(&self) -> TribeResult<Vec<PeerInfo>> {
         let mut all_peers = Vec::new();
 
-        // Try mDNS discovery first (if enabled)
-        if self.mdns_discovery.is_some() {
-            match self.discover_mdns_peers() {
-                Ok(mdns_peers) => {
-                    all_peers.extend(mdns_peers);
-                }
-                Err(_) => {
-                    // mDNS failed, continue to bootstrap
-                }
+        // Try mDNS discovery first (if enabled) — runs in spawn_blocking since
+        // mdns_sd::ServiceDaemon::browse + recv_timeout is synchronous and can
+        // block for up to `timeout_secs` seconds.
+        if let Some(mdns) = &self.mdns_discovery {
+            let mdns_clone = mdns.clone();
+            let discovered = tokio::task::spawn_blocking(move || {
+                mdns_clone.discover_peers(5).unwrap_or_default()
+            })
+            .await
+            .unwrap_or_default();
+            for pd in discovered {
+                all_peers.push(PeerInfo {
+                    node_id: pd.node_id,
+                    address: pd.ip.to_string(),
+                    port: pd.port,
+                    last_seen: chrono::Utc::now(),
+                    version: "1.0".to_string(),
+                });
             }
         }
 
