@@ -110,7 +110,7 @@ impl ExtensionRegistry {
         enable_mdns: bool,
         mdns_service_name: &str,
         peer_timeout_secs: u64,
-        challenge_relay_enabled: bool,
+        _challenge_relay_enabled: bool,
     ) -> Self {
         // Parse network mode
         let network: Box<dyn PeerNetwork> = match peer_network_mode {

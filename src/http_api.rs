@@ -1298,12 +1298,11 @@ async fn handle_ws_socket(mut socket: WebSocket, state: Arc<AppState>) {
         tokio::select! {
             ws_msg = socket.recv() => {
                 match ws_msg {
-                    Some(Ok(Message::Text(text))) => {
+                    Some(Ok(Message::Text(text)))
                         if handle_ws_text(
                             &text, &state, &msg_tx, &mut device_id,
-                        ).await.is_err() {
-                            break;
-                        }
+                        ).await.is_err() => {
+                        break;
                     }
                     Some(Ok(Message::Close(_))) | None => break,
                     _ => {}
