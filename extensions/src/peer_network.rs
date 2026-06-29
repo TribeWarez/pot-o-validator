@@ -203,7 +203,6 @@ impl VpnMeshNetwork {
 
         Ok(peers)
     }
-
 }
 
 #[async_trait]
@@ -347,7 +346,10 @@ impl PeerNetwork for VpnMeshNetwork {
         let peers = self.peer_list.read().await;
         let mut success = 0usize;
         for peer in peers.iter() {
-            let url = format!("http://{}:{}/hexchain/lattice/sync", peer.address, peer.port);
+            let url = format!(
+                "http://{}:{}/hexchain/lattice/sync",
+                peer.address, peer.port
+            );
             match reqwest::Client::new()
                 .post(&url)
                 .timeout(std::time::Duration::from_secs(self.peer_timeout_secs))

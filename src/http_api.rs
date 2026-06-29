@@ -336,7 +336,8 @@ async fn submit_proof(
                         }
                     }
                     let mut stats = state.stats.write().await;
-                    stats.total_tribe_minted = stats.total_tribe_minted.saturating_add(reward_amount);
+                    stats.total_tribe_minted =
+                        stats.total_tribe_minted.saturating_add(reward_amount);
                     stats.total_rewards_paid = stats.total_rewards_paid.saturating_add(1);
                     tracing::debug!(
                         miner = %body.proof.miner_pubkey,
