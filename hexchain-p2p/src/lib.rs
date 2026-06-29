@@ -10,7 +10,7 @@ pub mod validator;
 pub use block::HexBlock;
 pub use hex_consensus::{HexChallenge, HexConsensus, HexProof};
 pub use lattice_geometry::HCPCoord;
-pub use lattice_store::LatticeStore;
+pub use lattice_store::{LatticeSnapshot, LatticeStore};
 pub use types::{
     BlockHash, ConsensusParams, MmlParams, TensorMeta, ValidationError, NEIGHBOR_SLOTS,
 };

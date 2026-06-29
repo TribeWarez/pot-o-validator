@@ -9,6 +9,7 @@ use axum::{
 };
 use hexchain_p2p::hex_consensus::HexProof;
 use hexchain_p2p::lattice_geometry::HCPCoord;
+use hexchain_p2p::lattice_store::LatticeSnapshot;
 use serde::Deserialize;
 
 use crate::consensus::AppState;
@@ -21,6 +22,7 @@ pub fn hex_routes(state: Arc<AppState>) -> Router {
         .route("/hexchain/submit", post(post_hex_submit))
         .route("/hexchain/status", get(get_hex_status))
         .route("/hexchain/lattice", get(get_hex_lattice_all))
+        .route("/hexchain/lattice/sync", post(post_hex_lattice_sync))
         .route("/hexchain/lattice/{q}/{r}/{s}", get(get_hex_lattice_coord))
         .with_state(state)
 }
@@ -151,6 +153,28 @@ async fn get_hex_lattice_all(State(state): State<Arc<AppState>>) -> HexApiRespon
     (
         StatusCode::OK,
         Json(serde_json::json!({ "blocks": blocks })),
+    )
+}
+
+async fn post_hex_lattice_sync(
+    State(state): State<Arc<AppState>>,
+    Json(snapshot): Json<LatticeSnapshot>,
+) -> HexApiResponse {
+    let before = state.hex_consensus.store.all_coords().len();
+    state.hex_consensus.store.merge_snapshot(&snapshot);
+    let after = state.hex_consensus.store.all_coords().len();
+    let merged = after.saturating_sub(before);
+    if let Err(e) = state.hex_consensus.store.save_to_file() {
+        tracing::warn!(error = %e, "POST /hexchain/lattice/sync persist failed");
+    }
+    tracing::info!(merged, total = after, "POST /hexchain/lattice/sync");
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "accepted": true,
+            "merged": merged,
+            "total_coords": after,
+        })),
     )
 }
 
