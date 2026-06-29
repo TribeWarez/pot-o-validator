@@ -43,6 +43,21 @@ pub trait PeerNetwork: Send + Sync {
     async fn broadcast_challenge(&self, challenge: &Challenge) -> TribeResult<()>;
     async fn relay_proof(&self, proof: &ProofPayload) -> TribeResult<()>;
     async fn sync_state(&self) -> TribeResult<NetworkState>;
+
+    /// Pull the hexchain lattice snapshot from a peer by URL.
+    /// Returns `None` if the peer is unreachable or returns non-200.
+    async fn pull_lattice(&self, peer_url: &str) -> TribeResult<Option<serde_json::Value>> {
+        // Default: HTTP GET to peer's /hexchain/lattice, returning JSON
+        #[allow(unused)]
+        let _ = peer_url;
+        Ok(None)
+    }
+
+    /// Push the local hexchain lattice snapshot to all known peers.
+    /// Returns count of successful pushes.
+    async fn push_lattice(&self, _snapshot: &serde_json::Value) -> TribeResult<usize> {
+        Ok(0)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -308,6 +323,43 @@ impl PeerNetwork for VpnMeshNetwork {
             total_nodes,
             synced: !peer_list.is_empty(),
         })
+    }
+
+    async fn pull_lattice(&self, peer_url: &str) -> TribeResult<Option<serde_json::Value>> {
+        let url = format!("{}/hexchain/lattice", peer_url.trim_end_matches('/'));
+        match reqwest::Client::new()
+            .get(&url)
+            .timeout(std::time::Duration::from_secs(self.peer_timeout_secs))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                match resp.json::<serde_json::Value>().await {
+                    Ok(json) => Ok(Some(json)),
+                    Err(_) => Ok(None),
+                }
+            }
+            _ => Ok(None),
+        }
+    }
+
+    async fn push_lattice(&self, snapshot: &serde_json::Value) -> TribeResult<usize> {
+        let peers = self.peer_list.read().await;
+        let mut success = 0usize;
+        for peer in peers.iter() {
+            let url = format!("http://{}:{}/hexchain/lattice/sync", peer.address, peer.port);
+            match reqwest::Client::new()
+                .post(&url)
+                .timeout(std::time::Duration::from_secs(self.peer_timeout_secs))
+                .json(snapshot)
+                .send()
+                .await
+            {
+                Ok(resp) if resp.status().is_success() => success += 1,
+                _ => {}
+            }
+        }
+        Ok(success)
     }
 }
 

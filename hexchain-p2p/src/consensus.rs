@@ -1,6 +1,36 @@
 use crate::types::{BlockHash, NEIGHBOR_SLOTS};
 use crate::uint256::Uint256;
 
+/// Deterministic conflict resolution: given two competing entries for the same
+/// lattice coordinate, pick the winner.
+///
+/// Rules (in order of priority):
+/// 1. Higher chain depth wins
+/// 2. If depths are equal, higher subgraph weight (cumulative PoW) wins
+/// 3. If both are equal, lexicographically larger hash wins (deterministic tiebreak)
+pub fn resolve_conflict(
+    cur_hash: BlockHash,
+    cur_depth: u64,
+    cur_weight: u64,
+    inc_hash: BlockHash,
+    inc_depth: u64,
+    inc_weight: u64,
+) -> (BlockHash, u64, u64) {
+    if inc_depth > cur_depth {
+        (inc_hash, inc_depth, inc_weight)
+    } else if inc_depth < cur_depth {
+        (cur_hash, cur_depth, cur_weight)
+    } else if inc_weight > cur_weight {
+        (inc_hash, inc_depth, inc_weight)
+    } else if inc_weight < cur_weight {
+        (cur_hash, cur_depth, cur_weight)
+    } else if inc_hash > cur_hash {
+        (inc_hash, inc_depth, inc_weight)
+    } else {
+        (cur_hash, cur_depth, cur_weight)
+    }
+}
+
 pub fn calculate_target(
     base_target: &Uint256,
     mature_neighbors: usize,
@@ -45,6 +75,62 @@ pub fn subgraph_weight_stub_local_pow(hash_below_target_bits: u64) -> u64 {
 mod tests {
     use super::*;
     use crate::uint256::Uint256;
+
+    #[test]
+    fn test_resolve_conflict_deeper_wins() {
+        let cur = [1u8; 32];
+        let inc = [2u8; 32];
+        let (hash, depth, _) = resolve_conflict(cur, 5, 100, inc, 10, 50);
+        assert_eq!(hash, inc, "deeper incoming should win");
+        assert_eq!(depth, 10);
+    }
+
+    #[test]
+    fn test_resolve_conflict_shallower_loses() {
+        let cur = [1u8; 32];
+        let inc = [2u8; 32];
+        let (hash, depth, _) = resolve_conflict(cur, 10, 100, inc, 5, 200);
+        assert_eq!(hash, cur, "shallower incoming should lose");
+        assert_eq!(depth, 10);
+    }
+
+    #[test]
+    fn test_resolve_conflict_equal_depth_higher_weight_wins() {
+        let cur = [1u8; 32];
+        let inc = [2u8; 32];
+        let (hash, _, _) = resolve_conflict(cur, 10, 100, inc, 10, 200);
+        assert_eq!(hash, inc, "higher weight at same depth should win");
+    }
+
+    #[test]
+    fn test_resolve_conflict_equal_depth_lower_weight_loses() {
+        let cur = [1u8; 32];
+        let inc = [2u8; 32];
+        let (hash, _, _) = resolve_conflict(cur, 10, 200, inc, 10, 100);
+        assert_eq!(hash, cur, "lower weight at same depth should lose");
+    }
+
+    #[test]
+    fn test_resolve_conflict_equal_depth_equal_weight_larger_hash_wins() {
+        let small_hash = [0x01u8; 32];
+        let large_hash = [0x02u8; 32];
+        let (hash, _, _) = resolve_conflict(small_hash, 10, 100, large_hash, 10, 100);
+        assert_eq!(
+            hash, large_hash,
+            "equal depth+weight: larger hash should win"
+        );
+    }
+
+    #[test]
+    fn test_resolve_conflict_equal_depth_equal_weight_smaller_hash_loses() {
+        let small_hash = [0x01u8; 32];
+        let large_hash = [0x02u8; 32];
+        let (hash, _, _) = resolve_conflict(large_hash, 10, 100, small_hash, 10, 100);
+        assert_eq!(
+            hash, large_hash,
+            "equal depth+weight: incoming smaller hash should lose"
+        );
+    }
 
     #[test]
     fn test_calculate_target_k_zero_returns_base() {

@@ -135,6 +135,45 @@ impl GossipClient {
         let mut peers = self.peers.write().await;
         *peers = new_peers;
     }
+
+    /// Broadcast a hexchain lattice snapshot to all peers.
+    ///
+    /// # Arguments
+    /// * `node_id` - This node's identifier
+    /// * `snapshot` - JSON-serialized lattice snapshot (LatticeSnapshot)
+    ///
+    /// # Returns
+    /// Number of peers that successfully received the snapshot
+    pub async fn broadcast_lattice(
+        &self,
+        node_id: &str,
+        snapshot: &serde_json::Value,
+    ) -> Result<usize, Box<dyn std::error::Error>> {
+        let peers = self.peers.read().await.clone();
+        let mut success_count = 0;
+
+        for peer_url in peers {
+            let payload = serde_json::json!({
+                "node_id": node_id,
+                "snapshot": snapshot,
+            });
+            let result = self
+                .client
+                .post(format!("{}/hexchain/lattice/sync", peer_url))
+                .timeout(self.timeout)
+                .json(&payload)
+                .send()
+                .await;
+
+            if let Ok(response) = result {
+                if response.status().is_success() {
+                    success_count += 1;
+                }
+            }
+        }
+
+        Ok(success_count)
+    }
 }
 
 #[cfg(test)]
