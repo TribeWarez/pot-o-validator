@@ -31,7 +31,7 @@ jobs:
           fi
 
       - name: Checkout main repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -97,7 +97,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout pot-o-core repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: TribeWarez/pot-o-core
           token: ${{ secrets.GH_PAT }}
@@ -156,7 +156,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout ai3-lib repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: TribeWarez/ai3-lib
           token: ${{ secrets.GH_PAT }}
@@ -221,7 +221,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout pot-o-mining repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: TribeWarez/pot-o-mining
           token: ${{ secrets.GH_PAT }}
@@ -288,7 +288,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout pot-o-extensions repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: TribeWarez/pot-o-extensions
           token: ${{ secrets.GH_PAT }}

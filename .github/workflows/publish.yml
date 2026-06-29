@@ -26,7 +26,7 @@ jobs:
       contents: read
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -35,7 +35,13 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Publish pot-o-core
-        run: cargo publish -p pot-o-core ${{ inputs.dry_run == 'true' && '--dry-run' || '' }} || true
+        run: |
+          VERSION=$(grep '^version' core/Cargo.toml | head -1 | sed 's/version = "\(.*\)".*/\1/')
+          if cargo search "pot-o-core" --limit 1 2>/dev/null | grep -q "pot-o-core = \"${VERSION}\""; then
+            echo "pot-o-core v${VERSION} already published, skipping"
+          else
+            cargo publish -p pot-o-core ${{ inputs.dry_run == 'true' && '--dry-run' || '' }}
+          fi
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
@@ -51,7 +57,13 @@ jobs:
           done
 
       - name: Publish ai3-lib
-        run: cargo publish -p ai3-lib ${{ inputs.dry_run == 'true' && '--dry-run' || '' }} || true
+        run: |
+          VERSION=$(grep '^version' ai3-lib/Cargo.toml | head -1 | sed 's/version = "\(.*\)".*/\1/')
+          if cargo search "ai3-lib" --limit 1 2>/dev/null | grep -q "ai3-lib = \"${VERSION}\""; then
+            echo "ai3-lib v${VERSION} already published, skipping"
+          else
+            cargo publish -p ai3-lib ${{ inputs.dry_run == 'true' && '--dry-run' || '' }}
+          fi
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
@@ -67,7 +79,13 @@ jobs:
           done
 
       - name: Publish pot-o-mining
-        run: cargo publish -p pot-o-mining ${{ inputs.dry_run == 'true' && '--dry-run' || '' }} || true
+        run: |
+          VERSION=$(grep '^version' mining/Cargo.toml | head -1 | sed 's/version = "\(.*\)".*/\1/')
+          if cargo search "pot-o-mining" --limit 1 2>/dev/null | grep -q "pot-o-mining = \"${VERSION}\""; then
+            echo "pot-o-mining v${VERSION} already published, skipping"
+          else
+            cargo publish -p pot-o-mining ${{ inputs.dry_run == 'true' && '--dry-run' || '' }}
+          fi
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
@@ -83,7 +101,13 @@ jobs:
           done
 
       - name: Publish pot-o-extensions
-        run: cargo publish -p pot-o-extensions ${{ inputs.dry_run == 'true' && '--dry-run' || '' }} || true
+        run: |
+          VERSION=$(grep '^version' extensions/Cargo.toml | head -1 | sed 's/version = "\(.*\)".*/\1/')
+          if cargo search "pot-o-extensions" --limit 1 2>/dev/null | grep -q "pot-o-extensions = \"${VERSION}\""; then
+            echo "pot-o-extensions v${VERSION} already published, skipping"
+          else
+            cargo publish -p pot-o-extensions ${{ inputs.dry_run == 'true' && '--dry-run' || '' }}
+          fi
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
@@ -99,7 +123,13 @@ jobs:
           done
 
       - name: Publish hexchain-p2p
-        run: cargo publish -p hexchain-p2p ${{ inputs.dry_run == 'true' && '--dry-run' || '' }} || true
+        run: |
+          VERSION=$(grep '^version' hexchain-p2p/Cargo.toml | head -1 | sed 's/version = "\(.*\)".*/\1/')
+          if cargo search "hexchain-p2p" --limit 1 2>/dev/null | grep -q "hexchain-p2p = \"${VERSION}\""; then
+            echo "hexchain-p2p v${VERSION} already published, skipping"
+          else
+            cargo publish -p hexchain-p2p ${{ inputs.dry_run == 'true' && '--dry-run' || '' }}
+          fi
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
