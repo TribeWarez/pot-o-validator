@@ -1,6 +1,6 @@
 [package]
 name = "pot-o-mining"
-version = "0.7.1"
+version = "0.7.3"
 edition = "2021"
 authors = ["TribeWarez"]
 description = "Mining coordination and neural-path logic for PoT-O"
