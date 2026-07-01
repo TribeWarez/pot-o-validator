@@ -3,26 +3,17 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fmt;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum TokenType {
-    TribeChain,
-    PTtC,
-    NMTC,
-    STOMP,
-    AUM,
-    AI3,
-}
+pub use pot_o_core::TokenType;
 
-impl fmt::Display for TokenType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            TokenType::TribeChain => write!(f, "TRIBECHAIN"),
-            TokenType::PTtC => write!(f, "PTTC"),
-            TokenType::NMTC => write!(f, "NMTC"),
-            TokenType::STOMP => write!(f, "STOMP"),
-            TokenType::AUM => write!(f, "AUM"),
-            TokenType::AI3 => write!(f, "AI3"),
-        }
+/// Stable u8 discriminant for TokenType (used in hash to avoid Display instability).
+pub fn token_discriminant(t: &TokenType) -> u8 {
+    match t {
+        TokenType::TribeChain => 0,
+        TokenType::PTtC => 1,
+        TokenType::NMTC => 2,
+        TokenType::STOMP => 3,
+        TokenType::AUM => 4,
+        TokenType::AI3 => 5,
     }
 }
 
@@ -119,25 +110,38 @@ pub fn hash_transfer(
     token: &TokenType,
     amount: u64,
     fee: u64,
+    timestamp: u64,
 ) -> [u8; 32] {
     let mut hasher = Sha256::new();
     hasher.update(from.as_bytes());
     hasher.update(nonce.to_le_bytes());
     hasher.update(to.as_bytes());
-    hasher.update(token.to_string().as_bytes());
+    hasher.update([token_discriminant(token)]);
     hasher.update(amount.to_le_bytes());
     hasher.update(fee.to_le_bytes());
+    hasher.update(timestamp.to_le_bytes());
     let result = hasher.finalize();
     let mut hash = [0u8; 32];
     hash.copy_from_slice(&result);
     hash
 }
 
-pub fn hash_coinbase(height: u64, miner_address: &str, block_reward: u64) -> [u8; 32] {
+pub fn hash_coinbase(
+    height: u64,
+    miner_address: &str,
+    block_reward: u64,
+    proof_rewards: &[ProofRewardEntry],
+) -> [u8; 32] {
     let mut hasher = Sha256::new();
     hasher.update(height.to_le_bytes());
     hasher.update(miner_address.as_bytes());
     hasher.update(block_reward.to_le_bytes());
+    hasher.update((proof_rewards.len() as u64).to_le_bytes());
+    for pr in proof_rewards {
+        hasher.update(pr.miner_pubkey.as_bytes());
+        hasher.update(pr.reward_amount.to_le_bytes());
+        hasher.update(pr.proof_hash.as_bytes());
+    }
     let result = hasher.finalize();
     let mut hash = [0u8; 32];
     hash.copy_from_slice(&result);
@@ -154,7 +158,15 @@ pub fn verify_transfer_sig(tx: &TransferTransaction) -> Result<(), TxError> {
     let public_key = PublicKey::from_bytes(&pubkey_array).map_err(|_| TxError::InvalidSignature)?;
     let sig = Signature::from_bytes(&tx.signature).map_err(|_| TxError::InvalidSignature)?;
 
-    let expected_hash = hash_transfer(&tx.from, tx.nonce, &tx.to, &tx.token, tx.amount, tx.fee);
+    let expected_hash = hash_transfer(
+        &tx.from,
+        tx.nonce,
+        &tx.to,
+        &tx.token,
+        tx.amount,
+        tx.fee,
+        tx.timestamp,
+    );
     public_key
         .verify_strict(&expected_hash[..], &sig)
         .map_err(|_| TxError::InvalidSignature)
@@ -170,7 +182,12 @@ pub fn verify_coinbase_sig(cb: &CoinbaseTransaction) -> Result<(), TxError> {
     let public_key = PublicKey::from_bytes(&pubkey_array).map_err(|_| TxError::InvalidSignature)?;
     let sig = Signature::from_bytes(&cb.signature).map_err(|_| TxError::InvalidSignature)?;
 
-    let expected_hash = hash_coinbase(cb.height, &cb.miner_address, cb.block_reward);
+    let expected_hash = hash_coinbase(
+        cb.height,
+        &cb.miner_address,
+        cb.block_reward,
+        &cb.proof_rewards,
+    );
     public_key
         .verify_strict(&expected_hash[..], &sig)
         .map_err(|_| TxError::InvalidSignature)
@@ -182,13 +199,13 @@ mod tests {
     use ed25519_dalek::{Keypair, SecretKey, Signer};
 
     #[test]
-    fn test_token_type_display() {
-        assert_eq!(TokenType::TribeChain.to_string(), "TRIBECHAIN");
-        assert_eq!(TokenType::PTtC.to_string(), "PTTC");
-        assert_eq!(TokenType::NMTC.to_string(), "NMTC");
-        assert_eq!(TokenType::STOMP.to_string(), "STOMP");
-        assert_eq!(TokenType::AUM.to_string(), "AUM");
-        assert_eq!(TokenType::AI3.to_string(), "AI3");
+    fn test_token_discriminant() {
+        assert_eq!(token_discriminant(&TokenType::TribeChain), 0);
+        assert_eq!(token_discriminant(&TokenType::PTtC), 1);
+        assert_eq!(token_discriminant(&TokenType::NMTC), 2);
+        assert_eq!(token_discriminant(&TokenType::STOMP), 3);
+        assert_eq!(token_discriminant(&TokenType::AUM), 4);
+        assert_eq!(token_discriminant(&TokenType::AI3), 5);
     }
 
     #[test]
@@ -210,31 +227,33 @@ mod tests {
 
     #[test]
     fn test_hash_transfer_deterministic() {
-        let h1 = hash_transfer("Alice", 1, "Bob", &TokenType::TribeChain, 100, 1);
-        let h2 = hash_transfer("Alice", 1, "Bob", &TokenType::TribeChain, 100, 1);
+        let h1 = hash_transfer("Alice", 1, "Bob", &TokenType::TribeChain, 100, 1, 0);
+        let h2 = hash_transfer("Alice", 1, "Bob", &TokenType::TribeChain, 100, 1, 0);
         assert_eq!(h1, h2);
         assert_eq!(h1.len(), 32);
     }
 
     #[test]
     fn test_hash_transfer_different_nonce() {
-        let h1 = hash_transfer("Alice", 1, "Bob", &TokenType::TribeChain, 100, 1);
-        let h2 = hash_transfer("Alice", 2, "Bob", &TokenType::TribeChain, 100, 1);
+        let h1 = hash_transfer("Alice", 1, "Bob", &TokenType::TribeChain, 100, 1, 0);
+        let h2 = hash_transfer("Alice", 2, "Bob", &TokenType::TribeChain, 100, 1, 0);
         assert_ne!(h1, h2);
     }
 
     #[test]
     fn test_hash_coinbase_deterministic() {
-        let h1 = hash_coinbase(42, "MinerPubkey", 500);
-        let h2 = hash_coinbase(42, "MinerPubkey", 500);
+        let pr = vec![];
+        let h1 = hash_coinbase(42, "MinerPubkey", 500, &pr);
+        let h2 = hash_coinbase(42, "MinerPubkey", 500, &pr);
         assert_eq!(h1, h2);
         assert_eq!(h1.len(), 32);
     }
 
     #[test]
     fn test_hash_coinbase_different_height() {
-        let h1 = hash_coinbase(1, "Miner", 500);
-        let h2 = hash_coinbase(2, "Miner", 500);
+        let pr = vec![];
+        let h1 = hash_coinbase(1, "Miner", 500, &pr);
+        let h2 = hash_coinbase(2, "Miner", 500, &pr);
         assert_ne!(h1, h2);
     }
 
@@ -251,8 +270,9 @@ mod tests {
         let token = TokenType::TribeChain;
         let amount = 100u64;
         let fee = 1u64;
+        let timestamp = 0u64;
 
-        let msg = hash_transfer(&from, nonce, &to, &token, amount, fee);
+        let msg = hash_transfer(&from, nonce, &to, &token, amount, fee, timestamp);
         let signature = keypair.sign(&msg).to_bytes().to_vec();
 
         let tx = TransferTransaction {
@@ -264,7 +284,7 @@ mod tests {
             amount,
             fee,
             signature,
-            timestamp: 0,
+            timestamp,
         };
         let result = verify_transfer_sig(&tx);
         assert!(result.is_ok());
@@ -302,13 +322,14 @@ mod tests {
         let token = TokenType::TribeChain;
         let amount = 100u64;
         let fee = 1u64;
+        let timestamp = 0u64;
 
-        let msg = hash_transfer(&from, nonce, &to, &token, amount, fee);
+        let msg = hash_transfer(&from, nonce, &to, &token, amount, fee, timestamp);
         let signature = keypair.sign(&msg).to_bytes().to_vec();
 
         let tampered_amount = amount + 1;
         let tx = TransferTransaction {
-            tx_hash: hash_transfer(&from, nonce, &to, &token, tampered_amount, fee),
+            tx_hash: hash_transfer(&from, nonce, &to, &token, tampered_amount, fee, timestamp),
             nonce,
             from,
             to,
@@ -338,7 +359,7 @@ mod tests {
             proof_hash: "abc123".to_string(),
         }];
 
-        let msg = hash_coinbase(height, &miner_address, block_reward);
+        let msg = hash_coinbase(height, &miner_address, block_reward, &proof_rewards);
         let signature = keypair.sign(&msg).to_bytes().to_vec();
 
         let cb = CoinbaseTransaction {
@@ -385,7 +406,7 @@ mod tests {
             proof_hash: "abc123".to_string(),
         }];
 
-        let msg = hash_coinbase(height, &miner_address, block_reward);
+        let msg = hash_coinbase(height, &miner_address, block_reward, &proof_rewards);
         let signature = keypair.sign(&msg).to_bytes().to_vec();
 
         let cb = CoinbaseTransaction {

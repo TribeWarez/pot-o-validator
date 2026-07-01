@@ -1,6 +1,6 @@
 [package]
 name = "pot-o-extensions"
-version = "0.7.3"
+version = "0.8.0"
 edition = "2021"
 authors = ["TribeWarez"]
 description = "DeFi, staking, and external-chain extensions for the PoT-O validator"
@@ -13,9 +13,9 @@ keywords = ["pot-o", "tribewarez", "blockchain", "defi", "staking", "extensions"
 categories = ["cryptography::cryptocurrency", "development-tools"]
 
 [dependencies]
-pot-o-core = "0.7"
-ai3-lib = "0.7"
-pot-o-mining = "0.7"
+pot-o-core = "0.8"
+ai3-lib = "0.8"
+pot-o-mining = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 async-trait = "0.1"
