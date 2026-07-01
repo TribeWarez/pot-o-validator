@@ -4,15 +4,18 @@
 pub mod chain_bridge;
 pub mod defi;
 pub mod device_protocol;
+pub mod genesis;
 pub mod gossip_client;
 pub mod ledger;
 pub mod marketplace;
 pub mod mdns_discovery;
+pub mod mempool;
 pub mod messaging;
 pub mod peer_network;
 pub mod pool_strategy;
 pub mod rewards;
 pub mod security;
+pub mod tx;
 
 pub use chain_bridge::{ChainBridge, SolanaBridge};
 pub use defi::{
@@ -30,6 +33,7 @@ pub use marketplace::{
     parse_market_asset, MarketAsset, Marketplace, Order, OrderBook, OrderSide, OrderStatus, Trade,
 };
 pub use mdns_discovery::{MdnsDiscovery, PeerDiscovery};
+pub use mempool::Mempool;
 pub use messaging::{Messaging, MinerMessage, ValidatorMessage};
 pub use peer_network::{LocalOnlyNetwork, PeerNetwork, VpnMeshConfig, VpnMeshNetwork};
 pub use pool_strategy::{
@@ -38,6 +42,8 @@ pub use pool_strategy::{
 pub use rewards::{calculate_mining_reward, load_or_create_tribe_mint, BASE_REWARD};
 pub use security::{Ed25519Authority, ProofAuthority};
 
+pub use crate::genesis::Genesis;
+use hexchain_p2p::block_store::BlockStore;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -52,6 +58,10 @@ pub struct ExtensionRegistry {
     pub ledger: Arc<RwLock<Ledger>>,
     pub marketplace: Arc<RwLock<Marketplace>>,
     pub messaging: Arc<Messaging>,
+    pub mempool: Option<Arc<Mempool>>,
+    pub block_store: Option<Arc<BlockStore>>,
+    pub genesis: Option<Genesis>,
+    pub tribechain_enabled: bool,
 }
 
 impl ExtensionRegistry {
@@ -76,6 +86,10 @@ impl ExtensionRegistry {
             ledger: Arc::new(RwLock::new(Ledger::new(String::new()))),
             marketplace: Arc::new(RwLock::new(Marketplace::new(25, String::new()))),
             messaging: Messaging::new(),
+            mempool: None,
+            block_store: None,
+            genesis: None,
+            tribechain_enabled: false,
         }
     }
 
@@ -173,6 +187,10 @@ impl ExtensionRegistry {
                 protocol_fee_address.to_string(),
             ))),
             messaging: Messaging::new(),
+            mempool: None,
+            block_store: None,
+            genesis: None,
+            tribechain_enabled: false,
         }
     }
 }

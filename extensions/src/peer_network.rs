@@ -44,10 +44,14 @@ pub trait PeerNetwork: Send + Sync {
     async fn relay_proof(&self, proof: &ProofPayload) -> TribeResult<()>;
     async fn sync_state(&self) -> TribeResult<NetworkState>;
 
+    /// Broadcast a transaction to all known peers so they can add it to their mempool.
+    async fn broadcast_transaction(&self, _tx: &serde_json::Value) -> TribeResult<()> {
+        Ok(())
+    }
+
     /// Pull the hexchain lattice snapshot from a peer by URL.
     /// Returns `None` if the peer is unreachable or returns non-200.
     async fn pull_lattice(&self, peer_url: &str) -> TribeResult<Option<serde_json::Value>> {
-        // Default: HTTP GET to peer's /hexchain/lattice, returning JSON
         #[allow(unused)]
         let _ = peer_url;
         Ok(None)
@@ -362,6 +366,23 @@ impl PeerNetwork for VpnMeshNetwork {
             }
         }
         Ok(success)
+    }
+
+    async fn broadcast_transaction(&self, tx: &serde_json::Value) -> TribeResult<()> {
+        let peers = self.peer_list.read().await;
+        for peer in peers.iter() {
+            let url = format!(
+                "http://{}:{}/internal/tx/broadcast",
+                peer.address, peer.port
+            );
+            let _ = reqwest::Client::new()
+                .post(&url)
+                .timeout(std::time::Duration::from_secs(self.peer_timeout_secs))
+                .json(tx)
+                .send()
+                .await;
+        }
+        Ok(())
     }
 }
 

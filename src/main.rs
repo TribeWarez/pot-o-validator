@@ -79,6 +79,11 @@ async fn main() {
     let tribe_mint_address = load_or_create_tribe_mint(&cfg.tribe_mint_keypair_path);
     tracing::info!(address = %tribe_mint_address, "TRIBE mint");
 
+    let mempool = extensions.mempool.clone();
+    let ledger = extensions.ledger.clone();
+    let tribechain_enabled = extensions.tribechain_enabled;
+    let block_store = extensions.block_store.clone();
+
     let state = create_app_state(
         cfg.clone(),
         consensus,
@@ -89,10 +94,31 @@ async fn main() {
         tribe_mint_address,
     );
 
+    if let Some(ref bs) = block_store {
+        let bs = bs.clone();
+        tokio::spawn(async move {
+            let interval = tokio::time::Duration::from_secs(10);
+            loop {
+                tokio::time::sleep(interval).await;
+                if bs.is_modified() {
+                    if let Err(e) = bs.save_to_file() {
+                        tracing::error!("Failed to persist block store: {}", e);
+                    } else {
+                        bs.clear_modified();
+                    }
+                }
+            }
+        });
+        tracing::info!("BlockStore background persistence started");
+    }
+
     let internal_state = internal_api::InternalApiState {
         node_id: cfg.node_id.clone(),
         peers: Arc::new(RwLock::new(Vec::new())),
         current_challenge: Arc::new(RwLock::new(None)),
+        mempool,
+        ledger,
+        tribechain_enabled,
     };
 
     let app = build_router(Arc::clone(&state))

@@ -75,6 +75,9 @@ mod tests {
         HexBlock {
             parent_hash: [0u8; 32],
             tx_merkle_root: [0u8; 32],
+            height: 0,
+            transactions: None,
+            miner_address: None,
             timestamp: 1,
             nonce: 0,
             coord: HCPCoord { q: 0, r: 0, s: 0 },
@@ -196,6 +199,9 @@ mod tests {
         let mut block = HexBlock {
             parent_hash: [0u8; 32],
             tx_merkle_root: [0u8; 32],
+            height: 0,
+            transactions: None,
+            miner_address: None,
             timestamp: 2,
             nonce: 0,
             coord: rim_coord,
@@ -248,6 +254,9 @@ mod tests {
         let block = HexBlock {
             parent_hash: [0u8; 32],
             tx_merkle_root: [0u8; 32],
+            height: 0,
+            transactions: None,
+            miner_address: None,
             timestamp: 2,
             nonce: 0,
             coord: HCPCoord { q: 1, r: 0, s: 0 },
@@ -290,6 +299,9 @@ mod tests {
         let block = HexBlock {
             parent_hash: [0u8; 32],
             tx_merkle_root: [0u8; 32],
+            height: 0,
+            transactions: None,
+            miner_address: None,
             timestamp: 2,
             nonce: 0,
             coord: HCPCoord { q: 1, r: 0, s: 0 },
