@@ -1,8 +1,8 @@
 //! Builds the extension registry from validator config (chain, pool, network, ledger, tribechain).
 
 use hexchain_p2p::block_store::BlockStore;
-use pot_o_extensions::{genesis::Genesis, Mempool};
 use pot_o_extensions::{load_ledger, ExtensionRegistry, DEFAULT_LEDGER_PATH};
+use pot_o_extensions::{Genesis, Mempool};
 use std::sync::Arc;
 
 use crate::config::ValidatorConfig;
@@ -33,8 +33,14 @@ pub fn build_extension_registry(cfg: &ValidatorConfig) -> ExtensionRegistry {
     );
 
     if cfg.tribechain_enabled {
-        let genesis = if !cfg.tribechain_genesis_path.is_empty() {
-            Some(Genesis::load(&cfg.tribechain_genesis_path))
+        let genesis: Option<Genesis> = if !cfg.tribechain_genesis_path.is_empty() {
+            match Genesis::load(&cfg.tribechain_genesis_path) {
+                Ok(g) => Some(g),
+                Err(e) => {
+                    tracing::warn!("Failed to load genesis (tribechain disabled): {}", e);
+                    None
+                }
+            }
         } else {
             None
         };

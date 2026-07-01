@@ -4,6 +4,7 @@
 pub mod chain_bridge;
 pub mod defi;
 pub mod device_protocol;
+pub mod genesis;
 pub mod gossip_client;
 pub mod ledger;
 pub mod marketplace;
@@ -14,7 +15,6 @@ pub mod peer_network;
 pub mod pool_strategy;
 pub mod rewards;
 pub mod security;
-pub mod genesis;
 pub mod tx;
 
 pub use chain_bridge::{ChainBridge, SolanaBridge};
@@ -22,6 +22,7 @@ pub use defi::{
     DefiClient, EscrowInfo, LiquidityPoolInfo, StakeAccountInfo, StakingPoolInfo, SwapQuoteInfo,
     TreasuryInfo, UserVaultInfo,
 };
+pub use genesis::Genesis;
 pub use device_protocol::{
     DeviceProtocol, DeviceStatus, DeviceType, ESP32SDevice, ESP8266Device, NativeDevice, WasmDevice,
 };
@@ -42,7 +43,6 @@ pub use pool_strategy::{
 pub use rewards::{calculate_mining_reward, load_or_create_tribe_mint, BASE_REWARD};
 pub use security::{Ed25519Authority, ProofAuthority};
 
-use crate::genesis::Genesis;
 use hexchain_p2p::block_store::BlockStore;
 use std::sync::Arc;
 use tokio::sync::RwLock;
