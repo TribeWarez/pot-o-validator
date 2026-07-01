@@ -48,6 +48,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/token/tx/:address", get(get_token_tx_history))
         .route("/token/tribe/address", get(get_tribe_mint_address))
         .route("/token/tribe/supply", get(get_tribe_supply))
+        // Tribechain public API
+        .route("/api/tx", post(post_tribechain_tx))
+        .route("/api/nonce/:address", get(get_tribechain_nonce))
+        .route("/api/blocks", get(get_tribechain_blocks))
         // Marketplace (v0.5.1+)
         .route("/marketplace/order", post(post_marketplace_order))
         .route("/marketplace/order/{id}", delete(delete_marketplace_order))
@@ -1077,6 +1081,128 @@ async fn get_tribe_supply(State(state): State<Arc<AppState>>) -> impl IntoRespon
             "supply": supply,
             "total_minted": minted,
             "token": "TribeChain",
+        })),
+    )
+}
+
+// ---------------------------------------------------------------------------
+// Tribechain public API handlers
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+struct TribechainTxRequest {
+    tx: pot_o_extensions::tx::TransferTransaction,
+}
+
+async fn post_tribechain_tx(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<TribechainTxRequest>,
+) -> impl IntoResponse {
+    tracing::debug!(from = %body.tx.from, "POST /api/tx");
+
+    if !state.extensions.tribechain_enabled {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "tribechain not enabled"})),
+        );
+    }
+
+    let Some(mempool) = &state.extensions.mempool else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({"error": "mempool not available"})),
+        );
+    };
+
+    match mempool.submit(body.tx.clone(), &state.extensions.ledger) {
+        Ok(tx_hash) => {
+            let tx_json = serde_json::to_value(&body.tx).unwrap_or_default();
+            let _ = state
+                .extensions
+                .network
+                .broadcast_transaction(&tx_json)
+                .await;
+            tracing::debug!(tx_hash = %hex::encode(tx_hash), "POST /api/tx accepted");
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "accepted": true,
+                    "tx_hash": hex::encode(tx_hash),
+                })),
+            )
+        }
+        Err(e) => {
+            tracing::debug!(error = %e, "POST /api/tx rejected");
+            (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": e.to_string()})),
+            )
+        }
+    }
+}
+
+async fn get_tribechain_nonce(
+    State(state): State<Arc<AppState>>,
+    Path(address): Path<String>,
+) -> impl IntoResponse {
+    tracing::debug!(address = %address, "GET /api/nonce");
+    let nonce = state.extensions.ledger.read().await.current_nonce(&address);
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "address": address,
+            "nonce": nonce,
+        })),
+    )
+}
+
+#[derive(Debug, Deserialize)]
+struct BlocksQuery {
+    from_height: Option<u64>,
+    limit: Option<usize>,
+}
+
+async fn get_tribechain_blocks(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<BlocksQuery>,
+) -> impl IntoResponse {
+    tracing::debug!("GET /api/blocks");
+    let Some(block_store) = &state.extensions.block_store else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({"error": "block store not available"})),
+        );
+    };
+
+    let from_height = query.from_height.unwrap_or(0);
+    let limit = query.limit.unwrap_or(100).min(1000);
+    let latest = block_store.latest_height();
+
+    let mut blocks = Vec::new();
+    for h in from_height..=latest {
+        if blocks.len() >= limit {
+            break;
+        }
+        if let Some(stored) = block_store.at_height(h) {
+            if let Ok(block) = serde_json::from_value::<hexchain_p2p::block::HexBlock>(
+                serde_json::from_str(&stored.block_json).unwrap_or_default(),
+            ) {
+                blocks.push(serde_json::json!({
+                    "height": block.height,
+                    "hash": hex::encode(stored.hash),
+                    "coord": block.coord,
+                    "tx_count": block.transactions.as_ref().map(|t| t.len()).unwrap_or(0),
+                    "timestamp": block.timestamp,
+                }));
+            }
+        }
+    }
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "blocks": blocks,
+            "latest_height": latest,
         })),
     )
 }
