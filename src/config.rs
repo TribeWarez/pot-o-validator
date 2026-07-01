@@ -90,6 +90,27 @@ pub struct ValidatorConfig {
     /// Path to the TRIBE mint Ed25519 keypair JSON file (auto-generated if missing).
     #[serde(default = "default_tribe_mint_keypair_path")]
     pub tribe_mint_keypair_path: String,
+    /// Enable TribeChain sidechain (mempool, block store, genesis).
+    #[serde(default = "default_tribechain_enabled")]
+    pub tribechain_enabled: bool,
+    /// Minimum fee for TribeChain transactions.
+    #[serde(default = "default_tribechain_min_fee")]
+    pub tribechain_min_fee: u64,
+    /// Maximum number of pending transactions in the mempool.
+    #[serde(default = "default_tribechain_max_pool_size")]
+    pub tribechain_max_pool_size: usize,
+    /// Maximum transactions per block.
+    #[serde(default = "default_tribechain_max_txs_per_block")]
+    pub tribechain_max_txs_per_block: usize,
+    /// Path to genesis JSON file.
+    #[serde(default = "default_tribechain_genesis_path")]
+    pub tribechain_genesis_path: String,
+    /// Miner address for TribeChain block rewards.
+    #[serde(default = "default_tribechain_miner_address")]
+    pub tribechain_miner_address: String,
+    /// Path to the block store persistence file.
+    #[serde(default = "default_tribechain_blockstore_path")]
+    pub tribechain_blockstore_path: String,
 }
 
 fn default_node_id() -> String {
@@ -173,6 +194,27 @@ fn default_marketplace_fee_bps() -> u64 {
 }
 fn default_tribe_mint_keypair_path() -> String {
     "tribe_mint_keypair.json".into()
+}
+fn default_tribechain_enabled() -> bool {
+    false
+}
+fn default_tribechain_min_fee() -> u64 {
+    0
+}
+fn default_tribechain_max_pool_size() -> usize {
+    10_000
+}
+fn default_tribechain_max_txs_per_block() -> usize {
+    1000
+}
+fn default_tribechain_genesis_path() -> String {
+    String::new()
+}
+fn default_tribechain_miner_address() -> String {
+    String::new()
+}
+fn default_tribechain_blockstore_path() -> String {
+    "blockstore.json".to_string()
 }
 
 impl ValidatorConfig {
@@ -277,6 +319,33 @@ impl ValidatorConfig {
         if let Ok(v) = std::env::var("TRIBE_MINT_KEYPAIR_PATH") {
             cfg.tribe_mint_keypair_path = v;
         }
+        if let Ok(v) = std::env::var("TRIBECHAIN_ENABLED") {
+            cfg.tribechain_enabled = v != "0" && v.to_lowercase() != "false";
+        }
+        if let Ok(v) = std::env::var("TRIBECHAIN_MIN_FEE") {
+            if let Ok(f) = v.parse() {
+                cfg.tribechain_min_fee = f;
+            }
+        }
+        if let Ok(v) = std::env::var("TRIBECHAIN_MAX_POOL_SIZE") {
+            if let Ok(s) = v.parse() {
+                cfg.tribechain_max_pool_size = s;
+            }
+        }
+        if let Ok(v) = std::env::var("TRIBECHAIN_MAX_TXS_PER_BLOCK") {
+            if let Ok(n) = v.parse() {
+                cfg.tribechain_max_txs_per_block = n;
+            }
+        }
+        if let Ok(v) = std::env::var("TRIBECHAIN_GENESIS_PATH") {
+            cfg.tribechain_genesis_path = v;
+        }
+        if let Ok(v) = std::env::var("TRIBECHAIN_MINER_ADDRESS") {
+            cfg.tribechain_miner_address = v;
+        }
+        if let Ok(v) = std::env::var("TRIBECHAIN_BLOCKSTORE_PATH") {
+            cfg.tribechain_blockstore_path = v;
+        }
 
         cfg
     }
@@ -311,6 +380,13 @@ impl ValidatorConfig {
             protocol_fee_address: default_protocol_fee_address(),
             marketplace_fee_bps: default_marketplace_fee_bps(),
             tribe_mint_keypair_path: default_tribe_mint_keypair_path(),
+            tribechain_enabled: default_tribechain_enabled(),
+            tribechain_min_fee: default_tribechain_min_fee(),
+            tribechain_max_pool_size: default_tribechain_max_pool_size(),
+            tribechain_max_txs_per_block: default_tribechain_max_txs_per_block(),
+            tribechain_genesis_path: default_tribechain_genesis_path(),
+            tribechain_miner_address: default_tribechain_miner_address(),
+            tribechain_blockstore_path: default_tribechain_blockstore_path(),
         }
     }
 }
