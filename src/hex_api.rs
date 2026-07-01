@@ -12,7 +12,7 @@ use hexchain_p2p::lattice_geometry::HCPCoord;
 use hexchain_p2p::lattice_store::LatticeSnapshot;
 use serde::Deserialize;
 
-use crate::consensus::AppState;
+use crate::consensus::{accept_block, AppState};
 
 type HexApiResponse = (StatusCode, Json<serde_json::Value>);
 
@@ -65,6 +65,18 @@ async fn post_hex_submit(
     match state.hex_consensus.verify_proof(&proof) {
         Ok(true) => match state.hex_consensus.submit_block(&proof) {
             Ok(depth) => {
+                if state.extensions.tribechain_enabled {
+                    let mempool = state.extensions.mempool.as_deref();
+                    let block_store = state.extensions.block_store.as_deref();
+                    let mut ledger = state.extensions.ledger.write().await;
+                    if let Err(e) = accept_block(&proof.block, &mut ledger, mempool, block_store) {
+                        tracing::warn!(error = %e, "Tribechain block acceptance failed");
+                        return (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            Json(serde_json::json!({ "accepted": false, "error": e })),
+                        );
+                    }
+                }
                 tracing::info!(
                     challenge_id = %proof.challenge_id,
                     coord = ?proof.block.coord,
@@ -91,14 +103,28 @@ async fn post_hex_submit(
         Ok(false) => {
             tracing::info!(challenge_id = %proof.challenge_id, "POST /hexchain/submit rejected (genesis mode, no validation)");
             match state.hex_consensus.submit_block(&proof) {
-                Ok(depth) => (
-                    StatusCode::OK,
-                    Json(serde_json::json!({
-                        "accepted": true,
-                        "depth": depth,
-                        "block_hash": hex::encode(proof.block.pow_hash()),
-                    })),
-                ),
+                Ok(depth) => {
+                    if state.extensions.tribechain_enabled {
+                        let mempool = state.extensions.mempool.as_deref();
+                        let block_store = state.extensions.block_store.as_deref();
+                        let mut ledger = state.extensions.ledger.write().await;
+                        if let Err(e) = accept_block(&proof.block, &mut ledger, mempool, block_store) {
+                            tracing::warn!(error = %e, "Tribechain genesis block acceptance failed");
+                            return (
+                                StatusCode::INTERNAL_SERVER_ERROR,
+                                Json(serde_json::json!({ "accepted": false, "error": e })),
+                            );
+                        }
+                    }
+                    (
+                        StatusCode::OK,
+                        Json(serde_json::json!({
+                            "accepted": true,
+                            "depth": depth,
+                            "block_hash": hex::encode(proof.block.pow_hash()),
+                        })),
+                    )
+                }
                 Err(e) => (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(serde_json::json!({

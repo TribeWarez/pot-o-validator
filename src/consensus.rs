@@ -5,12 +5,14 @@ use std::sync::Arc;
 
 use hexchain_p2p::block::HexBlock;
 use hexchain_p2p::hex_consensus::{HexChallenge, HexConsensus};
+use hexchain_p2p::BlockStore;
 use pot_o_extensions::ledger::{block_reward_at_height, Ledger, TRIBE_HARD_CAP};
 use pot_o_extensions::tx::{
     verify_coinbase_sig, verify_transfer_sig, CoinbaseTransaction, TokenType, TransferTransaction,
     TxError,
 };
 use pot_o_extensions::ExtensionRegistry;
+use pot_o_extensions::Mempool;
 use pot_o_mining::PotOConsensus;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -177,6 +179,40 @@ pub fn validate_block_transactions(block: &HexBlock, ledger: &Ledger) -> Result<
     }
 
     Ok(())
+}
+
+/// Accept a block: validate, apply to ledger, clear mempool, persist to block store.
+/// Must hold the ledger write lock before calling.
+pub fn accept_block(
+    block: &HexBlock,
+    ledger: &mut Ledger,
+    mempool: Option<&Mempool>,
+    block_store: Option<&BlockStore>,
+) -> Result<Vec<pot_o_extensions::TxReceipt>, String> {
+    validate_block_transactions(block, ledger)
+        .map_err(|e| format!("Transaction validation failed: {:?}", e))?;
+
+    let receipts = ledger.apply_block(block)?;
+
+    if let Some(mp) = mempool {
+        if let Some(txs) = &block.transactions {
+            let mut remove_hashes = Vec::new();
+            for tx_val in &txs[1..] {
+                if let Ok(tx) = serde_json::from_value::<pot_o_extensions::tx::TransferTransaction>(
+                    tx_val.clone(),
+                ) {
+                    remove_hashes.push(tx.tx_hash);
+                }
+            }
+            mp.remove(&remove_hashes);
+        }
+    }
+
+    if let Some(bs) = block_store {
+        bs.append(block);
+    }
+
+    Ok(receipts)
 }
 
 /// Compute a merkle root over a list of serialized transactions.

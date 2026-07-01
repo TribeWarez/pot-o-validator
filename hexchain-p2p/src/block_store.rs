@@ -82,6 +82,13 @@ impl BlockStore {
         self.at_height(height)
     }
 
+    /// Append a full HexBlock to the store.
+    pub fn append(&self, block: &crate::block::HexBlock) {
+        let hash = block.pow_hash();
+        let block_json = serde_json::to_string(block).unwrap_or_default();
+        self.insert(&hash, block.height, &block_json);
+    }
+
     /// Check if a block with the given hash exists.
     pub fn has(&self, hash: &[u8; 32]) -> bool {
         let blocks = self.blocks.read().unwrap();
