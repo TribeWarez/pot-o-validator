@@ -75,6 +75,10 @@ path = "src/bin/pot_o_timing.rs"
 name = "pot-o-golden-proofs"
 path = "src/bin/pot_o_golden_proofs.rs"
 
+[[bin]]
+name = "tribechain-genesis"
+path = "src/bin/tribechain-genesis.rs"
+
 [profile.release]
 opt-level = 3
 lto = true

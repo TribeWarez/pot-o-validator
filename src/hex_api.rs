@@ -109,7 +109,9 @@ async fn post_hex_submit(
                         let mempool = state.extensions.mempool.as_deref();
                         let block_store = state.extensions.block_store.as_deref();
                         let mut ledger = state.extensions.ledger.write().await;
-                        if let Err(e) = accept_block(&proof.block, &mut ledger, mempool, block_store) {
+                        if let Err(e) =
+                            accept_block(&proof.block, &mut ledger, mempool, block_store)
+                        {
                             tracing::warn!(error = %e, "Tribechain genesis block acceptance failed");
                             return (
                                 StatusCode::INTERNAL_SERVER_ERROR,

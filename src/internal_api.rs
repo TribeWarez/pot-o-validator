@@ -185,7 +185,7 @@ async fn handle_tx_broadcast(
         }
     };
 
-    match mempool.submit(tx, &*state.ledger) {
+    match mempool.submit(tx, &state.ledger) {
         Ok(tx_hash) => {
             tracing::debug!(tx_hash = %hex::encode(tx_hash), "Received tx from peer, added to mempool");
             (
@@ -279,6 +279,9 @@ mod tests {
             node_id: "validator-1".to_string(),
             peers: Arc::new(RwLock::new(vec![])),
             current_challenge: Arc::new(RwLock::new(None)),
+            mempool: None,
+            ledger: Arc::new(RwLock::new(pot_o_extensions::Ledger::new("test".to_string()))),
+            tribechain_enabled: false,
         };
 
         assert_eq!(state.node_id, "validator-1");
@@ -310,6 +313,9 @@ mod tests {
             node_id: "validator-1".to_string(),
             peers: Arc::new(RwLock::new(vec![])),
             current_challenge: Arc::new(RwLock::new(None)),
+            mempool: None,
+            ledger: Arc::new(RwLock::new(pot_o_extensions::Ledger::new("test".to_string()))),
+            tribechain_enabled: false,
         };
 
         let req = RegisterPeerRequest {
@@ -347,6 +353,9 @@ mod tests {
             node_id: "validator-1".to_string(),
             peers: Arc::new(RwLock::new(vec![initial_peer.clone()])),
             current_challenge: Arc::new(RwLock::new(None)),
+            mempool: None,
+            ledger: Arc::new(RwLock::new(pot_o_extensions::Ledger::new("test".to_string()))),
+            tribechain_enabled: false,
         };
 
         let req = RegisterPeerRequest {
@@ -378,6 +387,9 @@ mod tests {
             node_id: "validator-1".to_string(),
             peers: Arc::new(RwLock::new(vec![])),
             current_challenge: Arc::new(RwLock::new(None)),
+            mempool: None,
+            ledger: Arc::new(RwLock::new(pot_o_extensions::Ledger::new("test".to_string()))),
+            tribechain_enabled: false,
         };
 
         let peers = state.peers.read().await;
@@ -402,6 +414,9 @@ mod tests {
             node_id: "validator-1".to_string(),
             peers: Arc::new(RwLock::new(vec![peer1.clone(), peer2.clone()])),
             current_challenge: Arc::new(RwLock::new(None)),
+            mempool: None,
+            ledger: Arc::new(RwLock::new(pot_o_extensions::Ledger::new("test".to_string()))),
+            tribechain_enabled: false,
         };
 
         let peers = state.peers.read().await;
@@ -416,6 +431,9 @@ mod tests {
             node_id: "validator-1".to_string(),
             peers: Arc::new(RwLock::new(vec![])),
             current_challenge: Arc::new(RwLock::new(None)),
+            mempool: None,
+            ledger: Arc::new(RwLock::new(pot_o_extensions::Ledger::new("test".to_string()))),
+            tribechain_enabled: false,
         };
 
         let challenge_data = json!({"id": "challenge-1", "difficulty": 2});
@@ -437,6 +455,9 @@ mod tests {
             node_id: "validator-1".to_string(),
             peers: Arc::new(RwLock::new(vec![])),
             current_challenge: Arc::new(RwLock::new(Some(old_challenge))),
+            mempool: None,
+            ledger: Arc::new(RwLock::new(pot_o_extensions::Ledger::new("test".to_string()))),
+            tribechain_enabled: false,
         };
 
         let mut challenge = state.current_challenge.write().await;
@@ -465,6 +486,9 @@ mod tests {
             node_id: "validator-1".to_string(),
             peers: Arc::new(RwLock::new(vec![peer1, peer2])),
             current_challenge: Arc::new(RwLock::new(None)),
+            mempool: None,
+            ledger: Arc::new(RwLock::new(pot_o_extensions::Ledger::new("test".to_string()))),
+            tribechain_enabled: false,
         };
 
         // Register with duplicate node_id
@@ -507,6 +531,9 @@ mod tests {
             node_id: "validator-1".to_string(),
             peers: Arc::new(RwLock::new(vec![peer])),
             current_challenge: Arc::new(RwLock::new(None)),
+            mempool: None,
+            ledger: Arc::new(RwLock::new(pot_o_extensions::Ledger::new("test".to_string()))),
+            tribechain_enabled: false,
         };
 
         // Wait a bit and re-register
@@ -540,6 +567,9 @@ mod tests {
             node_id: "validator-1".to_string(),
             peers: Arc::new(RwLock::new(vec![])),
             current_challenge: Arc::new(RwLock::new(None)),
+            mempool: None,
+            ledger: Arc::new(RwLock::new(pot_o_extensions::Ledger::new("test".to_string()))),
+            tribechain_enabled: false,
         };
 
         // Verify the handler returns correct structure
@@ -553,6 +583,9 @@ mod tests {
             node_id: "validator-1".to_string(),
             peers: Arc::new(RwLock::new(vec![])),
             current_challenge: Arc::new(RwLock::new(None)),
+            mempool: None,
+            ledger: Arc::new(RwLock::new(pot_o_extensions::Ledger::new("test".to_string()))),
+            tribechain_enabled: false,
         };
 
         let challenge = json!({"id": "c1", "difficulty": 2});
@@ -588,6 +621,9 @@ mod tests {
             node_id: "validator-1".to_string(),
             peers: Arc::new(RwLock::new(peers_vec)),
             current_challenge: Arc::new(RwLock::new(None)),
+            mempool: None,
+            ledger: Arc::new(RwLock::new(pot_o_extensions::Ledger::new("test".to_string()))),
+            tribechain_enabled: false,
         };
 
         let peers = state.peers.read().await;

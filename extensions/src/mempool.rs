@@ -1,7 +1,7 @@
 use crate::ledger::Ledger;
 use crate::tx::{verify_transfer_sig, TransferTransaction, TxError};
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::sync::{Arc, RwLock};
+use std::sync::RwLock;
 use tokio::sync::RwLock as AsyncRwLock;
 
 /// Pending transaction pool
@@ -175,7 +175,7 @@ impl Mempool {
 
     /// Revalidate all pending txs against current ledger state
     pub fn revalidate(&self, ledger: &AsyncRwLock<Ledger>) {
-        let (to_remove, balance_map) = {
+        let (to_remove, _balance_map) = {
             let ledger = ledger.blocking_read();
             let mut to_remove = Vec::new();
             let mut balance_map = HashMap::new();
@@ -220,6 +220,10 @@ impl Mempool {
 
     pub fn len(&self) -> usize {
         self.txs.read().unwrap().len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     fn evict_over_capacity(&self) {

@@ -131,7 +131,7 @@ pub fn validate_block_transactions(block: &HexBlock, ledger: &Ledger) -> Result<
     let current_supply = ledger.total_supply_of(&TokenType::TribeChain);
     if current_supply
         .checked_add(total_minted)
-        .map_or(true, |s| s > TRIBE_HARD_CAP)
+        .is_none_or(|s| s > TRIBE_HARD_CAP)
     {
         return Err(TxError::SupplyCapExceeded);
     }
@@ -266,7 +266,7 @@ fn compute_tx_merkle_root(txs: &[serde_json::Value]) -> [u8; 32] {
         let mut next = Vec::new();
         for chunk in level.chunks(2) {
             let mut hasher = Sha256::new();
-            hasher.update(&chunk[0]);
+            hasher.update(chunk[0]);
             hasher.update(if chunk.len() > 1 {
                 &chunk[1]
             } else {

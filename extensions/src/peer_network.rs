@@ -371,7 +371,10 @@ impl PeerNetwork for VpnMeshNetwork {
     async fn broadcast_transaction(&self, tx: &serde_json::Value) -> TribeResult<()> {
         let peers = self.peer_list.read().await;
         for peer in peers.iter() {
-            let url = format!("http://{}:{}/internal/tx/broadcast", peer.address, peer.port);
+            let url = format!(
+                "http://{}:{}/internal/tx/broadcast",
+                peer.address, peer.port
+            );
             let _ = reqwest::Client::new()
                 .post(&url)
                 .timeout(std::time::Duration::from_secs(self.peer_timeout_secs))

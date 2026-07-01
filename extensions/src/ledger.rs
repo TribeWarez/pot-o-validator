@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 use tokio::sync::RwLock;
 use tracing;
 
-use crate::tx::{CoinbaseTransaction, ProofRewardEntry, TransferTransaction};
+use crate::tx::{CoinbaseTransaction, TransferTransaction};
 use hexchain_p2p::block::HexBlock;
 
 pub const TRIBE_HARD_CAP: u64 = 21_000_000_000_000_000;
@@ -79,6 +79,10 @@ impl Ledger {
             .get(&(address.to_string(), token.clone()))
             .copied()
             .unwrap_or(0)
+    }
+
+    pub fn balances(&self) -> &std::collections::HashMap<(String, TokenType), u64> {
+        &self.balances
     }
 
     pub fn issue(&mut self, to: &str, token: &TokenType, amount: u64) {
@@ -196,7 +200,7 @@ impl Ledger {
         self.total_supply_map.get(token).copied().unwrap_or(0)
     }
 
-    pub fn is_coinbase_mature(&self, address: &str, height: u64, current_height: u64) -> bool {
+    pub fn is_coinbase_mature(&self, _address: &str, height: u64, current_height: u64) -> bool {
         current_height >= height + COINBASE_MATURITY_DEPTH
     }
 
@@ -208,7 +212,10 @@ impl Ledger {
         if tx.amount == 0 {
             return Err("Transfer amount must be positive".into());
         }
-        let total = tx.amount.checked_add(tx.fee).ok_or("Overflow in amount + fee")?;
+        let total = tx
+            .amount
+            .checked_add(tx.fee)
+            .ok_or("Overflow in amount + fee")?;
         let from_key = (tx.from.clone(), tx.token.clone());
         let from_bal = self.balances.get(&from_key).copied().unwrap_or(0);
         if from_bal < total {
@@ -283,13 +290,11 @@ impl Ledger {
         let from_bal = self.balances.entry(from_key).or_insert(0);
         *from_bal = from_bal.saturating_add(tx.amount + tx.fee);
 
-        self.nonces
-            .entry(tx.from.clone())
-            .and_modify(|n| {
-                if *n > 0 {
-                    *n -= 1
-                }
-            });
+        self.nonces.entry(tx.from.clone()).and_modify(|n| {
+            if *n > 0 {
+                *n -= 1
+            }
+        });
 
         self.modified = true;
         Ok(())
@@ -410,12 +415,7 @@ impl Ledger {
         Ok(())
     }
 
-    pub fn mint_tokens(
-        &mut self,
-        to: &str,
-        token: &TokenType,
-        amount: u64,
-    ) -> Result<(), String> {
+    pub fn mint_tokens(&mut self, to: &str, token: &TokenType, amount: u64) -> Result<(), String> {
         let current = self.total_supply_of(token);
         if current + amount > TRIBE_HARD_CAP && *token == TokenType::TribeChain {
             return Err("Supply cap exceeded".into());
@@ -475,6 +475,7 @@ pub const DEFAULT_LEDGER_PATH: &str = "ledger.json";
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tx::ProofRewardEntry;
 
     #[test]
     fn test_issue_and_balance() {
@@ -599,7 +600,9 @@ mod tests {
     #[test]
     fn test_apply_transfer_normal() {
         let mut ledger = Ledger::new("protocol".to_string());
-        ledger.mint_tokens("alice", &TokenType::TribeChain, 1000).unwrap();
+        ledger
+            .mint_tokens("alice", &TokenType::TribeChain, 1000)
+            .unwrap();
         let tx = TransferTransaction {
             tx_hash: [0u8; 32],
             nonce: 0,
@@ -799,10 +802,7 @@ mod tests {
         assert_eq!(ledger.block_height(), 1);
 
         ledger.rollback_block(&block).unwrap();
-        assert_eq!(
-            ledger.balance_of("alice", &TokenType::TribeChain),
-            1000
-        );
+        assert_eq!(ledger.balance_of("alice", &TokenType::TribeChain), 1000);
         assert_eq!(ledger.balance_of("bob", &TokenType::TribeChain), 0);
     }
 }
