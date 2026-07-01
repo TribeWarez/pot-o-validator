@@ -74,16 +74,23 @@ impl HexConsensus {
         }
     }
 
-    pub fn mine(&self, challenge: &HexChallenge, max_iterations: u64) -> Option<HexProof> {
+    pub fn mine(
+        &self,
+        challenge: &HexChallenge,
+        max_iterations: u64,
+        transactions: Option<Vec<serde_json::Value>>,
+        height: u64,
+        miner_address: Option<String>,
+    ) -> Option<HexProof> {
         let target = Uint256::from_be_bytes(challenge.target);
 
         for nonce in 0..max_iterations {
             let block = HexBlock {
                 parent_hash: challenge.neighbor_hashes[0],
-                tx_merkle_root: [0u8; 32],
-                height: 0,
-                transactions: None,
-                miner_address: None,
+                height,
+                tx_merkle_root: compute_tx_merkle_root(transactions.as_deref()),
+                transactions: transactions.clone(),
+                miner_address: miner_address.clone(),
                 timestamp: challenge.created_at_unix,
                 nonce,
                 coord: challenge.coord,
@@ -179,6 +186,47 @@ impl HexConsensus {
     }
 }
 
+/// Compute a merkle root over a list of serialized transactions.
+/// Uses single SHA-256 (must match the validation function in consensus.rs).
+fn compute_tx_merkle_root(txs: Option<&[serde_json::Value]>) -> [u8; 32] {
+    use sha2::{Digest, Sha256};
+    let leaves: Vec<[u8; 32]> = match txs {
+        Some(tx_list) if !tx_list.is_empty() => tx_list
+            .iter()
+            .map(|tx| {
+                let data = serde_json::to_string(tx).unwrap_or_else(|_| String::new());
+                let mut hasher = Sha256::new();
+                hasher.update(data.as_bytes());
+                let result = hasher.finalize();
+                let mut hash = [0u8; 32];
+                hash.copy_from_slice(&result);
+                hash
+            })
+            .collect(),
+        _ => return [0u8; 32],
+    };
+
+    let mut level = leaves;
+    while level.len() > 1 {
+        let mut next = Vec::new();
+        for chunk in level.chunks(2) {
+            let mut hasher = Sha256::new();
+            hasher.update(&chunk[0]);
+            hasher.update(if chunk.len() > 1 {
+                &chunk[1]
+            } else {
+                &chunk[0]
+            });
+            let result = hasher.finalize();
+            let mut hash = [0u8; 32];
+            hash.copy_from_slice(&result);
+            next.push(hash);
+        }
+        level = next;
+    }
+    level[0]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -201,7 +249,9 @@ mod tests {
         let hc = default_hex_consensus();
 
         let chal = hc.generate_challenge(0, "slot0");
-        let proof = hc.mine(&chal, 100_000).expect("should mine genesis");
+        let proof = hc
+            .mine(&chal, 100_000, None, 0, None)
+            .expect("should mine genesis");
         hc.submit_block(&proof).expect("genesis should submit");
 
         let chal2 = hc.generate_challenge(1, "slot1");
@@ -218,7 +268,9 @@ mod tests {
     fn test_mine_and_submit_lifecycle() {
         let hc = default_hex_consensus();
         let chal = hc.generate_challenge(0, "lifecycle");
-        let proof = hc.mine(&chal, 100_000).expect("should find proof");
+        let proof = hc
+            .mine(&chal, 100_000, None, 0, None)
+            .expect("should find proof");
 
         let verify_result = hc.verify_proof(&proof);
         assert!(
@@ -240,11 +292,11 @@ mod tests {
     fn test_challenge_coord_is_random_frontier() {
         let hc = default_hex_consensus();
         let chal = hc.generate_challenge(0, "s0");
-        let proof = hc.mine(&chal, 100_000).unwrap();
+        let proof = hc.mine(&chal, 100_000, None, 0, None).unwrap();
         hc.submit_block(&proof).unwrap();
 
         let chal2 = hc.generate_challenge(1, "s1");
-        let proof2 = hc.mine(&chal2, 100_000).unwrap();
+        let proof2 = hc.mine(&chal2, 100_000, None, 1, None).unwrap();
         hc.submit_block(&proof2).unwrap();
 
         let occupied = hc.store.all_coords();
@@ -258,7 +310,7 @@ mod tests {
     fn test_verify_rejects_tampered_block() {
         let hc = default_hex_consensus();
         let chal = hc.generate_challenge(0, "g");
-        let proof = hc.mine(&chal, 1000).expect("genesis");
+        let proof = hc.mine(&chal, 1000, None, 0, None).expect("genesis");
         hc.submit_block(&proof).expect("submit genesis");
 
         // Build a proof with an invalid block referencing a nonexistent neighbor hash
@@ -304,7 +356,7 @@ mod tests {
         for i in 0..3 {
             let chal = hc.generate_challenge(i, &format!("slot_{}", i));
             let proof = hc
-                .mine(&chal, 200_000)
+                .mine(&chal, 200_000, None, i as u64, None)
                 .expect(&format!("should mine block {}", i));
             hc.submit_block(&proof)
                 .expect(&format!("should submit block {}", i));
