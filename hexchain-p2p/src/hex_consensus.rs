@@ -81,6 +81,9 @@ impl HexConsensus {
             let block = HexBlock {
                 parent_hash: challenge.neighbor_hashes[0],
                 tx_merkle_root: [0u8; 32],
+                height: 0,
+                transactions: None,
+                miner_address: None,
                 timestamp: challenge.created_at_unix,
                 nonce,
                 coord: challenge.coord,
@@ -265,6 +268,9 @@ mod tests {
         let bad_block = HexBlock {
             parent_hash: [0u8; 32],
             tx_merkle_root: [0u8; 32],
+            height: 0,
+            transactions: None,
+            miner_address: None,
             timestamp: 0,
             nonce: 0,
             coord: HCPCoord { q: 99, r: 0, s: 0 },

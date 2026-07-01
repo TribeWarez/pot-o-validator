@@ -8,7 +8,10 @@ use crate::types::{is_empty_neighbor_slot, BlockHash, TensorMeta, HASH_BYTES, NE
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HexBlock {
     pub parent_hash: BlockHash,
+    pub height: u64,
     pub tx_merkle_root: BlockHash,
+    pub transactions: Option<Vec<serde_json::Value>>,
+    pub miner_address: Option<String>,
     pub timestamp: u64,
     pub nonce: u64,
     pub coord: HCPCoord,
@@ -59,10 +62,11 @@ impl HexBlock {
     }
 
     pub fn serialize_pow_preimage(&self) -> Vec<u8> {
-        let mut out = Vec::with_capacity(32 + 32 + 8 + 8 + 4 + 4 + 4 + 32 + 8 + 8 + 8 + 8);
+        let mut out = Vec::with_capacity(32 + 32 + 8 + 8 + 8 + 4 + 4 + 4 + 32 + 8 + 8 + 8 + 8 + 32);
 
         out.extend_from_slice(&self.parent_hash);
         out.extend_from_slice(&self.tx_merkle_root);
+        out.extend_from_slice(&self.height.to_le_bytes());
         out.extend_from_slice(&self.timestamp.to_le_bytes());
         out.extend_from_slice(&self.nonce.to_le_bytes());
         out.extend_from_slice(&(self.coord.q as u32).to_le_bytes());
@@ -74,6 +78,10 @@ impl HexBlock {
         out.extend_from_slice(&self.tensor.actual_capacity.to_le_bytes());
         out.extend_from_slice(&self.tensor.compression_num.to_le_bytes());
         out.extend_from_slice(&self.tensor.compression_den.to_le_bytes());
+        match &self.miner_address {
+            Some(addr) => out.extend_from_slice(addr.as_bytes()),
+            None => out.extend_from_slice(&[0u8; 0]),
+        }
 
         out
     }
@@ -145,6 +153,9 @@ mod tests {
         let block = HexBlock {
             parent_hash: [1u8; 32],
             tx_merkle_root: [2u8; 32],
+            height: 0,
+            transactions: None,
+            miner_address: None,
             timestamp: 100,
             nonce: 42,
             coord: HCPCoord { q: 0, r: 0, s: 0 },
@@ -166,6 +177,9 @@ mod tests {
         let mut block = HexBlock {
             parent_hash: [1u8; 32],
             tx_merkle_root: [2u8; 32],
+            height: 0,
+            transactions: None,
+            miner_address: None,
             timestamp: 100,
             nonce: 0,
             coord: HCPCoord { q: 0, r: 0, s: 0 },
@@ -188,6 +202,9 @@ mod tests {
         let mut block = HexBlock {
             parent_hash: [0u8; 32],
             tx_merkle_root: [0u8; 32],
+            height: 0,
+            transactions: None,
+            miner_address: None,
             timestamp: 0,
             nonce: 0,
             coord: HCPCoord { q: 0, r: 0, s: 0 },
@@ -205,6 +222,9 @@ mod tests {
         let empty_block = HexBlock {
             parent_hash: [0u8; 32],
             tx_merkle_root: [0u8; 32],
+            height: 0,
+            transactions: None,
+            miner_address: None,
             timestamp: 0,
             nonce: 0,
             coord: HCPCoord { q: 0, r: 0, s: 0 },
@@ -230,6 +250,9 @@ mod tests {
         let block = HexBlock {
             parent_hash: [0u8; 32],
             tx_merkle_root: [0u8; 32],
+            height: 0,
+            transactions: None,
+            miner_address: None,
             timestamp: 0,
             nonce: 0,
             coord: HCPCoord { q: 0, r: 0, s: 0 },
@@ -239,7 +262,7 @@ mod tests {
         let preimage = block.serialize_pow_preimage();
         assert_eq!(
             preimage.len(),
-            32 + 32 + 8 + 8 + 4 + 4 + 4 + 32 + 8 + 8 + 8 + 8
+            32 + 32 + 8 + 8 + 8 + 4 + 4 + 4 + 32 + 8 + 8 + 8 + 8
         );
     }
 
@@ -248,6 +271,9 @@ mod tests {
         let block = HexBlock {
             parent_hash: [0u8; 32],
             tx_merkle_root: [0u8; 32],
+            height: 0,
+            transactions: None,
+            miner_address: None,
             timestamp: 0,
             nonce: 0,
             coord: HCPCoord { q: 0, r: 0, s: 0 },
@@ -266,6 +292,9 @@ mod tests {
         let block = HexBlock {
             parent_hash: [0u8; 32],
             tx_merkle_root: [0u8; 32],
+            height: 0,
+            transactions: None,
+            miner_address: None,
             timestamp: 0,
             nonce: 0,
             coord: HCPCoord { q: 0, r: 0, s: 0 },
