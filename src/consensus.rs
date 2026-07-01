@@ -123,7 +123,10 @@ pub fn validate_block_transactions(block: &HexBlock, ledger: &Ledger) -> Result<
             .map(|p| p.reward_amount)
             .sum::<u64>();
     let current_supply = ledger.total_supply_of(&TokenType::TribeChain);
-    if current_supply + total_minted > TRIBE_HARD_CAP {
+    if current_supply
+        .checked_add(total_minted)
+        .map_or(true, |s| s > TRIBE_HARD_CAP)
+    {
         return Err(TxError::SupplyCapExceeded);
     }
 
@@ -170,7 +173,7 @@ pub fn validate_block_transactions(block: &HexBlock, ledger: &Ledger) -> Result<
     // 6. Merkle root check
     let computed_root = compute_tx_merkle_root(txs);
     if block.tx_merkle_root != computed_root {
-        return Err(TxError::InvalidSignature);
+        return Err(TxError::MerkleRootMismatch);
     }
 
     Ok(())
@@ -181,7 +184,7 @@ fn compute_tx_merkle_root(txs: &[serde_json::Value]) -> [u8; 32] {
     let leaves: Vec<[u8; 32]> = txs
         .iter()
         .map(|tx| {
-            let data = serde_json::to_string(tx).unwrap_or_default();
+            let data = serde_json::to_string(tx).unwrap_or_else(|_| String::new());
             let mut hasher = Sha256::new();
             hasher.update(data.as_bytes());
             let result = hasher.finalize();

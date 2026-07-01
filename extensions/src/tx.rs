@@ -77,6 +77,7 @@ pub enum TxError {
     CoinbaseRewardMismatch,
     SupplyCapExceeded,
     CoinbaseImmature,
+    MerkleRootMismatch,
 }
 
 impl fmt::Display for TxError {
@@ -99,6 +100,7 @@ impl fmt::Display for TxError {
             }
             TxError::SupplyCapExceeded => write!(f, "supply cap exceeded"),
             TxError::CoinbaseImmature => write!(f, "coinbase reward is not yet spendable"),
+            TxError::MerkleRootMismatch => write!(f, "transaction merkle root mismatch"),
         }
     }
 }
@@ -224,6 +226,10 @@ mod tests {
         assert_eq!(
             TxError::CoinbaseImmature.to_string(),
             "coinbase reward is not yet spendable"
+        );
+        assert_eq!(
+            TxError::MerkleRootMismatch.to_string(),
+            "transaction merkle root mismatch"
         );
     }
 
