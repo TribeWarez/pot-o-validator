@@ -1,6 +1,6 @@
 use crate::ledger::Ledger;
-use crate::tx::{verify_transfer_sig, TokenType, TransferTransaction, TxError};
-use std::collections::{BTreeMap, HashMap};
+use crate::tx::{verify_transfer_sig, TransferTransaction, TxError};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::RwLock;
 
 /// Pending transaction pool
@@ -53,8 +53,14 @@ impl Mempool {
         }
 
         // 6. Nonce and balance check against ledger + pending
-        let ledger = ledger.read().unwrap();
-        let ledger_nonce = ledger.current_nonce(&tx.from);
+        // Scope ledger read lock so it drops before acquiring mempool write locks (avoid ABBA deadlock)
+        let (ledger_nonce, balance) = {
+            let ledger = ledger.read().unwrap();
+            (
+                ledger.current_nonce(&tx.from),
+                ledger.balance_of(&tx.from, &tx.token),
+            )
+        };
         let pending_count = self
             .address_nonces
             .read()
@@ -75,12 +81,11 @@ impl Mempool {
             .filter(|t| t.from == tx.from && t.token == tx.token)
             .map(|t| t.amount + t.fee)
             .sum();
-        let balance = ledger.balance_of(&tx.from, &tx.token);
         if balance < tx.amount + tx.fee + pending_amount {
             return Err(TxError::InsufficientBalance);
         }
 
-        // 7. Insert
+        // 7. Insert (ledger lock dropped, safe to acquire mempool locks)
         let tx_hash = tx.tx_hash;
         let fee = tx.fee;
         let from = tx.from.clone();
@@ -125,11 +130,12 @@ impl Mempool {
         }
         drop(by_fee);
 
-        // Remove drained txs
+        // Remove drained txs (single retain pass using HashSet)
         let mut txs = self.txs.write().unwrap();
         let mut by_fee_map = self.by_fee.write().unwrap();
         let mut nonces = self.address_nonces.write().unwrap();
-        for (_fee, _ts, hash) in &to_remove {
+        let remove_set: HashSet<[u8; 32]> = to_remove.iter().map(|(_, _, h)| *h).collect();
+        for hash in &remove_set {
             if let Some(tx) = txs.remove(hash) {
                 let addr_count = nonces.get(&tx.from).copied().unwrap_or(1).saturating_sub(1);
                 if addr_count == 0 {
@@ -138,8 +144,8 @@ impl Mempool {
                     nonces.insert(tx.from, addr_count);
                 }
             }
-            by_fee_map.retain(|k, v| v != hash);
         }
+        by_fee_map.retain(|_k, v| !remove_set.contains(v));
 
         result
     }
@@ -150,7 +156,8 @@ impl Mempool {
         let mut by_fee_map = self.by_fee.write().unwrap();
         let mut nonces = self.address_nonces.write().unwrap();
 
-        for hash in tx_hashes {
+        let remove_set: HashSet<[u8; 32]> = tx_hashes.iter().copied().collect();
+        for hash in &remove_set {
             if let Some(tx) = txs.remove(hash) {
                 let addr_count = nonces.get(&tx.from).copied().unwrap_or(1).saturating_sub(1);
                 if addr_count == 0 {
@@ -159,31 +166,39 @@ impl Mempool {
                     nonces.insert(tx.from, addr_count);
                 }
             }
-            by_fee_map.retain(|_k, v| v != hash);
         }
+        by_fee_map.retain(|_k, v| !remove_set.contains(v));
     }
 
     /// Revalidate all pending txs against current ledger state
     pub fn revalidate(&self, ledger: &RwLock<Ledger>) {
-        let ledger = ledger.read().unwrap();
+        let (to_remove, balance_map) = {
+            let ledger = ledger.read().unwrap();
+            let mut to_remove = Vec::new();
+            let mut balance_map = HashMap::new();
+            let txs = self.txs.read().unwrap();
+            for (hash, tx) in txs.iter() {
+                let ledger_nonce = ledger.current_nonce(&tx.from);
+                if tx.nonce < ledger_nonce {
+                    to_remove.push(*hash);
+                    continue;
+                }
+                let balance = ledger.balance_of(&tx.from, &tx.token);
+                balance_map.insert(tx.from.clone(), balance);
+                if balance < tx.amount + tx.fee {
+                    to_remove.push(*hash);
+                }
+            }
+            drop(txs);
+            (to_remove, balance_map)
+        };
+
         let mut txs = self.txs.write().unwrap();
         let mut by_fee_map = self.by_fee.write().unwrap();
         let mut nonces = self.address_nonces.write().unwrap();
 
-        let mut to_remove = Vec::new();
-        for (hash, tx) in txs.iter() {
-            let ledger_nonce = ledger.current_nonce(&tx.from);
-            if tx.nonce < ledger_nonce {
-                to_remove.push(*hash);
-                continue;
-            }
-            let balance = ledger.balance_of(&tx.from, &tx.token);
-            if balance < tx.amount + tx.fee {
-                to_remove.push(*hash);
-            }
-        }
-
-        for hash in &to_remove {
+        let remove_set: HashSet<[u8; 32]> = to_remove.iter().copied().collect();
+        for hash in &remove_set {
             if let Some(tx) = txs.remove(hash) {
                 let addr_count = nonces.get(&tx.from).copied().unwrap_or(1).saturating_sub(1);
                 if addr_count == 0 {
@@ -192,8 +207,8 @@ impl Mempool {
                     nonces.insert(tx.from, addr_count);
                 }
             }
-            by_fee_map.retain(|_k, v| v != hash);
         }
+        by_fee_map.retain(|_k, v| !remove_set.contains(v));
     }
 
     pub fn pending(&self) -> Vec<TransferTransaction> {
