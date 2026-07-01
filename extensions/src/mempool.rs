@@ -1,7 +1,8 @@
 use crate::ledger::Ledger;
 use crate::tx::{verify_transfer_sig, TransferTransaction, TxError};
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
+use tokio::sync::RwLock as AsyncRwLock;
 
 /// Pending transaction pool
 pub struct Mempool {
@@ -23,11 +24,13 @@ impl Mempool {
         }
     }
 
-    /// Submit a transaction to the mempool after validation
+    /// Submit a transaction to the mempool after validation.
+    /// Uses `blocking_read()` on the async RwLock, which is safe since the lock is
+    /// held by a multi-threaded tokio runtime.
     pub fn submit(
         &self,
         tx: TransferTransaction,
-        ledger: &RwLock<Ledger>,
+        ledger: &AsyncRwLock<Ledger>,
     ) -> Result<[u8; 32], TxError> {
         // 1. Fee check
         if tx.fee < self.min_fee {
@@ -55,10 +58,10 @@ impl Mempool {
         // 6. Nonce and balance check against ledger + pending
         // Scope ledger read lock so it drops before acquiring mempool write locks (avoid ABBA deadlock)
         let (ledger_nonce, balance) = {
-            let ledger = ledger.read().unwrap();
+            let guard = ledger.blocking_read();
             (
-                ledger.current_nonce(&tx.from),
-                ledger.balance_of(&tx.from, &tx.token),
+                guard.current_nonce(&tx.from),
+                guard.balance_of(&tx.from, &tx.token),
             )
         };
         let pending_count = self
@@ -171,9 +174,9 @@ impl Mempool {
     }
 
     /// Revalidate all pending txs against current ledger state
-    pub fn revalidate(&self, ledger: &RwLock<Ledger>) {
+    pub fn revalidate(&self, ledger: &AsyncRwLock<Ledger>) {
         let (to_remove, balance_map) = {
-            let ledger = ledger.read().unwrap();
+            let ledger = ledger.blocking_read();
             let mut to_remove = Vec::new();
             let mut balance_map = HashMap::new();
             let txs = self.txs.read().unwrap();
@@ -243,12 +246,11 @@ mod tests {
     use crate::ledger::Ledger;
     use crate::tx::{hash_transfer, TokenType};
     use ed25519_dalek::{Keypair, PublicKey, SecretKey, Signer};
+    use std::sync::Arc;
 
-    #[test]
-    fn test_mempool_submit_and_drain() {
-        let ledger = RwLock::new(Ledger::new("protocol".to_string()));
+    fn test_mempool_submit_and_drain_impl(ledger: &AsyncRwLock<Ledger>) {
+        use ed25519_dalek::{Keypair, PublicKey, SecretKey, Signer};
 
-        // Generate a real Ed25519 keypair
         let secret = SecretKey::from_bytes(&[42u8; 32]).unwrap();
         let public = PublicKey::from(&secret);
         let keypair = Keypair { secret, public };
@@ -256,8 +258,7 @@ mod tests {
         let to = bs58::encode([99u8; 32]).into_string();
 
         ledger
-            .write()
-            .unwrap()
+            .blocking_write()
             .issue(&from, &TokenType::TribeChain, 1000);
         let mempool = Mempool::new(1000, 0);
 
@@ -289,7 +290,7 @@ mod tests {
             timestamp,
         };
 
-        let result = mempool.submit(tx, &ledger);
+        let result = mempool.submit(tx, ledger);
         assert!(result.is_ok(), "submit should succeed: {:?}", result);
         assert_eq!(mempool.len(), 1);
 
@@ -299,13 +300,22 @@ mod tests {
         assert_eq!(mempool.len(), 0);
     }
 
+    fn test_mempool_revalidate_impl(ledger: &AsyncRwLock<Ledger>) {
+        let mempool = Mempool::new(1000, 0);
+        assert_eq!(mempool.len(), 0);
+        mempool.revalidate(ledger);
+        assert_eq!(mempool.len(), 0);
+    }
+
+    #[test]
+    fn test_mempool_submit_and_drain() {
+        let ledger = AsyncRwLock::new(Ledger::new("protocol".to_string()));
+        test_mempool_submit_and_drain_impl(&ledger);
+    }
+
     #[test]
     fn test_mempool_revalidate() {
-        let ledger = RwLock::new(Ledger::new("protocol".to_string()));
-        let mempool = Mempool::new(1000, 0);
-        // Initially empty
-        assert_eq!(mempool.len(), 0);
-        mempool.revalidate(&ledger);
-        assert_eq!(mempool.len(), 0);
+        let ledger = AsyncRwLock::new(Ledger::new("protocol".to_string()));
+        test_mempool_revalidate_impl(&ledger);
     }
 }

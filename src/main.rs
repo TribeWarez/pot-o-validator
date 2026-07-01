@@ -79,6 +79,10 @@ async fn main() {
     let tribe_mint_address = load_or_create_tribe_mint(&cfg.tribe_mint_keypair_path);
     tracing::info!(address = %tribe_mint_address, "TRIBE mint");
 
+    let mempool = extensions.mempool.clone();
+    let ledger = extensions.ledger.clone();
+    let tribechain_enabled = extensions.tribechain_enabled;
+
     let state = create_app_state(
         cfg.clone(),
         consensus,
@@ -93,6 +97,9 @@ async fn main() {
         node_id: cfg.node_id.clone(),
         peers: Arc::new(RwLock::new(Vec::new())),
         current_challenge: Arc::new(RwLock::new(None)),
+        mempool,
+        ledger,
+        tribechain_enabled,
     };
 
     let app = build_router(Arc::clone(&state))

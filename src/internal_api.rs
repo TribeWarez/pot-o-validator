@@ -19,6 +19,7 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use pot_o_extensions::pool_strategy::ProofRecord;
+use pot_o_extensions::{tx::TransferTransaction, Mempool};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -34,6 +35,12 @@ pub struct InternalApiState {
     pub peers: Arc<RwLock<Vec<PeerInfo>>>,
     /// Current challenge being broadcast (if any)
     pub current_challenge: Arc<RwLock<Option<serde_json::Value>>>,
+    /// Mempool for tribechain transaction gossip
+    pub mempool: Option<Arc<Mempool>>,
+    /// Ledger for tribechain state queries
+    pub ledger: Arc<RwLock<pot_o_extensions::Ledger>>,
+    /// Whether tribechain is enabled
+    pub tribechain_enabled: bool,
 }
 
 /// Information about a peer validator in the network.
@@ -76,6 +83,7 @@ pub fn internal_router(state: InternalApiState) -> Router {
             "/internal/challenge/broadcast",
             post(handle_challenge_broadcast),
         )
+        .route("/internal/tx/broadcast", post(handle_tx_broadcast))
         .route("/api/pool/submit-batch", post(handle_submit_batch))
         .with_state(state)
 }
@@ -142,6 +150,62 @@ async fn handle_challenge_broadcast(
         }),
     )
         .into_response()
+}
+
+/// Handler: POST /internal/tx/broadcast
+/// Receives a transaction from a peer and submits it to the local mempool.
+async fn handle_tx_broadcast(
+    State(state): State<InternalApiState>,
+    Json(tx_val): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    if !state.tribechain_enabled {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "tribechain not enabled"})),
+        )
+            .into_response();
+    }
+
+    let Some(mempool) = &state.mempool else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "mempool not available"})),
+        )
+            .into_response();
+    };
+
+    let tx: TransferTransaction = match serde_json::from_value(tx_val.clone()) {
+        Ok(tx) => tx,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": format!("invalid transaction: {}", e)})),
+            )
+                .into_response();
+        }
+    };
+
+    match mempool.submit(tx, &*state.ledger) {
+        Ok(tx_hash) => {
+            tracing::debug!(tx_hash = %hex::encode(tx_hash), "Received tx from peer, added to mempool");
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "accepted": true,
+                    "tx_hash": hex::encode(tx_hash),
+                })),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            tracing::debug!(error = %e, "Rejected tx from peer");
+            (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": e.to_string()})),
+            )
+                .into_response()
+        }
+    }
 }
 
 /// Request payload for batch submission
