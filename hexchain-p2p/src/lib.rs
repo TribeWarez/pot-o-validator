@@ -1,4 +1,5 @@
 pub mod block;
+pub mod block_store;
 pub mod consensus;
 pub mod hex_consensus;
 pub mod lattice_geometry;
@@ -8,6 +9,7 @@ pub mod uint256;
 pub mod validator;
 
 pub use block::HexBlock;
+pub use block_store::BlockStore;
 pub use hex_consensus::{HexChallenge, HexConsensus, HexProof};
 pub use lattice_geometry::HCPCoord;
 pub use lattice_store::{LatticeSnapshot, LatticeStore};
