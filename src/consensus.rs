@@ -68,6 +68,9 @@ pub struct AppState {
 
     /// TRIBE mint address (base58-encoded public key of the mint keypair).
     pub tribe_mint_address: String,
+
+    /// Current canonical chain tip height for tribechain.
+    pub canonical_tip_height: RwLock<u64>,
 }
 
 /// Builds the shared application state used by the Axum router.
@@ -91,6 +94,7 @@ pub fn create_app_state(
         hex_consensus,
         hex_current_challenge: RwLock::new(None),
         tribe_mint_address,
+        canonical_tip_height: RwLock::new(0),
     })
 }
 
@@ -178,6 +182,30 @@ pub fn validate_block_transactions(block: &HexBlock, ledger: &Ledger) -> Result<
         return Err(TxError::MerkleRootMismatch);
     }
 
+    Ok(())
+}
+
+/// Roll back the ledger to `target_height` by fetching blocks from the block store
+/// and calling `rollback_block` on each. Updates `canonical_tip_height` in the registry.
+pub fn rollback_ledger_to(
+    ledger: &mut Ledger,
+    block_store: &BlockStore,
+    target_height: u64,
+    canonical_tip_height: &mut u64,
+) -> Result<(), String> {
+    while ledger.block_height() > target_height {
+        let current_height = ledger.block_height();
+        let stored = block_store.at_height(current_height).ok_or_else(|| {
+            format!(
+                "Block at height {} not found in block store",
+                current_height
+            )
+        })?;
+        let block: HexBlock = serde_json::from_str(&stored.block_json)
+            .map_err(|e| format!("Failed to deserialize block: {}", e))?;
+        ledger.rollback_block(&block)?;
+        *canonical_tip_height = current_height - 1;
+    }
     Ok(())
 }
 

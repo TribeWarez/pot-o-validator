@@ -12,7 +12,7 @@ use hexchain_p2p::lattice_geometry::HCPCoord;
 use hexchain_p2p::lattice_store::LatticeSnapshot;
 use serde::Deserialize;
 
-use crate::consensus::{accept_block, AppState};
+use crate::consensus::{accept_block, rollback_ledger_to, AppState};
 
 type HexApiResponse = (StatusCode, Json<serde_json::Value>);
 
@@ -76,6 +76,7 @@ async fn post_hex_submit(
                             Json(serde_json::json!({ "accepted": false, "error": e })),
                         );
                     }
+                    *state.canonical_tip_height.write().await += 1;
                 }
                 tracing::info!(
                     challenge_id = %proof.challenge_id,
@@ -115,6 +116,7 @@ async fn post_hex_submit(
                                 Json(serde_json::json!({ "accepted": false, "error": e })),
                             );
                         }
+                        *state.canonical_tip_height.write().await += 1;
                     }
                     (
                         StatusCode::OK,
@@ -193,6 +195,38 @@ async fn post_hex_lattice_sync(
     if let Err(e) = state.hex_consensus.store.save_to_file() {
         tracing::warn!(error = %e, "POST /hexchain/lattice/sync persist failed");
     }
+
+    if state.extensions.tribechain_enabled {
+        let new_max_depth = state
+            .hex_consensus
+            .store
+            .all_blocks()
+            .iter()
+            .filter_map(|(_, h)| state.hex_consensus.store.depth_of(h))
+            .max()
+            .unwrap_or(0) as i64;
+        let canonical_height = *state.canonical_tip_height.read().await as i64;
+        if new_max_depth < canonical_height {
+            tracing::warn!(
+                old_height = canonical_height,
+                new_height = new_max_depth,
+                "Chain reorg detected, rolling back ledger"
+            );
+            if let Some(block_store) = &state.extensions.block_store {
+                let mut ledger = state.extensions.ledger.write().await;
+                let mut tip_height = state.canonical_tip_height.write().await;
+                if let Err(e) = rollback_ledger_to(
+                    &mut ledger,
+                    block_store.as_ref(),
+                    new_max_depth as u64,
+                    &mut tip_height,
+                ) {
+                    tracing::error!(error = %e, "Ledger rollback failed");
+                }
+            }
+        }
+    }
+
     tracing::info!(merged, total = after, "POST /hexchain/lattice/sync");
     (
         StatusCode::OK,
