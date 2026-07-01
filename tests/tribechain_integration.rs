@@ -98,7 +98,7 @@ fn test_nonce_tracking_on_multiple_transfers() {
 
 #[test]
 fn test_coinbase_maturity_enforced() {
-    let mut ledger = Ledger::new("protocol".to_string());
+    let ledger = Ledger::new("protocol".to_string());
 
     assert!(!ledger.is_coinbase_mature("miner", 0, 50));
     assert!(ledger.is_coinbase_mature("miner", 0, 100));
