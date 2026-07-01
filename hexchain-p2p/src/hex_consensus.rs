@@ -187,7 +187,7 @@ impl HexConsensus {
 }
 
 /// Compute a merkle root over a list of serialized transactions.
-/// Uses single SHA-256 (must match the validation function in consensus.rs).
+/// Uses single SHA-256 (must match the validation function in `consensus.rs`).
 fn compute_tx_merkle_root(txs: Option<&[serde_json::Value]>) -> [u8; 32] {
     use sha2::{Digest, Sha256};
     let leaves: Vec<[u8; 32]> = match txs {
@@ -211,12 +211,8 @@ fn compute_tx_merkle_root(txs: Option<&[serde_json::Value]>) -> [u8; 32] {
         let mut next = Vec::new();
         for chunk in level.chunks(2) {
             let mut hasher = Sha256::new();
-            hasher.update(&chunk[0]);
-            hasher.update(if chunk.len() > 1 {
-                &chunk[1]
-            } else {
-                &chunk[0]
-            });
+            hasher.update(chunk[0]);
+            hasher.update(if chunk.len() > 1 { chunk[1] } else { chunk[0] });
             let result = hasher.finalize();
             let mut hash = [0u8; 32];
             hash.copy_from_slice(&result);
