@@ -13,6 +13,7 @@ pub mod peer_network;
 pub mod pool_strategy;
 pub mod rewards;
 pub mod security;
+pub mod tx;
 
 pub use chain_bridge::{ChainBridge, SolanaBridge};
 pub use defi::{
