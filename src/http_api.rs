@@ -1429,6 +1429,13 @@ mod tests {
             protocol_fee_address: String::new(),
             marketplace_fee_bps: 25,
             tribe_mint_keypair_path: "/tmp/test_tribe_mint.json".to_string(),
+            tribechain_enabled: false,
+            tribechain_min_fee: 0,
+            tribechain_max_pool_size: 10_000,
+            tribechain_max_txs_per_block: 1000,
+            tribechain_genesis_path: String::new(),
+            tribechain_miner_address: String::new(),
+            tribechain_blockstore_path: "blockstore.json".to_string(),
         }
     }
 
