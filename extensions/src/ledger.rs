@@ -7,7 +7,29 @@ use sha2::{Digest, Sha256};
 use tokio::sync::RwLock;
 use tracing;
 
-/// A single entry in the local token ledger.
+use crate::tx::{CoinbaseTransaction, ProofRewardEntry, TransferTransaction};
+use hexchain_p2p::block::HexBlock;
+
+pub const TRIBE_HARD_CAP: u64 = 21_000_000_000_000_000;
+pub const TRIBE_BLOCK_REWARD_INITIAL: u64 = 100_000_000_000;
+pub const TRIBE_HALVING_INTERVAL: u64 = 210_000;
+pub const TRIBE_PROOF_REWARD: u64 = 1_000_000_000;
+pub const COINBASE_MATURITY_DEPTH: u64 = 100;
+
+pub fn block_reward_at_height(height: u64) -> u64 {
+    let halvings = height / TRIBE_HALVING_INTERVAL;
+    if halvings >= 64 {
+        return 0;
+    }
+    TRIBE_BLOCK_REWARD_INITIAL >> halvings
+}
+
+#[derive(Debug, Clone)]
+pub struct CoinbaseEntry {
+    pub amount: u64,
+    pub mature_at_height: u64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LedgerEntry {
     pub address: String,
@@ -15,7 +37,6 @@ pub struct LedgerEntry {
     pub balance: u64,
 }
 
-/// Receipt returned by a successful transfer.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TxReceipt {
     pub tx_hash: String,
@@ -28,13 +49,15 @@ pub struct TxReceipt {
     pub timestamp: u64,
 }
 
-/// In-memory token ledger with JSON persistence.
 pub struct Ledger {
     balances: HashMap<(String, TokenType), u64>,
     tx_history: Vec<TxReceipt>,
     block_height: u64,
     protocol_fee_address: String,
     modified: bool,
+    nonces: HashMap<String, u64>,
+    coinbase_maturity: HashMap<String, Vec<CoinbaseEntry>>,
+    total_supply_map: HashMap<TokenType, u64>,
 }
 
 impl Ledger {
@@ -45,6 +68,9 @@ impl Ledger {
             block_height: 0,
             protocol_fee_address,
             modified: false,
+            nonces: HashMap::new(),
+            coinbase_maturity: HashMap::new(),
+            total_supply_map: HashMap::new(),
         }
     }
 
@@ -154,7 +180,6 @@ impl Ledger {
         &self.protocol_fee_address
     }
 
-    /// Total issued supply for a given token type across all addresses.
     pub fn total_supply(&self, token: &TokenType) -> u64 {
         self.balances
             .iter()
@@ -162,9 +187,245 @@ impl Ledger {
             .map(|(_, bal)| *bal)
             .sum()
     }
+
+    pub fn current_nonce(&self, address: &str) -> u64 {
+        self.nonces.get(address).copied().unwrap_or(0)
+    }
+
+    pub fn total_supply_of(&self, token: &TokenType) -> u64 {
+        self.total_supply_map.get(token).copied().unwrap_or(0)
+    }
+
+    pub fn is_coinbase_mature(&self, address: &str, height: u64, current_height: u64) -> bool {
+        current_height >= height + COINBASE_MATURITY_DEPTH
+    }
+
+    pub fn apply_transfer(
+        &mut self,
+        tx: &TransferTransaction,
+        miner: &str,
+    ) -> Result<TxReceipt, String> {
+        if tx.amount == 0 {
+            return Err("Transfer amount must be positive".into());
+        }
+        let total = tx.amount.checked_add(tx.fee).ok_or("Overflow in amount + fee")?;
+        let from_key = (tx.from.clone(), tx.token.clone());
+        let from_bal = self.balances.get(&from_key).copied().unwrap_or(0);
+        if from_bal < total {
+            return Err(format!(
+                "Insufficient balance: have {}, need {} (amount {} + fee {})",
+                from_bal, total, tx.amount, tx.fee
+            ));
+        }
+
+        self.balances.insert(from_key, from_bal - total);
+
+        let to_key = (tx.to.clone(), tx.token.clone());
+        let to_bal = self.balances.entry(to_key).or_insert(0);
+        *to_bal = to_bal.saturating_add(tx.amount);
+
+        if tx.fee > 0 {
+            let miner_key = (miner.to_string(), tx.token.clone());
+            let miner_bal = self.balances.entry(miner_key).or_insert(0);
+            *miner_bal = miner_bal.saturating_add(tx.fee);
+        }
+
+        self.nonces
+            .entry(tx.from.clone())
+            .and_modify(|n| *n += 1)
+            .or_insert(1);
+
+        self.modified = true;
+
+        let receipt = TxReceipt {
+            tx_hash: hex::encode(tx.tx_hash),
+            from: tx.from.clone(),
+            to: tx.to.clone(),
+            token: tx.token.clone(),
+            amount: tx.amount,
+            fee: tx.fee,
+            block_height: self.block_height,
+            timestamp: tx.timestamp,
+        };
+        self.tx_history.push(receipt.clone());
+
+        Ok(receipt)
+    }
+
+    pub fn rollback_transfer(
+        &mut self,
+        tx: &TransferTransaction,
+        miner: &str,
+    ) -> Result<(), String> {
+        let to_key = (tx.to.clone(), tx.token.clone());
+        let to_bal = self.balances.get(&to_key).copied().unwrap_or(0);
+        if to_bal < tx.amount {
+            return Err(format!(
+                "Insufficient balance to rollback recipient: have {}, need {}",
+                to_bal, tx.amount
+            ));
+        }
+        self.balances.insert(to_key, to_bal - tx.amount);
+
+        if tx.fee > 0 {
+            let miner_key = (miner.to_string(), tx.token.clone());
+            let miner_bal = self.balances.get(&miner_key).copied().unwrap_or(0);
+            if miner_bal < tx.fee {
+                return Err(format!(
+                    "Insufficient balance to rollback miner fee: have {}, need {}",
+                    miner_bal, tx.fee
+                ));
+            }
+            self.balances.insert(miner_key, miner_bal - tx.fee);
+        }
+
+        let from_key = (tx.from.clone(), tx.token.clone());
+        let from_bal = self.balances.entry(from_key).or_insert(0);
+        *from_bal = from_bal.saturating_add(tx.amount + tx.fee);
+
+        self.nonces
+            .entry(tx.from.clone())
+            .and_modify(|n| {
+                if *n > 0 {
+                    *n -= 1
+                }
+            });
+
+        self.modified = true;
+        Ok(())
+    }
+
+    pub fn apply_coinbase(&mut self, cb: &CoinbaseTransaction) -> Result<(), String> {
+        let total_proof_rewards: u64 = cb.proof_rewards.iter().map(|pr| pr.reward_amount).sum();
+        let total_mint = cb.block_reward + total_proof_rewards;
+
+        let current_supply = self.total_supply_of(&TokenType::TribeChain);
+        if current_supply + total_mint > TRIBE_HARD_CAP {
+            return Err("Supply cap exceeded".into());
+        }
+
+        let miner_key = (cb.miner_address.clone(), TokenType::TribeChain);
+        let miner_bal = self.balances.entry(miner_key).or_insert(0);
+        *miner_bal = miner_bal.saturating_add(cb.block_reward);
+
+        for pr in &cb.proof_rewards {
+            let pr_key = (pr.miner_pubkey.clone(), TokenType::TribeChain);
+            let pr_bal = self.balances.entry(pr_key).or_insert(0);
+            *pr_bal = pr_bal.saturating_add(pr.reward_amount);
+        }
+
+        self.coinbase_maturity
+            .entry(cb.miner_address.clone())
+            .or_default()
+            .push(CoinbaseEntry {
+                amount: cb.block_reward,
+                mature_at_height: cb.height + COINBASE_MATURITY_DEPTH,
+            });
+
+        *self
+            .total_supply_map
+            .entry(TokenType::TribeChain)
+            .or_insert(0) += total_mint;
+
+        self.modified = true;
+        Ok(())
+    }
+
+    pub fn rollback_coinbase(&mut self, cb: &CoinbaseTransaction) -> Result<(), String> {
+        let miner_key = (cb.miner_address.clone(), TokenType::TribeChain);
+        let miner_bal = self.balances.entry(miner_key).or_insert(0);
+        *miner_bal = miner_bal.saturating_sub(cb.block_reward);
+
+        for pr in &cb.proof_rewards {
+            let pr_key = (pr.miner_pubkey.clone(), TokenType::TribeChain);
+            let pr_bal = self.balances.entry(pr_key).or_insert(0);
+            *pr_bal = pr_bal.saturating_sub(pr.reward_amount);
+        }
+
+        if let Some(entries) = self.coinbase_maturity.get_mut(&cb.miner_address) {
+            entries.pop();
+        }
+
+        let total_proof_rewards: u64 = cb.proof_rewards.iter().map(|pr| pr.reward_amount).sum();
+        *self
+            .total_supply_map
+            .entry(TokenType::TribeChain)
+            .or_insert(0) -= cb.block_reward + total_proof_rewards;
+
+        self.modified = true;
+        Ok(())
+    }
+
+    pub fn apply_block(&mut self, block: &HexBlock) -> Result<Vec<TxReceipt>, String> {
+        let txs = block
+            .transactions
+            .as_ref()
+            .ok_or_else(|| "Block has no transactions".to_string())?;
+
+        if txs.is_empty() {
+            return Err("Block has no transactions".into());
+        }
+
+        self.block_height = block.height;
+
+        let cb: CoinbaseTransaction = serde_json::from_value(txs[0].clone())
+            .map_err(|e| format!("Failed to deserialize coinbase: {}", e))?;
+        let miner = cb.miner_address.clone();
+
+        self.apply_coinbase(&cb)?;
+
+        let mut receipts = Vec::new();
+        for tx_val in txs[1..].iter() {
+            let tx: TransferTransaction = serde_json::from_value(tx_val.clone())
+                .map_err(|e| format!("Failed to deserialize transfer: {}", e))?;
+            let receipt = self.apply_transfer(&tx, &miner)?;
+            receipts.push(receipt);
+        }
+
+        Ok(receipts)
+    }
+
+    pub fn rollback_block(&mut self, block: &HexBlock) -> Result<(), String> {
+        let txs = block
+            .transactions
+            .as_ref()
+            .ok_or_else(|| "Block has no transactions".to_string())?;
+
+        if txs.is_empty() {
+            return Err("Block has no transactions".into());
+        }
+
+        let cb: CoinbaseTransaction = serde_json::from_value(txs[0].clone())
+            .map_err(|e| format!("Failed to deserialize coinbase: {}", e))?;
+        let miner = cb.miner_address.clone();
+
+        for tx_val in txs[1..].iter().rev() {
+            let tx: TransferTransaction = serde_json::from_value(tx_val.clone())
+                .map_err(|e| format!("Failed to deserialize transfer: {}", e))?;
+            self.rollback_transfer(&tx, &miner)?;
+        }
+
+        self.rollback_coinbase(&cb)?;
+
+        Ok(())
+    }
+
+    pub fn mint_tokens(
+        &mut self,
+        to: &str,
+        token: &TokenType,
+        amount: u64,
+    ) -> Result<(), String> {
+        let current = self.total_supply_of(token);
+        if current + amount > TRIBE_HARD_CAP && *token == TokenType::TribeChain {
+            return Err("Supply cap exceeded".into());
+        }
+        self.issue(to, token, amount);
+        *self.total_supply_map.entry(token.clone()).or_insert(0) += amount;
+        Ok(())
+    }
 }
 
-/// Load ledger from a JSON file.
 pub fn load_ledger(path: &str, protocol_fee_address: &str) -> Ledger {
     let content = std::fs::read_to_string(path).ok();
     let entries: Vec<LedgerEntry> = match content {
@@ -180,7 +441,6 @@ pub fn load_ledger(path: &str, protocol_fee_address: &str) -> Ledger {
     ledger
 }
 
-/// Persist ledger to a JSON file asynchronously.
 pub fn spawn_persist_ledger(ledger: Arc<RwLock<Ledger>>, path: String) {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(5));
@@ -210,7 +470,6 @@ pub fn spawn_persist_ledger(ledger: Arc<RwLock<Ledger>>, path: String) {
     });
 }
 
-/// Default path for the ledger JSON file.
 pub const DEFAULT_LEDGER_PATH: &str = "ledger.json";
 
 #[cfg(test)]
@@ -325,5 +584,225 @@ mod tests {
             .unwrap();
         assert_eq!(ledger.balance_of("alice", &TokenType::TribeChain), 50);
         assert_eq!(ledger.balance_of("alice", &TokenType::PTtC), 200);
+    }
+
+    #[test]
+    fn test_block_reward_halving() {
+        assert_eq!(block_reward_at_height(0), TRIBE_BLOCK_REWARD_INITIAL);
+        assert_eq!(
+            block_reward_at_height(TRIBE_HALVING_INTERVAL),
+            TRIBE_BLOCK_REWARD_INITIAL / 2
+        );
+        assert_eq!(block_reward_at_height(TRIBE_HALVING_INTERVAL * 64), 0);
+    }
+
+    #[test]
+    fn test_apply_transfer_normal() {
+        let mut ledger = Ledger::new("protocol".to_string());
+        ledger.mint_tokens("alice", &TokenType::TribeChain, 1000).unwrap();
+        let tx = TransferTransaction {
+            tx_hash: [0u8; 32],
+            nonce: 0,
+            from: "alice".to_string(),
+            to: "bob".to_string(),
+            token: TokenType::TribeChain,
+            amount: 100,
+            fee: 1,
+            signature: vec![],
+            timestamp: 0,
+        };
+        let result = ledger.apply_transfer(&tx, "miner").unwrap();
+        assert_eq!(ledger.balance_of("alice", &TokenType::TribeChain), 899);
+        assert_eq!(ledger.balance_of("bob", &TokenType::TribeChain), 100);
+        assert_eq!(ledger.balance_of("miner", &TokenType::TribeChain), 1);
+        assert_eq!(ledger.current_nonce("alice"), 1);
+    }
+
+    #[test]
+    fn test_apply_transfer_insufficient() {
+        let mut ledger = Ledger::new("protocol".to_string());
+        ledger
+            .mint_tokens("alice", &TokenType::TribeChain, 50)
+            .unwrap();
+        let tx = TransferTransaction {
+            tx_hash: [0u8; 32],
+            nonce: 0,
+            from: "alice".to_string(),
+            to: "bob".to_string(),
+            token: TokenType::TribeChain,
+            amount: 100,
+            fee: 1,
+            signature: vec![],
+            timestamp: 0,
+        };
+        assert!(ledger.apply_transfer(&tx, "miner").is_err());
+    }
+
+    #[test]
+    fn test_supply_cap_enforcement() {
+        let mut ledger = Ledger::new("protocol".to_string());
+        ledger
+            .mint_tokens("alice", &TokenType::TribeChain, TRIBE_HARD_CAP)
+            .unwrap();
+        let result = ledger.mint_tokens("bob", &TokenType::TribeChain, 1);
+        assert!(result.is_err(), "Should reject minting beyond hard cap");
+    }
+
+    #[test]
+    fn test_coinbase_maturity() {
+        let mut ledger = Ledger::new("protocol".to_string());
+        assert!(!ledger.is_coinbase_mature("miner", 0, 50));
+        assert!(ledger.is_coinbase_mature("miner", 0, 100));
+        assert!(ledger.is_coinbase_mature("miner", 0, 200));
+    }
+
+    #[test]
+    fn test_rollback_transfer() {
+        let mut ledger = Ledger::new("protocol".to_string());
+        ledger
+            .mint_tokens("alice", &TokenType::TribeChain, 1000)
+            .unwrap();
+        let alice_before = ledger.balance_of("alice", &TokenType::TribeChain);
+        let tx = TransferTransaction {
+            tx_hash: [0u8; 32],
+            nonce: 0,
+            from: "alice".to_string(),
+            to: "bob".to_string(),
+            token: TokenType::TribeChain,
+            amount: 200,
+            fee: 1,
+            signature: vec![],
+            timestamp: 0,
+        };
+        ledger.apply_transfer(&tx, "miner").unwrap();
+        ledger.rollback_transfer(&tx, "miner").unwrap();
+        assert_eq!(
+            ledger.balance_of("alice", &TokenType::TribeChain),
+            alice_before
+        );
+        assert_eq!(ledger.balance_of("bob", &TokenType::TribeChain), 0);
+        assert_eq!(ledger.balance_of("miner", &TokenType::TribeChain), 0);
+    }
+
+    #[test]
+    fn test_current_nonce() {
+        let mut ledger = Ledger::new("protocol".to_string());
+        assert_eq!(ledger.current_nonce("alice"), 0);
+        ledger
+            .mint_tokens("alice", &TokenType::TribeChain, 1000)
+            .unwrap();
+        let tx = TransferTransaction {
+            tx_hash: [0u8; 32],
+            nonce: 0,
+            from: "alice".to_string(),
+            to: "bob".to_string(),
+            token: TokenType::TribeChain,
+            amount: 100,
+            fee: 0,
+            signature: vec![],
+            timestamp: 0,
+        };
+        ledger.apply_transfer(&tx, "miner").unwrap();
+        assert_eq!(ledger.current_nonce("alice"), 1);
+    }
+
+    #[test]
+    fn test_total_supply_of() {
+        let mut ledger = Ledger::new("protocol".to_string());
+        assert_eq!(ledger.total_supply_of(&TokenType::TribeChain), 0);
+        ledger
+            .mint_tokens("alice", &TokenType::TribeChain, 500)
+            .unwrap();
+        assert_eq!(ledger.total_supply_of(&TokenType::TribeChain), 500);
+    }
+
+    #[test]
+    fn test_apply_coinbase_supply_cap() {
+        let mut ledger = Ledger::new("protocol".to_string());
+        let cb = CoinbaseTransaction {
+            tx_hash: [0u8; 32],
+            height: 1,
+            miner_address: "miner".to_string(),
+            block_reward: TRIBE_HARD_CAP,
+            proof_rewards: vec![],
+            signature: vec![],
+        };
+        ledger.apply_coinbase(&cb).unwrap();
+        let cb2 = CoinbaseTransaction {
+            tx_hash: [1u8; 32],
+            height: 2,
+            miner_address: "miner".to_string(),
+            block_reward: 1,
+            proof_rewards: vec![],
+            signature: vec![],
+        };
+        assert!(ledger.apply_coinbase(&cb2).is_err());
+    }
+
+    #[test]
+    fn test_apply_rollback_block() {
+        let mut ledger = Ledger::new("protocol".to_string());
+        ledger
+            .mint_tokens("alice", &TokenType::TribeChain, 1000)
+            .unwrap();
+
+        let tx1 = serde_json::to_value(TransferTransaction {
+            tx_hash: [1u8; 32],
+            nonce: 0,
+            from: "alice".to_string(),
+            to: "bob".to_string(),
+            token: TokenType::TribeChain,
+            amount: 100,
+            fee: 5,
+            signature: vec![],
+            timestamp: 0,
+        })
+        .unwrap();
+
+        let cb = serde_json::to_value(CoinbaseTransaction {
+            tx_hash: [0u8; 32],
+            height: 1,
+            miner_address: "miner".to_string(),
+            block_reward: 100,
+            proof_rewards: vec![ProofRewardEntry {
+                miner_pubkey: "prover1".to_string(),
+                reward_amount: 10,
+                proof_hash: "proof1".to_string(),
+            }],
+            signature: vec![],
+        })
+        .unwrap();
+
+        let block = HexBlock {
+            parent_hash: [0u8; 32],
+            height: 1,
+            tx_merkle_root: [0u8; 32],
+            transactions: Some(vec![cb, tx1]),
+            miner_address: Some("miner".to_string()),
+            timestamp: 100,
+            nonce: 0,
+            coord: hexchain_p2p::lattice_geometry::HCPCoord { q: 0, r: 0, s: 0 },
+            neighbor_hashes: [hexchain_p2p::types::NEIGHBOR_SLOT_EMPTY; 12],
+            tensor: hexchain_p2p::types::TensorMeta {
+                expected_capacity: 1000,
+                actual_capacity: 1000,
+                compression_num: 1,
+                compression_den: 1,
+            },
+        };
+
+        let receipts = ledger.apply_block(&block).unwrap();
+        assert_eq!(receipts.len(), 1);
+        assert_eq!(ledger.balance_of("alice", &TokenType::TribeChain), 895);
+        assert_eq!(ledger.balance_of("bob", &TokenType::TribeChain), 100);
+        assert!(ledger.balance_of("miner", &TokenType::TribeChain) >= 100);
+        assert_eq!(ledger.block_height(), 1);
+
+        ledger.rollback_block(&block).unwrap();
+        assert_eq!(
+            ledger.balance_of("alice", &TokenType::TribeChain),
+            1000
+        );
+        assert_eq!(ledger.balance_of("bob", &TokenType::TribeChain), 0);
     }
 }

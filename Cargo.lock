@@ -2924,6 +2924,7 @@ dependencies = [
  "ed25519-dalek",
  "flume",
  "hex",
+ "hexchain-p2p",
  "mdns-sd",
  "mockito",
  "pot-o-core",

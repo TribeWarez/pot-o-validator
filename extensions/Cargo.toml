@@ -34,6 +34,7 @@ mdns-sd = "0.7"
 flume = "0.10"
 ed25519-dalek = "1"
 bs58 = "0.4"
+hexchain-p2p = "0.8"
 
 [dev-dependencies]
 chrono = { version = "0.4", features = ["serde"] }
