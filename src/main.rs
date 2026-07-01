@@ -82,6 +82,7 @@ async fn main() {
     let mempool = extensions.mempool.clone();
     let ledger = extensions.ledger.clone();
     let tribechain_enabled = extensions.tribechain_enabled;
+    let block_store = extensions.block_store.clone();
 
     let state = create_app_state(
         cfg.clone(),
@@ -92,6 +93,24 @@ async fn main() {
         hex_consensus,
         tribe_mint_address,
     );
+
+    if let Some(ref bs) = block_store {
+        let bs = bs.clone();
+        tokio::spawn(async move {
+            let interval = tokio::time::Duration::from_secs(10);
+            loop {
+                tokio::time::sleep(interval).await;
+                if bs.is_modified() {
+                    if let Err(e) = bs.save_to_file() {
+                        tracing::error!("Failed to persist block store: {}", e);
+                    } else {
+                        bs.clear_modified();
+                    }
+                }
+            }
+        });
+        tracing::info!("BlockStore background persistence started");
+    }
 
     let internal_state = internal_api::InternalApiState {
         node_id: cfg.node_id.clone(),

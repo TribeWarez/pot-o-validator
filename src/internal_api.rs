@@ -280,7 +280,9 @@ mod tests {
             peers: Arc::new(RwLock::new(vec![])),
             current_challenge: Arc::new(RwLock::new(None)),
             mempool: None,
-            ledger: Arc::new(RwLock::new(pot_o_extensions::Ledger::new("test".to_string()))),
+            ledger: Arc::new(RwLock::new(pot_o_extensions::Ledger::new(
+                "test".to_string(),
+            ))),
             tribechain_enabled: false,
         };
 
@@ -314,7 +316,9 @@ mod tests {
             peers: Arc::new(RwLock::new(vec![])),
             current_challenge: Arc::new(RwLock::new(None)),
             mempool: None,
-            ledger: Arc::new(RwLock::new(pot_o_extensions::Ledger::new("test".to_string()))),
+            ledger: Arc::new(RwLock::new(pot_o_extensions::Ledger::new(
+                "test".to_string(),
+            ))),
             tribechain_enabled: false,
         };
 
@@ -354,7 +358,9 @@ mod tests {
             peers: Arc::new(RwLock::new(vec![initial_peer.clone()])),
             current_challenge: Arc::new(RwLock::new(None)),
             mempool: None,
-            ledger: Arc::new(RwLock::new(pot_o_extensions::Ledger::new("test".to_string()))),
+            ledger: Arc::new(RwLock::new(pot_o_extensions::Ledger::new(
+                "test".to_string(),
+            ))),
             tribechain_enabled: false,
         };
 
@@ -388,7 +394,9 @@ mod tests {
             peers: Arc::new(RwLock::new(vec![])),
             current_challenge: Arc::new(RwLock::new(None)),
             mempool: None,
-            ledger: Arc::new(RwLock::new(pot_o_extensions::Ledger::new("test".to_string()))),
+            ledger: Arc::new(RwLock::new(pot_o_extensions::Ledger::new(
+                "test".to_string(),
+            ))),
             tribechain_enabled: false,
         };
 
@@ -415,7 +423,9 @@ mod tests {
             peers: Arc::new(RwLock::new(vec![peer1.clone(), peer2.clone()])),
             current_challenge: Arc::new(RwLock::new(None)),
             mempool: None,
-            ledger: Arc::new(RwLock::new(pot_o_extensions::Ledger::new("test".to_string()))),
+            ledger: Arc::new(RwLock::new(pot_o_extensions::Ledger::new(
+                "test".to_string(),
+            ))),
             tribechain_enabled: false,
         };
 
@@ -432,7 +442,9 @@ mod tests {
             peers: Arc::new(RwLock::new(vec![])),
             current_challenge: Arc::new(RwLock::new(None)),
             mempool: None,
-            ledger: Arc::new(RwLock::new(pot_o_extensions::Ledger::new("test".to_string()))),
+            ledger: Arc::new(RwLock::new(pot_o_extensions::Ledger::new(
+                "test".to_string(),
+            ))),
             tribechain_enabled: false,
         };
 
@@ -456,7 +468,9 @@ mod tests {
             peers: Arc::new(RwLock::new(vec![])),
             current_challenge: Arc::new(RwLock::new(Some(old_challenge))),
             mempool: None,
-            ledger: Arc::new(RwLock::new(pot_o_extensions::Ledger::new("test".to_string()))),
+            ledger: Arc::new(RwLock::new(pot_o_extensions::Ledger::new(
+                "test".to_string(),
+            ))),
             tribechain_enabled: false,
         };
 
@@ -487,7 +501,9 @@ mod tests {
             peers: Arc::new(RwLock::new(vec![peer1, peer2])),
             current_challenge: Arc::new(RwLock::new(None)),
             mempool: None,
-            ledger: Arc::new(RwLock::new(pot_o_extensions::Ledger::new("test".to_string()))),
+            ledger: Arc::new(RwLock::new(pot_o_extensions::Ledger::new(
+                "test".to_string(),
+            ))),
             tribechain_enabled: false,
         };
 
@@ -532,7 +548,9 @@ mod tests {
             peers: Arc::new(RwLock::new(vec![peer])),
             current_challenge: Arc::new(RwLock::new(None)),
             mempool: None,
-            ledger: Arc::new(RwLock::new(pot_o_extensions::Ledger::new("test".to_string()))),
+            ledger: Arc::new(RwLock::new(pot_o_extensions::Ledger::new(
+                "test".to_string(),
+            ))),
             tribechain_enabled: false,
         };
 
@@ -568,7 +586,9 @@ mod tests {
             peers: Arc::new(RwLock::new(vec![])),
             current_challenge: Arc::new(RwLock::new(None)),
             mempool: None,
-            ledger: Arc::new(RwLock::new(pot_o_extensions::Ledger::new("test".to_string()))),
+            ledger: Arc::new(RwLock::new(pot_o_extensions::Ledger::new(
+                "test".to_string(),
+            ))),
             tribechain_enabled: false,
         };
 
@@ -584,7 +604,9 @@ mod tests {
             peers: Arc::new(RwLock::new(vec![])),
             current_challenge: Arc::new(RwLock::new(None)),
             mempool: None,
-            ledger: Arc::new(RwLock::new(pot_o_extensions::Ledger::new("test".to_string()))),
+            ledger: Arc::new(RwLock::new(pot_o_extensions::Ledger::new(
+                "test".to_string(),
+            ))),
             tribechain_enabled: false,
         };
 
@@ -622,7 +644,9 @@ mod tests {
             peers: Arc::new(RwLock::new(peers_vec)),
             current_challenge: Arc::new(RwLock::new(None)),
             mempool: None,
-            ledger: Arc::new(RwLock::new(pot_o_extensions::Ledger::new("test".to_string()))),
+            ledger: Arc::new(RwLock::new(pot_o_extensions::Ledger::new(
+                "test".to_string(),
+            ))),
             tribechain_enabled: false,
         };
 
