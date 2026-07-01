@@ -28,7 +28,7 @@ impl fmt::Display for TokenType {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TransferTransaction {
-    pub tx_hash: String,
+    pub tx_hash: [u8; 32],
     pub nonce: u64,
     pub from: String,
     pub to: String,
@@ -48,7 +48,7 @@ pub struct ProofRewardEntry {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CoinbaseTransaction {
-    pub tx_hash: String,
+    pub tx_hash: [u8; 32],
     pub height: u64,
     pub miner_address: String,
     pub block_reward: u64,
@@ -63,7 +63,7 @@ pub enum Transaction {
 }
 
 impl Transaction {
-    pub fn tx_hash(&self) -> &str {
+    pub fn tx_hash(&self) -> &[u8; 32] {
         match self {
             Transaction::Coinbase(tx) => &tx.tx_hash,
             Transaction::Transfer(tx) => &tx.tx_hash,
@@ -119,7 +119,7 @@ pub fn hash_transfer(
     token: &TokenType,
     amount: u64,
     fee: u64,
-) -> String {
+) -> [u8; 32] {
     let mut hasher = Sha256::new();
     hasher.update(from.as_bytes());
     hasher.update(nonce.to_le_bytes());
@@ -127,73 +127,52 @@ pub fn hash_transfer(
     hasher.update(token.to_string().as_bytes());
     hasher.update(amount.to_le_bytes());
     hasher.update(fee.to_le_bytes());
-    hex::encode(hasher.finalize())
+    let result = hasher.finalize();
+    let mut hash = [0u8; 32];
+    hash.copy_from_slice(&result);
+    hash
 }
 
-pub fn hash_coinbase(height: u64, miner_address: &str, block_reward: u64) -> String {
+pub fn hash_coinbase(height: u64, miner_address: &str, block_reward: u64) -> [u8; 32] {
     let mut hasher = Sha256::new();
     hasher.update(height.to_le_bytes());
     hasher.update(miner_address.as_bytes());
     hasher.update(block_reward.to_le_bytes());
-    hex::encode(hasher.finalize())
+    let result = hasher.finalize();
+    let mut hash = [0u8; 32];
+    hash.copy_from_slice(&result);
+    hash
 }
 
-pub fn verify_transfer_sig(
-    from: &str,
-    nonce: u64,
-    to: &str,
-    token: &TokenType,
-    amount: u64,
-    fee: u64,
-    signature: &[u8],
-) -> Result<(), TxError> {
-    let pubkey_bytes = bs58::decode(from)
+pub fn verify_transfer_sig(tx: &TransferTransaction) -> Result<(), TxError> {
+    let pubkey_bytes = bs58::decode(&tx.from)
         .into_vec()
         .map_err(|_| TxError::InvalidSignature)?;
     let pubkey_array: [u8; 32] = pubkey_bytes
         .try_into()
         .map_err(|_| TxError::InvalidSignature)?;
     let public_key = PublicKey::from_bytes(&pubkey_array).map_err(|_| TxError::InvalidSignature)?;
-    let sig = Signature::from_bytes(signature).map_err(|_| TxError::InvalidSignature)?;
+    let sig = Signature::from_bytes(&tx.signature).map_err(|_| TxError::InvalidSignature)?;
 
-    let mut message = Vec::new();
-    message.extend_from_slice(&nonce.to_le_bytes());
-    message.extend_from_slice(to.as_bytes());
-    message.extend_from_slice(token.to_string().as_bytes());
-    message.extend_from_slice(&amount.to_le_bytes());
-    message.extend_from_slice(&fee.to_le_bytes());
-
+    let expected_hash = hash_transfer(&tx.from, tx.nonce, &tx.to, &tx.token, tx.amount, tx.fee);
     public_key
-        .verify_strict(&message, &sig)
+        .verify_strict(&expected_hash[..], &sig)
         .map_err(|_| TxError::InvalidSignature)
 }
 
-pub fn verify_coinbase_sig(
-    miner_address: &str,
-    height: u64,
-    block_reward: u64,
-    proof_rewards: &[ProofRewardEntry],
-    signature: &[u8],
-) -> Result<(), TxError> {
-    let pubkey_bytes = bs58::decode(miner_address)
+pub fn verify_coinbase_sig(cb: &CoinbaseTransaction) -> Result<(), TxError> {
+    let pubkey_bytes = bs58::decode(&cb.miner_address)
         .into_vec()
         .map_err(|_| TxError::InvalidSignature)?;
     let pubkey_array: [u8; 32] = pubkey_bytes
         .try_into()
         .map_err(|_| TxError::InvalidSignature)?;
     let public_key = PublicKey::from_bytes(&pubkey_array).map_err(|_| TxError::InvalidSignature)?;
-    let sig = Signature::from_bytes(signature).map_err(|_| TxError::InvalidSignature)?;
+    let sig = Signature::from_bytes(&cb.signature).map_err(|_| TxError::InvalidSignature)?;
 
-    let mut message = Vec::new();
-    message.extend_from_slice(&height.to_le_bytes());
-    message.extend_from_slice(miner_address.as_bytes());
-    message.extend_from_slice(&block_reward.to_le_bytes());
-    for reward in proof_rewards {
-        message.extend_from_slice(reward.proof_hash.as_bytes());
-    }
-
+    let expected_hash = hash_coinbase(cb.height, &cb.miner_address, cb.block_reward);
     public_key
-        .verify_strict(&message, &sig)
+        .verify_strict(&expected_hash[..], &sig)
         .map_err(|_| TxError::InvalidSignature)
 }
 
@@ -234,7 +213,7 @@ mod tests {
         let h1 = hash_transfer("Alice", 1, "Bob", &TokenType::TribeChain, 100, 1);
         let h2 = hash_transfer("Alice", 1, "Bob", &TokenType::TribeChain, 100, 1);
         assert_eq!(h1, h2);
-        assert_eq!(h1.len(), 64);
+        assert_eq!(h1.len(), 32);
     }
 
     #[test]
@@ -249,7 +228,7 @@ mod tests {
         let h1 = hash_coinbase(42, "MinerPubkey", 500);
         let h2 = hash_coinbase(42, "MinerPubkey", 500);
         assert_eq!(h1, h2);
-        assert_eq!(h1.len(), 64);
+        assert_eq!(h1.len(), 32);
     }
 
     #[test]
@@ -273,24 +252,40 @@ mod tests {
         let amount = 100u64;
         let fee = 1u64;
 
-        let mut msg = Vec::new();
-        msg.extend_from_slice(&nonce.to_le_bytes());
-        msg.extend_from_slice(to.as_bytes());
-        msg.extend_from_slice(token.to_string().as_bytes());
-        msg.extend_from_slice(&amount.to_le_bytes());
-        msg.extend_from_slice(&fee.to_le_bytes());
-
+        let msg = hash_transfer(&from, nonce, &to, &token, amount, fee);
         let signature = keypair.sign(&msg).to_bytes().to_vec();
-        let result = verify_transfer_sig(&from, nonce, &to, &token, amount, fee, &signature);
+
+        let tx = TransferTransaction {
+            tx_hash: msg,
+            nonce,
+            from,
+            to,
+            token,
+            amount,
+            fee,
+            signature,
+            timestamp: 0,
+        };
+        let result = verify_transfer_sig(&tx);
         assert!(result.is_ok());
     }
 
     #[test]
-    fn test_verify_transfer_sig_invalid() {
+    fn test_verify_transfer_sig_bad_key() {
         let from = bs58::encode([0u8; 32]).into_string();
         let signature = vec![0u8; 64];
-        let result =
-            verify_transfer_sig(&from, 1, "to", &TokenType::TribeChain, 100, 1, &signature);
+        let tx = TransferTransaction {
+            tx_hash: [0u8; 32],
+            nonce: 1,
+            from,
+            to: "to".to_string(),
+            token: TokenType::TribeChain,
+            amount: 100,
+            fee: 1,
+            signature,
+            timestamp: 0,
+        };
+        let result = verify_transfer_sig(&tx);
         assert_eq!(result, Err(TxError::InvalidSignature));
     }
 
@@ -308,15 +303,22 @@ mod tests {
         let amount = 100u64;
         let fee = 1u64;
 
-        let mut msg = Vec::new();
-        msg.extend_from_slice(&nonce.to_le_bytes());
-        msg.extend_from_slice(to.as_bytes());
-        msg.extend_from_slice(token.to_string().as_bytes());
-        msg.extend_from_slice(&amount.to_le_bytes());
-        msg.extend_from_slice(&fee.to_le_bytes());
-
+        let msg = hash_transfer(&from, nonce, &to, &token, amount, fee);
         let signature = keypair.sign(&msg).to_bytes().to_vec();
-        let result = verify_transfer_sig(&from, nonce, &to, &token, amount + 1, fee, &signature);
+
+        let tampered_amount = amount + 1;
+        let tx = TransferTransaction {
+            tx_hash: hash_transfer(&from, nonce, &to, &token, tampered_amount, fee),
+            nonce,
+            from,
+            to,
+            token,
+            amount: tampered_amount,
+            fee,
+            signature,
+            timestamp: 0,
+        };
+        let result = verify_transfer_sig(&tx);
         assert_eq!(result, Err(TxError::InvalidSignature));
     }
 
@@ -336,22 +338,18 @@ mod tests {
             proof_hash: "abc123".to_string(),
         }];
 
-        let mut msg = Vec::new();
-        msg.extend_from_slice(&height.to_le_bytes());
-        msg.extend_from_slice(miner_address.as_bytes());
-        msg.extend_from_slice(&block_reward.to_le_bytes());
-        for reward in &proof_rewards {
-            msg.extend_from_slice(reward.proof_hash.as_bytes());
-        }
-
+        let msg = hash_coinbase(height, &miner_address, block_reward);
         let signature = keypair.sign(&msg).to_bytes().to_vec();
-        let result = verify_coinbase_sig(
-            &miner_address,
+
+        let cb = CoinbaseTransaction {
+            tx_hash: msg,
             height,
+            miner_address,
             block_reward,
-            &proof_rewards,
-            &signature,
-        );
+            proof_rewards,
+            signature,
+        };
+        let result = verify_coinbase_sig(&cb);
         assert!(result.is_ok());
     }
 
@@ -359,7 +357,15 @@ mod tests {
     fn test_verify_coinbase_sig_invalid_pubkey() {
         let miner_address = bs58::encode([0u8; 32]).into_string();
         let signature = vec![0u8; 64];
-        let result = verify_coinbase_sig(&miner_address, 42, 500, &[], &signature);
+        let cb = CoinbaseTransaction {
+            tx_hash: [0u8; 32],
+            height: 42,
+            miner_address,
+            block_reward: 500,
+            proof_rewards: vec![],
+            signature,
+        };
+        let result = verify_coinbase_sig(&cb);
         assert_eq!(result, Err(TxError::InvalidSignature));
     }
 
@@ -379,29 +385,27 @@ mod tests {
             proof_hash: "abc123".to_string(),
         }];
 
-        let mut msg = Vec::new();
-        msg.extend_from_slice(&height.to_le_bytes());
-        msg.extend_from_slice(miner_address.as_bytes());
-        msg.extend_from_slice(&block_reward.to_le_bytes());
-        for reward in &proof_rewards {
-            msg.extend_from_slice(reward.proof_hash.as_bytes());
-        }
-
+        let msg = hash_coinbase(height, &miner_address, block_reward);
         let signature = keypair.sign(&msg).to_bytes().to_vec();
-        let result = verify_coinbase_sig(
-            &miner_address,
+
+        let cb = CoinbaseTransaction {
+            tx_hash: msg,
             height,
-            block_reward + 1,
-            &proof_rewards,
-            &signature,
-        );
+            miner_address,
+            block_reward: block_reward + 1,
+            proof_rewards,
+            signature,
+        };
+        let result = verify_coinbase_sig(&cb);
         assert_eq!(result, Err(TxError::InvalidSignature));
     }
 
     #[test]
     fn test_transaction_tx_hash() {
+        let hash1 = [1u8; 32];
+        let hash2 = [2u8; 32];
         let transfer_tx = TransferTransaction {
-            tx_hash: "abcdef".to_string(),
+            tx_hash: hash1,
             nonce: 1,
             from: "from".to_string(),
             to: "to".to_string(),
@@ -412,7 +416,7 @@ mod tests {
             timestamp: 0,
         };
         let coinbase_tx = CoinbaseTransaction {
-            tx_hash: "123456".to_string(),
+            tx_hash: hash2,
             height: 42,
             miner_address: "miner".to_string(),
             block_reward: 500,
@@ -420,7 +424,7 @@ mod tests {
             signature: vec![],
         };
 
-        assert_eq!(Transaction::Transfer(transfer_tx).tx_hash(), "abcdef");
-        assert_eq!(Transaction::Coinbase(coinbase_tx).tx_hash(), "123456");
+        assert_eq!(Transaction::Transfer(transfer_tx).tx_hash(), &hash1);
+        assert_eq!(Transaction::Coinbase(coinbase_tx).tx_hash(), &hash2);
     }
 }
