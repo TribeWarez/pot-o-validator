@@ -71,6 +71,7 @@ pub enum TxError {
     InvalidToken,
     AmountZero,
     SelfTransfer,
+    FeeTooLow,
     CoinbaseNotFirst,
     CoinbaseWrongToken,
     CoinbaseRewardMismatch,
@@ -88,6 +89,7 @@ impl fmt::Display for TxError {
             TxError::InvalidToken => write!(f, "invalid token"),
             TxError::AmountZero => write!(f, "amount must be greater than zero"),
             TxError::SelfTransfer => write!(f, "self-transfer not allowed"),
+            TxError::FeeTooLow => write!(f, "fee below minimum"),
             TxError::CoinbaseNotFirst => write!(f, "coinbase transaction must be first in block"),
             TxError::CoinbaseWrongToken => {
                 write!(f, "coinbase transaction must use TRIBECHAIN token")

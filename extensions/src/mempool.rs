@@ -31,7 +31,7 @@ impl Mempool {
     ) -> Result<[u8; 32], TxError> {
         // 1. Fee check
         if tx.fee < self.min_fee {
-            return Err(TxError::InvalidNonce); // Map as fee-too-low
+            return Err(TxError::FeeTooLow);
         }
 
         // 2. Amount check
@@ -227,32 +227,61 @@ mod tests {
     use super::*;
     use crate::ledger::Ledger;
     use crate::tx::{hash_transfer, TokenType};
+    use ed25519_dalek::{Keypair, PublicKey, SecretKey, Signer};
 
     #[test]
     fn test_mempool_submit_and_drain() {
         let ledger = RwLock::new(Ledger::new("protocol".to_string()));
+
+        // Generate a real Ed25519 keypair
+        let secret = SecretKey::from_bytes(&[42u8; 32]).unwrap();
+        let public = PublicKey::from(&secret);
+        let keypair = Keypair { secret, public };
+        let from = bs58::encode(keypair.public.to_bytes()).into_string();
+        let to = bs58::encode([99u8; 32]).into_string();
+
         ledger
             .write()
             .unwrap()
-            .issue("alice", &TokenType::TribeChain, 1000);
+            .issue(&from, &TokenType::TribeChain, 1000);
         let mempool = Mempool::new(1000, 0);
 
+        let nonce = 0u64;
+        let amount = 100u64;
+        let fee = 1u64;
+        let timestamp = 0u64;
+
+        let tx_hash = hash_transfer(
+            &from,
+            nonce,
+            &to,
+            &TokenType::TribeChain,
+            amount,
+            fee,
+            timestamp,
+        );
+        let signature = keypair.sign(&tx_hash).to_bytes().to_vec();
+
         let tx = TransferTransaction {
-            tx_hash: hash_transfer("alice", 0, "bob", &TokenType::TribeChain, 100, 1, 0),
-            nonce: 0,
-            from: "alice".to_string(),
-            to: "bob".to_string(),
+            tx_hash,
+            nonce,
+            from: from.clone(),
+            to,
             token: TokenType::TribeChain,
-            amount: 100,
-            fee: 1,
-            signature: vec![],
-            timestamp: 0,
+            amount,
+            fee,
+            signature,
+            timestamp,
         };
-        // Submit without sig (will fail sig check since no real key)
+
         let result = mempool.submit(tx, &ledger);
-        // In a no-sig test environment, this may fail at sig check.
-        // For unit testing, we can test the nonce/balance checks separately.
-        assert!(result.is_err() || result.is_ok());
+        assert!(result.is_ok(), "submit should succeed: {:?}", result);
+        assert_eq!(mempool.len(), 1);
+
+        let drained = mempool.drain_for_block(100, 0);
+        assert_eq!(drained.len(), 1);
+        assert_eq!(drained[0].from, from);
+        assert_eq!(mempool.len(), 0);
     }
 
     #[test]
