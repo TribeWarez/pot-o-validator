@@ -7,6 +7,7 @@ pub mod device_protocol;
 pub mod gossip_client;
 pub mod ledger;
 pub mod marketplace;
+pub mod mempool;
 pub mod mdns_discovery;
 pub mod messaging;
 pub mod peer_network;
