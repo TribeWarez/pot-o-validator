@@ -185,7 +185,7 @@ async fn handle_tx_broadcast(
         }
     };
 
-    match mempool.submit(tx, &state.ledger) {
+    match mempool.submit(tx, &state.ledger).await {
         Ok(tx_hash) => {
             tracing::debug!(tx_hash = %hex::encode(tx_hash), "Received tx from peer, added to mempool");
             (

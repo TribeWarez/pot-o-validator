@@ -1098,9 +1098,12 @@ async fn post_tribechain_tx(
     State(state): State<Arc<AppState>>,
     Json(body): Json<TribechainTxRequest>,
 ) -> impl IntoResponse {
+    tracing::info!("POST /api/tx received");
+    
     tracing::debug!(from = %body.tx.from, "POST /api/tx");
 
     if !state.extensions.tribechain_enabled {
+        tracing::warn!("tribechain not enabled");
         return (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": "tribechain not enabled"})),
@@ -1108,13 +1111,33 @@ async fn post_tribechain_tx(
     }
 
     let Some(mempool) = &state.extensions.mempool else {
+        tracing::warn!("mempool not available");
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(serde_json::json!({"error": "mempool not available"})),
         );
     };
 
-    match mempool.submit(body.tx.clone(), &state.extensions.ledger) {
+    tracing::debug!(sig_len = body.tx.signature.len(), hash_len = body.tx.tx_hash.len(), "tx fields");
+
+    if body.tx.signature.len() != 64 {
+        tracing::warn!(sig_len = body.tx.signature.len(), "invalid signature length");
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "invalid signature length"})),
+        );
+    }
+
+    if body.tx.tx_hash.len() != 32 {
+        tracing::warn!(hash_len = body.tx.tx_hash.len(), "invalid tx_hash length");
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "invalid tx_hash length"})),
+        );
+    }
+
+    tracing::info!("calling mempool.submit");
+    match mempool.submit(body.tx.clone(), &state.extensions.ledger).await {
         Ok(tx_hash) => {
             let tx_json = serde_json::to_value(&body.tx).unwrap_or_default();
             let _ = state
