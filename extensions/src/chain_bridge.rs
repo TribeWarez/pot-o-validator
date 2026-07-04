@@ -99,6 +99,25 @@ fn hex_to_32(hex_str: &str) -> Result<[u8; 32], TribeError> {
         .map_err(|_| TribeError::ChainBridgeError("expected 32 bytes from hex".into()))
 }
 
+/// Parse a miner pubkey as either base58 (Solana Pubkey standard) or hex.
+/// This allows desktop miners that generate hex-encoded keys to work alongside
+/// base58-encoded Solana CLI keys.
+fn parse_pubkey(s: &str) -> Result<Pubkey, TribeError> {
+    // First try base58 (standard Solana Pubkey format)
+    if let Ok(pk) = Pubkey::from_str(s) {
+        return Ok(pk);
+    }
+    // Fallback: try hex decode to 32 bytes
+    let bytes = hex::decode(s)
+        .map_err(|e| TribeError::ChainBridgeError(format!("invalid miner pubkey (not base58 or hex): {e}")))?;
+    let arr: [u8; 32] = bytes
+        .try_into()
+        .map_err(|_| TribeError::ChainBridgeError(
+            "invalid miner pubkey: hex must decode to exactly 32 bytes".into()
+        ))?;
+    Ok(Pubkey::from(arr))
+}
+
 fn anchor_discriminator(name: &str) -> [u8; 8] {
     let mut hasher = Sha256::new();
     hasher.update(format!("global:{name}"));
@@ -193,8 +212,7 @@ impl SolanaBridge {
         proof: &ProofPayload,
         challenge_slot: u64,
     ) -> TribeResult<Instruction> {
-        let miner_pubkey = Pubkey::from_str(&proof.proof.miner_pubkey)
-            .map_err(|e| TribeError::ChainBridgeError(format!("invalid miner pubkey: {e}")))?;
+        let miner_pubkey = parse_pubkey(&proof.proof.miner_pubkey)?;
 
         let relayer_pubkey = self
             .relayer_keypair
@@ -333,8 +351,7 @@ impl ChainBridge for SolanaBridge {
     }
 
     async fn query_miner(&self, pubkey: &str) -> TribeResult<Option<MinerAccount>> {
-        let miner_pubkey = Pubkey::from_str(pubkey)
-            .map_err(|e| TribeError::ChainBridgeError(format!("invalid miner pubkey: {e}")))?;
+        let miner_pubkey = parse_pubkey(pubkey)?;
         let (miner_pda, _) =
             Pubkey::find_program_address(&[b"miner", miner_pubkey.as_ref()], &self.program_id);
 
@@ -389,8 +406,7 @@ impl ChainBridge for SolanaBridge {
             }
         };
 
-        let miner_pubkey = Pubkey::from_str(miner_pubkey)
-            .map_err(|e| TribeError::ChainBridgeError(format!("invalid miner pubkey: {e}")))?;
+        let miner_pubkey = parse_pubkey(miner_pubkey)?;
         let ix = self.build_register_miner_ix(&miner_pubkey)?;
 
         let rpc_url = self.rpc_url.clone();
