@@ -4,6 +4,7 @@
 //! the validator, mining, and extensions crates.
 
 pub mod error;
+pub mod token_config;
 
 pub use error::{TribeError, TribeResult};
 
@@ -34,6 +35,8 @@ pub enum TokenType {
     AUM,
     /// AI3 token.
     AI3,
+    /// RAVECOIN token.
+    RAVECOIN,
 }
 
 /// Minimal block representation aligned with .AI3 core::Block.

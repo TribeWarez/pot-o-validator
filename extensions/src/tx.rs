@@ -14,6 +14,7 @@ pub fn token_discriminant(t: &TokenType) -> u8 {
         TokenType::STOMP => 3,
         TokenType::AUM => 4,
         TokenType::AI3 => 5,
+        TokenType::RAVECOIN => 6,
     }
 }
 
