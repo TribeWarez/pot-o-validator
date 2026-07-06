@@ -7,12 +7,8 @@ use pot_o_extensions::ExtensionRegistry;
 fn test_registry_from_config_defaults_to_local_solo() {
     // Test that default config (local_only + solo) creates correct implementations
     let registry = ExtensionRegistry::from_config(
-        "https://api.devnet.solana.com",
-        "11111111111111111111111111111111",
-        "/path/to/keypair.json",
-        false,
-        "local_only", // peer_network_mode
-        "solo",       // pool_strategy
+        "local_only",
+        "solo",
         "native",
         "",
         25,
@@ -40,12 +36,8 @@ fn test_registry_from_config_defaults_to_local_solo() {
 fn test_registry_from_config_vpn_mesh_network() {
     // Test that vpn_mesh config creates VpnMeshNetwork (even if stubbed)
     let registry = ExtensionRegistry::from_config(
-        "https://api.devnet.solana.com",
-        "11111111111111111111111111111111",
-        "/path/to/keypair.json",
-        false,
-        "vpn_mesh", // peer_network_mode
-        "solo",     // pool_strategy
+        "vpn_mesh",
+        "solo",
         "native",
         "",
         25,
@@ -69,12 +61,8 @@ fn test_registry_from_config_vpn_mesh_network() {
 fn test_registry_from_config_proportional_pool() {
     // Test that proportional pool_strategy creates ProportionalPool (even if stubbed)
     let registry = ExtensionRegistry::from_config(
-        "https://api.devnet.solana.com",
-        "11111111111111111111111111111111",
-        "/path/to/keypair.json",
-        false,
-        "local_only",   // peer_network_mode
-        "proportional", // pool_strategy
+        "local_only",
+        "proportional",
         "native",
         "",
         25,
@@ -95,12 +83,8 @@ fn test_registry_from_config_proportional_pool() {
 fn test_registry_from_config_pplns_pool() {
     // Test that pplns pool_strategy creates PPLNSPool (even if stubbed)
     let registry = ExtensionRegistry::from_config(
-        "https://api.devnet.solana.com",
-        "11111111111111111111111111111111",
-        "/path/to/keypair.json",
-        false,
-        "local_only", // peer_network_mode
-        "pplns",      // pool_strategy
+        "local_only",
+        "pplns",
         "native",
         "",
         25,
@@ -121,12 +105,8 @@ fn test_registry_from_config_pplns_pool() {
 fn test_registry_from_config_unknown_network_defaults_to_local_only() {
     // Test graceful fallback: unknown network mode → local_only
     let registry = ExtensionRegistry::from_config(
-        "https://api.devnet.solana.com",
-        "11111111111111111111111111111111",
-        "/path/to/keypair.json",
-        false,
-        "unknown_network", // peer_network_mode (invalid)
-        "solo",            // pool_strategy
+        "unknown_network",
+        "solo",
         "native",
         "",
         25,
@@ -147,12 +127,8 @@ fn test_registry_from_config_unknown_network_defaults_to_local_only() {
 fn test_registry_from_config_unknown_pool_defaults_to_solo() {
     // Test graceful fallback: unknown pool strategy → solo
     let registry = ExtensionRegistry::from_config(
-        "https://api.devnet.solana.com",
-        "11111111111111111111111111111111",
-        "/path/to/keypair.json",
-        false,
-        "local_only",       // peer_network_mode
-        "unknown_strategy", // pool_strategy (invalid)
+        "local_only",
+        "unknown_strategy",
         "native",
         "",
         25,

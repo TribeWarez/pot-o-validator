@@ -1,5 +1,3 @@
-//! HTTP API routes for the PoT-O validator: health, status, challenge, submit, devices, staking, swap, vault.
-
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -15,7 +13,7 @@ use axum::{
 };
 use pot_o_core::TokenType;
 use pot_o_extensions::marketplace::{parse_market_asset, OrderSide};
-use pot_o_extensions::{calculate_mining_reward, DefiClient, ProofRecord};
+use pot_o_extensions::{calculate_mining_reward, ProofRecord};
 use pot_o_mining::{PotOProof, ProofPayload};
 use serde::Deserialize;
 
@@ -25,7 +23,20 @@ use crate::device_registry::{
     RegisteredDevice, DEVICE_TYPE_KEYS,
 };
 
-/// Builds the Axum router with all validator routes (health, status, challenge, submit, devices, DeFi).
+async fn auth_middleware(
+    state: &Arc<AppState>,
+    bearer: Option<&str>,
+) -> Result<String, StatusCode> {
+    let token = bearer
+        .and_then(|b| b.strip_prefix("Bearer "))
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+    state
+        .auth
+        .validate_token(token)
+        .await
+        .ok_or(StatusCode::UNAUTHORIZED)
+}
+
 pub fn build_router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/", get(|| async { Redirect::permanent("/status") }))
@@ -39,20 +50,16 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/devices/progress", post(device_progress))
         .route("/devices", get(get_devices))
         .route("/network/peers", get(get_peers))
-        // Token ledger
         .route(
             "/token/balance/:address/:token_type",
             get(get_token_balance),
         )
         .route("/token/transfer", post(post_token_transfer))
         .route("/token/tx/:address", get(get_token_tx_history))
-        .route("/token/tribe/address", get(get_tribe_mint_address))
         .route("/token/tribe/supply", get(get_tribe_supply))
-        // Tribechain public API
         .route("/api/tx", post(post_tribechain_tx))
         .route("/api/nonce/:address", get(get_tribechain_nonce))
         .route("/api/blocks", get(get_tribechain_blocks))
-        // Marketplace (v0.5.1+)
         .route("/marketplace/order", post(post_marketplace_order))
         .route("/marketplace/order/{id}", delete(delete_marketplace_order))
         .route("/marketplace/order/{id}", get(get_marketplace_order))
@@ -62,24 +69,9 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         )
         .route("/marketplace/orders/{maker}", get(get_marketplace_orders))
         .route("/marketplace/trades", get(get_marketplace_trades))
-        // Messaging protocol (WebSocket)
         .route("/ws", get(ws_handler))
-        // Staking (tribewarez-staking)
-        .route("/staking/pool/:token_mint", get(get_staking_pool))
-        .route(
-            "/staking/stake/:pool_pubkey/:user_pubkey",
-            get(get_stake_account),
-        )
-        // Swap (tribewarez-swap)
-        .route("/swap/pool/:token_a/:token_b", get(get_swap_pool))
-        .route("/swap/quote", get(get_swap_quote))
-        // Vault (tribewarez-vault)
-        .route("/vault/treasury/:token_mint", get(get_vault_treasury))
-        .route(
-            "/vault/vault/:treasury_pubkey/:user_pubkey",
-            get(get_user_vault),
-        )
-        .route("/vault/escrow/:depositor/:beneficiary", get(get_escrow))
+        .route("/auth/challenge", post(post_auth_challenge))
+        .route("/auth/verify", post(post_auth_verify))
         .with_state(state)
 }
 
@@ -128,7 +120,6 @@ async fn status(State(state): State<Arc<AppState>>) -> impl IntoResponse {
         "max_tensor_dim": state.config.max_tensor_dim,
         "peer_network_mode": state.config.peer_network_mode,
         "pool_strategy": state.config.pool_strategy,
-        "tribe_mint_address": state.tribe_mint_address,
         "stats": stats,
         "engine": {
             "tasks_processed": engine_stats.total_tasks_processed,
@@ -186,7 +177,6 @@ async fn get_challenge(
                 "POST /challenge issued"
             );
 
-            // Broadcast challenge to peers (non-blocking)
             let challenge_clone = challenge.clone();
             let state_clone = state.clone();
             tokio::spawn(async move {
@@ -197,22 +187,14 @@ async fn get_challenge(
                     .await
                 {
                     Ok(()) => {
-                        tracing::debug!(
-                            challenge_id = %challenge_clone.id,
-                            "Challenge broadcast to peers completed"
-                        );
+                        tracing::debug!(challenge_id = %challenge_clone.id, "Challenge broadcast to peers completed");
                     }
                     Err(e) => {
-                        tracing::warn!(
-                            challenge_id = %challenge_clone.id,
-                            error = %e,
-                            "Challenge broadcast to peers failed (non-fatal)"
-                        );
+                        tracing::warn!(challenge_id = %challenge_clone.id, error = %e, "Challenge broadcast to peers failed (non-fatal)");
                     }
                 }
             });
 
-            // Push challenge to connected WebSocket miners
             let state_clone = state.clone();
             let challenge_json = serde_json::to_string(&challenge).unwrap_or_default();
             tokio::spawn(async move {
@@ -242,16 +224,27 @@ async fn get_challenge(
 struct SubmitRequest {
     proof: PotOProof,
     signature: Option<Vec<u8>>,
-    /// Optional device_id (e.g. MAC) for real-time ESP mapping; updates registry on success.
     device_id: Option<String>,
-    /// Optional device_type (cpu, native, gpu, esp32, esp8266, wasm). If set, registry is upserted so CPU/native/GPU stats update live even without prior /devices/register.
     device_type: Option<String>,
 }
 
 async fn submit_proof(
     State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
     Json(body): Json<SubmitRequest>,
 ) -> impl IntoResponse {
+    if let Err(status) = auth_middleware(
+        &state,
+        headers.get("authorization").and_then(|v| v.to_str().ok()),
+    )
+    .await
+    {
+        return (
+            status,
+            Json(serde_json::json!({ "accepted": false, "error": "unauthorized" })),
+        );
+    }
+
     tracing::debug!(
         challenge_id = %body.proof.challenge_id,
         miner = %body.proof.miner_pubkey,
@@ -315,7 +308,6 @@ async fn submit_proof(
                     spawn_persist_registry(reg, state.registry_path.clone());
                 }
 
-                // TRIBE mining reward calculation and distribution
                 let path_distance = body.proof.path_distance;
                 let reward_amount = calculate_mining_reward(chal.difficulty, path_distance);
                 let proof_record = ProofRecord {
@@ -362,7 +354,7 @@ async fn submit_proof(
                             challenge_id = %body.proof.challenge_id,
                             tx_signature = %tx.0,
                             device_id = ?body.device_id,
-                            "POST /submit accepted (on-chain)"
+                            "POST /submit accepted"
                         );
                         (
                             StatusCode::OK,
@@ -412,26 +404,22 @@ async fn get_miner(
     Path(pubkey): Path<String>,
 ) -> impl IntoResponse {
     tracing::debug!(pubkey = %pubkey, "GET /miners/:pubkey");
-    match state.extensions.chain.query_miner(&pubkey).await {
-        Ok(Some(acct)) => {
-            tracing::debug!(pubkey = %pubkey, "GET /miners/:pubkey found");
-            (StatusCode::OK, Json(serde_json::to_value(&acct).unwrap()))
-        }
-        Ok(None) => {
-            tracing::debug!(pubkey = %pubkey, "GET /miners/:pubkey not found");
-            (
-                StatusCode::NOT_FOUND,
-                Json(serde_json::json!({ "error": "Miner not found" })),
-            )
-        }
-        Err(e) => {
-            tracing::warn!(pubkey = %pubkey, error = %e, "GET /miners/:pubkey error");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({ "error": e.to_string() })),
-            )
-        }
-    }
+    let balance = state
+        .extensions
+        .ledger
+        .read()
+        .await
+        .balance_of(&pubkey, &TokenType::TribeChain);
+    let nonce = state.extensions.ledger.read().await.current_nonce(&pubkey);
+    tracing::debug!(pubkey = %pubkey, balance, "GET /miners/:pubkey");
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "pubkey": pubkey,
+            "balance": balance,
+            "nonce": nonce,
+        })),
+    )
 }
 
 async fn pool_info(State(state): State<Arc<AppState>>) -> impl IntoResponse {
@@ -444,20 +432,31 @@ async fn pool_info(State(state): State<Arc<AppState>>) -> impl IntoResponse {
 struct DeviceRegisterRequest {
     device_type: String,
     device_id: Option<String>,
-    /// If provided and miner not yet on-chain, validator will auto-register the miner (relayer signs).
     miner_pubkey: Option<String>,
 }
 
 async fn register_device(
     State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
     Json(body): Json<DeviceRegisterRequest>,
 ) -> impl IntoResponse {
+    if let Err(status) = auth_middleware(
+        &state,
+        headers.get("authorization").and_then(|v| v.to_str().ok()),
+    )
+    .await
+    {
+        return (
+            status,
+            Json(serde_json::json!({ "registered": false, "error": "unauthorized" })),
+        );
+    }
+
     let device_id = body
         .device_id
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     let device_type_normalized = normalize_device_type(&body.device_type);
 
-    // Validate device type against our protocol implementation
     let our_type = state.extensions.device.device_type();
     let our_type_str = format!("{:?}", our_type).to_lowercase();
     if device_type_normalized != our_type_str && body.device_type != "any" {
@@ -493,33 +492,21 @@ async fn register_device(
     };
 
     let miner_registered = if let Some(ref miner_pubkey) = body.miner_pubkey {
-        match state.extensions.chain.query_miner(miner_pubkey).await {
-            Ok(None) => match state.extensions.chain.register_miner(miner_pubkey).await {
-                Ok(_) => {
-                    tracing::info!(
-                        device_id = %device_id,
-                        miner_pubkey = %miner_pubkey,
-                        "Auto-registered miner on-chain at device registration"
-                    );
-                    true
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        device_id = %device_id,
-                        miner_pubkey = %miner_pubkey,
-                        error = %e,
-                        "Auto-register miner at registration failed"
-                    );
-                    false
-                }
-            },
-            Ok(Some(_)) => true, // already on-chain, can mine
+        match state.extensions.chain.register_miner(miner_pubkey).await {
+            Ok(_) => {
+                tracing::info!(
+                    device_id = %device_id,
+                    miner_pubkey = %miner_pubkey,
+                    "Registered miner at device registration"
+                );
+                true
+            }
             Err(e) => {
                 tracing::warn!(
                     device_id = %device_id,
                     miner_pubkey = %miner_pubkey,
                     error = %e,
-                    "Query miner failed at device registration"
+                    "Register miner at registration failed"
                 );
                 false
             }
@@ -537,32 +524,43 @@ async fn register_device(
     );
     let reg = state.device_registry.read().await.clone();
     spawn_persist_registry(reg, state.registry_path.clone());
-    Json(serde_json::json!({
-        "registered": true,
-        "device_type": body.device_type,
-        "device_id": device_id,
-        "miner_registered": miner_registered,
-    }))
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "registered": true,
+            "device_type": body.device_type,
+            "device_id": device_id,
+            "miner_registered": miner_registered,
+        })),
+    )
 }
 
 #[derive(Deserialize)]
 struct DeviceProgressRequest {
-    /// Optional device_id (e.g. MAC or UUID). If set, this device entry is updated.
     device_id: Option<String>,
-    /// Optional miner_pubkey; used with device_type when device_id is not set to form registry key.
     miner_pubkey: Option<String>,
-    /// Optional device_type (default "native"). Used with miner_pubkey when device_id is not set.
     device_type: Option<String>,
-    /// Current challenge id the device/thread is working on.
     challenge_id: String,
-    /// Hash of the current running calculation (e.g. state or work-in-progress).
     hash: String,
 }
 
 async fn device_progress(
     State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
     Json(body): Json<DeviceProgressRequest>,
 ) -> impl IntoResponse {
+    if let Err(status) = auth_middleware(
+        &state,
+        headers.get("authorization").and_then(|v| v.to_str().ok()),
+    )
+    .await
+    {
+        return (
+            status,
+            Json(serde_json::json!({ "ok": false, "error": "unauthorized" })),
+        );
+    }
+
     let device_type_normalized = body
         .device_type
         .as_deref()
@@ -669,7 +667,6 @@ async fn get_devices(State(state): State<Arc<AppState>>) -> impl IntoResponse {
             }),
         );
     }
-    // Per-device detail for analytics (includes miner_pubkeys and current_calculation when keyed by device_id).
     let devices_detail: serde_json::Map<String, serde_json::Value> = reg
         .iter()
         .map(|(id, d)| {
@@ -717,238 +714,6 @@ async fn get_peers(State(state): State<Arc<AppState>>) -> impl IntoResponse {
                 "error": e.to_string(),
             }))
         }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Staking / Swap / Vault (DeFi) handlers — run RPC in spawn_blocking
-// ---------------------------------------------------------------------------
-
-async fn get_staking_pool(
-    State(state): State<Arc<AppState>>,
-    Path(token_mint): Path<String>,
-) -> impl IntoResponse {
-    let rpc_url = state.config.solana_rpc_url.clone();
-    match tokio::task::spawn_blocking(move || {
-        let client = DefiClient::new(rpc_url);
-        client.get_staking_pool(&token_mint)
-    })
-    .await
-    {
-        Ok(Ok(Some(pool))) => (StatusCode::OK, Json(serde_json::to_value(&pool).unwrap())),
-        Ok(Ok(None)) => (
-            StatusCode::NOT_FOUND,
-            Json(serde_json::json!({ "error": "Staking pool not found" })),
-        ),
-        Ok(Err(e)) => {
-            tracing::warn!(error = %e, "GET /staking/pool failed");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({ "error": e.to_string() })),
-            )
-        }
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": e.to_string() })),
-        ),
-    }
-}
-
-async fn get_stake_account(
-    State(state): State<Arc<AppState>>,
-    Path((pool_pubkey, user_pubkey)): Path<(String, String)>,
-) -> impl IntoResponse {
-    let rpc_url = state.config.solana_rpc_url.clone();
-    match tokio::task::spawn_blocking(move || {
-        let client = DefiClient::new(rpc_url);
-        client.get_stake_account(&pool_pubkey, &user_pubkey)
-    })
-    .await
-    {
-        Ok(Ok(Some(account))) => (
-            StatusCode::OK,
-            Json(serde_json::to_value(&account).unwrap()),
-        ),
-        Ok(Ok(None)) => (
-            StatusCode::NOT_FOUND,
-            Json(serde_json::json!({ "error": "Stake account not found" })),
-        ),
-        Ok(Err(e)) => {
-            tracing::warn!(error = %e, "GET /staking/stake failed");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({ "error": e.to_string() })),
-            )
-        }
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": e.to_string() })),
-        ),
-    }
-}
-
-async fn get_swap_pool(
-    State(state): State<Arc<AppState>>,
-    Path((token_a, token_b)): Path<(String, String)>,
-) -> impl IntoResponse {
-    let rpc_url = state.config.solana_rpc_url.clone();
-    match tokio::task::spawn_blocking(move || {
-        let client = DefiClient::new(rpc_url);
-        client.get_swap_pool(&token_a, &token_b)
-    })
-    .await
-    {
-        Ok(Ok(Some(pool))) => (StatusCode::OK, Json(serde_json::to_value(&pool).unwrap())),
-        Ok(Ok(None)) => (
-            StatusCode::NOT_FOUND,
-            Json(serde_json::json!({ "error": "Liquidity pool not found" })),
-        ),
-        Ok(Err(e)) => {
-            tracing::warn!(error = %e, "GET /swap/pool failed");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({ "error": e.to_string() })),
-            )
-        }
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": e.to_string() })),
-        ),
-    }
-}
-
-#[derive(Debug, Deserialize)]
-struct SwapQuoteQuery {
-    token_a: String,
-    token_b: String,
-    amount_in: u64,
-    is_a_to_b: Option<bool>,
-}
-
-async fn get_swap_quote(
-    State(state): State<Arc<AppState>>,
-    Query(q): Query<SwapQuoteQuery>,
-) -> impl IntoResponse {
-    let rpc_url = state.config.solana_rpc_url.clone();
-    let token_a = q.token_a.clone();
-    let token_b = q.token_b.clone();
-    let amount_in = q.amount_in;
-    let is_a_to_b = q.is_a_to_b.unwrap_or(true);
-    match tokio::task::spawn_blocking(move || {
-        let client = DefiClient::new(rpc_url);
-        client.get_swap_quote(&token_a, &token_b, amount_in, is_a_to_b)
-    })
-    .await
-    {
-        Ok(Ok(Some(quote))) => (StatusCode::OK, Json(serde_json::to_value(&quote).unwrap())),
-        Ok(Ok(None)) => (
-            StatusCode::NOT_FOUND,
-            Json(serde_json::json!({ "error": "Pool not found or no liquidity" })),
-        ),
-        Ok(Err(e)) => {
-            tracing::warn!(error = %e, "GET /swap/quote failed");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({ "error": e.to_string() })),
-            )
-        }
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": e.to_string() })),
-        ),
-    }
-}
-
-async fn get_vault_treasury(
-    State(state): State<Arc<AppState>>,
-    Path(token_mint): Path<String>,
-) -> impl IntoResponse {
-    let rpc_url = state.config.solana_rpc_url.clone();
-    match tokio::task::spawn_blocking(move || {
-        let client = DefiClient::new(rpc_url);
-        client.get_treasury(&token_mint)
-    })
-    .await
-    {
-        Ok(Ok(Some(treasury))) => (
-            StatusCode::OK,
-            Json(serde_json::to_value(&treasury).unwrap()),
-        ),
-        Ok(Ok(None)) => (
-            StatusCode::NOT_FOUND,
-            Json(serde_json::json!({ "error": "Treasury not found" })),
-        ),
-        Ok(Err(e)) => {
-            tracing::warn!(error = %e, "GET /vault/treasury failed");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({ "error": e.to_string() })),
-            )
-        }
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": e.to_string() })),
-        ),
-    }
-}
-
-async fn get_user_vault(
-    State(state): State<Arc<AppState>>,
-    Path((treasury_pubkey, user_pubkey)): Path<(String, String)>,
-) -> impl IntoResponse {
-    let rpc_url = state.config.solana_rpc_url.clone();
-    match tokio::task::spawn_blocking(move || {
-        let client = DefiClient::new(rpc_url);
-        client.get_user_vault(&treasury_pubkey, &user_pubkey)
-    })
-    .await
-    {
-        Ok(Ok(Some(vault))) => (StatusCode::OK, Json(serde_json::to_value(&vault).unwrap())),
-        Ok(Ok(None)) => (
-            StatusCode::NOT_FOUND,
-            Json(serde_json::json!({ "error": "User vault not found" })),
-        ),
-        Ok(Err(e)) => {
-            tracing::warn!(error = %e, "GET /vault/vault failed");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({ "error": e.to_string() })),
-            )
-        }
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": e.to_string() })),
-        ),
-    }
-}
-
-async fn get_escrow(
-    State(state): State<Arc<AppState>>,
-    Path((depositor, beneficiary)): Path<(String, String)>,
-) -> impl IntoResponse {
-    let rpc_url = state.config.solana_rpc_url.clone();
-    match tokio::task::spawn_blocking(move || {
-        let client = DefiClient::new(rpc_url);
-        client.get_escrow(&depositor, &beneficiary)
-    })
-    .await
-    {
-        Ok(Ok(Some(escrow))) => (StatusCode::OK, Json(serde_json::to_value(&escrow).unwrap())),
-        Ok(Ok(None)) => (
-            StatusCode::NOT_FOUND,
-            Json(serde_json::json!({ "error": "Escrow not found" })),
-        ),
-        Ok(Err(e)) => {
-            tracing::warn!(error = %e, "GET /vault/escrow failed");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({ "error": e.to_string() })),
-            )
-        }
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": e.to_string() })),
-        ),
     }
 }
 
@@ -1001,8 +766,18 @@ struct TransferRequest {
 
 async fn post_token_transfer(
     State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
     Json(body): Json<TransferRequest>,
 ) -> impl IntoResponse {
+    if let Err(status) = auth_middleware(
+        &state,
+        headers.get("authorization").and_then(|v| v.to_str().ok()),
+    )
+    .await
+    {
+        return (status, Json(serde_json::json!({ "error": "unauthorized" })));
+    }
+
     tracing::debug!(
         from = %body.from, to = %body.to,
         token = %body.token_type, amount = body.amount, fee = body.fee,
@@ -1050,16 +825,6 @@ async fn get_token_tx_history(
     (
         StatusCode::OK,
         Json(serde_json::json!({ "address": address, "transactions": txs })),
-    )
-}
-
-async fn get_tribe_mint_address(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    tracing::debug!("GET /token/tribe/address");
-    (
-        StatusCode::OK,
-        Json(serde_json::json!({
-            "address": state.tribe_mint_address,
-        })),
     )
 }
 
@@ -1117,17 +882,7 @@ async fn post_tribechain_tx(
         );
     };
 
-    tracing::debug!(
-        sig_len = body.tx.signature.len(),
-        hash_len = body.tx.tx_hash.len(),
-        "tx fields"
-    );
-
     if body.tx.signature.len() != 64 {
-        tracing::warn!(
-            sig_len = body.tx.signature.len(),
-            "invalid signature length"
-        );
         return (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": "invalid signature length"})),
@@ -1135,14 +890,12 @@ async fn post_tribechain_tx(
     }
 
     if body.tx.tx_hash.len() != 32 {
-        tracing::warn!(hash_len = body.tx.tx_hash.len(), "invalid tx_hash length");
         return (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": "invalid tx_hash length"})),
         );
     }
 
-    tracing::info!("calling mempool.submit");
     match mempool
         .submit(body.tx.clone(), &state.extensions.ledger)
         .await
@@ -1154,7 +907,6 @@ async fn post_tribechain_tx(
                 .network
                 .broadcast_transaction(&tx_json)
                 .await;
-            tracing::debug!(tx_hash = %hex::encode(tx_hash), "POST /api/tx accepted");
             (
                 StatusCode::OK,
                 Json(serde_json::json!({
@@ -1163,13 +915,10 @@ async fn post_tribechain_tx(
                 })),
             )
         }
-        Err(e) => {
-            tracing::debug!(error = %e, "POST /api/tx rejected");
-            (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"error": e.to_string()})),
-            )
-        }
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": e.to_string()})),
+        ),
     }
 }
 
@@ -1255,14 +1004,17 @@ struct PlaceOrderRequest {
 
 async fn post_marketplace_order(
     State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
     Json(body): Json<PlaceOrderRequest>,
 ) -> impl IntoResponse {
-    tracing::debug!(
-        maker = %body.maker, side = %body.side,
-        sell = %body.sell_asset, buy = %body.buy_asset,
-        amount = body.amount, price = body.price,
-        "POST /marketplace/order"
-    );
+    if let Err(status) = auth_middleware(
+        &state,
+        headers.get("authorization").and_then(|v| v.to_str().ok()),
+    )
+    .await
+    {
+        return (status, Json(serde_json::json!({ "error": "unauthorized" })));
+    }
 
     let side = match body.side.to_lowercase().as_str() {
         "buy" => OrderSide::Buy,
@@ -1359,8 +1111,6 @@ async fn get_marketplace_orderbook(
     State(state): State<Arc<AppState>>,
     Path((sell_asset_str, buy_asset_str)): Path<(String, String)>,
 ) -> impl IntoResponse {
-    tracing::debug!(sell = %sell_asset_str, buy = %buy_asset_str, "GET /marketplace/orderbook");
-
     let sell_asset = match parse_market_asset(&sell_asset_str) {
         Ok(a) => a,
         Err(e) => {
@@ -1423,7 +1173,6 @@ async fn get_marketplace_trades(State(state): State<Arc<AppState>>) -> impl Into
     )
 }
 
-/// Parse a token type string (case-insensitive) into a `TokenType`.
 fn token_type_from_str(s: &str) -> Option<TokenType> {
     match s.to_lowercase().as_str() {
         "tribechain" | "native" => Some(TokenType::TribeChain),
@@ -1437,16 +1186,86 @@ fn token_type_from_str(s: &str) -> Option<TokenType> {
 }
 
 // ---------------------------------------------------------------------------
+// Auth handlers
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+struct AuthChallengeRequest {
+    pubkey: String,
+}
+
+async fn post_auth_challenge(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<AuthChallengeRequest>,
+) -> impl IntoResponse {
+    let nonce = state.auth.create_challenge(&body.pubkey).await;
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "pubkey": body.pubkey,
+            "nonce": hex::encode(nonce),
+        })),
+    )
+}
+
+#[derive(Deserialize)]
+struct AuthVerifyRequest {
+    pubkey: String,
+    signature: String,
+    message: String,
+}
+
+async fn post_auth_verify(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<AuthVerifyRequest>,
+) -> impl IntoResponse {
+    let signature = match hex::decode(&body.signature) {
+        Ok(s) => s,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": format!("Invalid signature hex: {}", e) })),
+            )
+        }
+    };
+    let message = match hex::decode(&body.message) {
+        Ok(m) => m,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": format!("Invalid message hex: {}", e) })),
+            )
+        }
+    };
+
+    match state
+        .auth
+        .verify_challenge(&body.pubkey, &signature, &message)
+        .await
+    {
+        Ok(token) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "token": token,
+                "pubkey": body.pubkey,
+            })),
+        ),
+        Err(e) => (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({ "error": e })),
+        ),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // WebSocket — Messaging Protocol
 // ---------------------------------------------------------------------------
 
-/// WebSocket upgrade handler for the miner messaging protocol.
 async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) -> impl IntoResponse {
     tracing::debug!("WS upgrade requested");
     ws.on_upgrade(move |socket| handle_ws_socket(socket, state))
 }
 
-/// Per-connection message loop. Reads JSON `MinerMessage` frames and dispatches.
 async fn handle_ws_socket(mut socket: WebSocket, state: Arc<AppState>) {
     let (msg_tx, mut msg_rx) = tokio::sync::mpsc::unbounded_channel();
 
@@ -1484,8 +1303,6 @@ async fn handle_ws_socket(mut socket: WebSocket, state: Arc<AppState>) {
     }
 }
 
-/// Process a single Text message from the WebSocket.
-/// Returns `Ok(())` to continue or `Err(())` to close the connection.
 async fn handle_ws_text(
     text: &str,
     state: &Arc<AppState>,
@@ -1555,30 +1372,24 @@ async fn handle_ws_text(
 mod tests {
     use super::*;
 
-    /// Helper to create a test ValidatorConfig
     fn create_test_config() -> crate::config::ValidatorConfig {
         crate::config::ValidatorConfig {
             node_id: "test-node".to_string(),
             listen_addr: "127.0.0.1".to_string(),
             port: 8900,
-            solana_rpc_url: "http://localhost:8899".to_string(),
-            pot_program_id: "PoToValidator1111111111111111111111111111111".to_string(),
+            pot_program_id: String::new(),
             difficulty: 2,
             max_tensor_dim: 4,
             max_mine_iterations: 1000,
             peer_network_mode: "local_only".to_string(),
             pool_strategy: "solo".to_string(),
-            chain_bridge: "solana".to_string(),
             device_protocol: "native".to_string(),
-            auto_register_miners: false,
-            relayer_keypair_path: "/tmp/relayer.json".to_string(),
             bootstrap_urls: vec![],
             enable_mdns: false,
             mdns_service_name: "pot-o-validator".to_string(),
             internal_api_port: 8901,
             peer_timeout_secs: 30,
             challenge_relay_enabled: true,
-            primary_validator_url: "http://localhost:8899".to_string(),
             maturity_depth: 10,
             symmetry_num: 1,
             symmetry_den: 1,
@@ -1586,7 +1397,6 @@ mod tests {
                 .to_string(),
             protocol_fee_address: String::new(),
             marketplace_fee_bps: 25,
-            tribe_mint_keypair_path: "/tmp/test_tribe_mint.json".to_string(),
             tribechain_enabled: false,
             tribechain_min_fee: 0,
             tribechain_max_pool_size: 10_000,
@@ -1597,7 +1407,6 @@ mod tests {
         }
     }
 
-    /// Helper to create a test HexConsensus
     fn create_test_hex_consensus() -> hexchain_p2p::hex_consensus::HexConsensus {
         use hexchain_p2p::types::{ConsensusParams, MmlParams};
         let base_target_bytes: [u8; 32] = [0xFFu8; 32];
@@ -1611,17 +1420,11 @@ mod tests {
         hexchain_p2p::hex_consensus::HexConsensus::new(params)
     }
 
-    /// Test that challenge generation succeeds with LocalOnlyNetwork (no broadcast)
     #[tokio::test]
     async fn test_challenge_generation_with_local_only_network() {
         let cfg = create_test_config();
         let consensus = pot_o_mining::PotOConsensus::new(cfg.difficulty, cfg.max_tensor_dim);
-        let extensions = pot_o_extensions::ExtensionRegistry::local_defaults(
-            &cfg.solana_rpc_url,
-            &cfg.pot_program_id,
-            &cfg.relayer_keypair_path,
-            false,
-        );
+        let extensions = pot_o_extensions::ExtensionRegistry::local_defaults("", 25);
 
         let state = crate::consensus::create_app_state(
             cfg,
@@ -1630,10 +1433,8 @@ mod tests {
             "/tmp/registry.json".to_string(),
             std::collections::HashMap::new(),
             create_test_hex_consensus(),
-            "test-tribe-mint".to_string(),
         );
 
-        // Generate a challenge
         let req = ChallengeRequest {
             slot: Some(100),
             slot_hash: Some("0".repeat(64)),
@@ -1643,27 +1444,18 @@ mod tests {
         let body = Json(req);
         let response = get_challenge(State(state.clone()), body).await;
 
-        // Verify we got a successful response
         let (status, _) = response.into_response().into_parts();
         assert_eq!(status.status.as_u16(), 200);
 
-        // Verify challenge was stored
         let current = state.current_challenge.read().await;
         assert!(current.is_some());
     }
 
-    /// Test that challenge generation succeeds and broadcasts
     #[tokio::test]
     async fn test_challenge_generation_broadcasts() {
         let cfg = create_test_config();
         let consensus = pot_o_mining::PotOConsensus::new(cfg.difficulty, cfg.max_tensor_dim);
-
-        let extensions = pot_o_extensions::ExtensionRegistry::local_defaults(
-            &cfg.solana_rpc_url,
-            &cfg.pot_program_id,
-            &cfg.relayer_keypair_path,
-            false,
-        );
+        let extensions = pot_o_extensions::ExtensionRegistry::local_defaults("", 25);
 
         let state = crate::consensus::create_app_state(
             cfg,
@@ -1672,10 +1464,8 @@ mod tests {
             "/tmp/registry.json".to_string(),
             std::collections::HashMap::new(),
             create_test_hex_consensus(),
-            "test-tribe-mint".to_string(),
         );
 
-        // Generate a challenge
         let req = ChallengeRequest {
             slot: Some(100),
             slot_hash: Some("0".repeat(64)),
@@ -1685,22 +1475,15 @@ mod tests {
         let body = Json(req);
         let response = get_challenge(State(state), body).await;
 
-        // Verify successful response
         let (status, _) = response.into_response().into_parts();
         assert_eq!(status.status.as_u16(), 200);
     }
 
-    /// Test that challenge request with default slot generates valid challenge
     #[tokio::test]
     async fn test_challenge_generation_with_defaults() {
         let cfg = create_test_config();
         let consensus = pot_o_mining::PotOConsensus::new(cfg.difficulty, cfg.max_tensor_dim);
-        let extensions = pot_o_extensions::ExtensionRegistry::local_defaults(
-            &cfg.solana_rpc_url,
-            &cfg.pot_program_id,
-            &cfg.relayer_keypair_path,
-            false,
-        );
+        let extensions = pot_o_extensions::ExtensionRegistry::local_defaults("", 25);
 
         let state = crate::consensus::create_app_state(
             cfg,
@@ -1709,10 +1492,8 @@ mod tests {
             "/tmp/registry.json".to_string(),
             std::collections::HashMap::new(),
             create_test_hex_consensus(),
-            "test-tribe-mint".to_string(),
         );
 
-        // Request with minimal/empty body (should use defaults)
         let req = ChallengeRequest {
             slot: None,
             slot_hash: None,
@@ -1725,22 +1506,15 @@ mod tests {
         let (status, _) = response.into_response().into_parts();
         assert_eq!(status.status.as_u16(), 200);
 
-        // Verify challenge was stored
         let current = state.current_challenge.read().await;
         assert!(current.is_some());
     }
 
-    /// Test stats are updated when challenge is generated
     #[tokio::test]
     async fn test_challenge_updates_stats() {
         let cfg = create_test_config();
         let consensus = pot_o_mining::PotOConsensus::new(cfg.difficulty, cfg.max_tensor_dim);
-        let extensions = pot_o_extensions::ExtensionRegistry::local_defaults(
-            &cfg.solana_rpc_url,
-            &cfg.pot_program_id,
-            &cfg.relayer_keypair_path,
-            false,
-        );
+        let extensions = pot_o_extensions::ExtensionRegistry::local_defaults("", 25);
 
         let state = crate::consensus::create_app_state(
             cfg,
@@ -1749,10 +1523,8 @@ mod tests {
             "/tmp/registry.json".to_string(),
             std::collections::HashMap::new(),
             create_test_hex_consensus(),
-            "test-tribe-mint".to_string(),
         );
 
-        // Verify initial stats
         {
             let stats = state.stats.read().await;
             assert_eq!(stats.total_challenges_issued, 0);
@@ -1760,7 +1532,6 @@ mod tests {
             assert_eq!(stats.calcs_in_block, 0);
         }
 
-        // Generate challenge
         let req = ChallengeRequest {
             slot: Some(100),
             slot_hash: Some("0".repeat(64)),
@@ -1773,7 +1544,6 @@ mod tests {
         let (status, _) = response.into_response().into_parts();
         assert_eq!(status.status.as_u16(), 200);
 
-        // Verify stats were updated
         {
             let stats = state.stats.read().await;
             assert_eq!(stats.total_challenges_issued, 1);
@@ -1782,17 +1552,11 @@ mod tests {
         }
     }
 
-    /// Test that multiple challenges can be generated
     #[tokio::test]
     async fn test_multiple_challenges() {
         let cfg = create_test_config();
         let consensus = pot_o_mining::PotOConsensus::new(cfg.difficulty, cfg.max_tensor_dim);
-        let extensions = pot_o_extensions::ExtensionRegistry::local_defaults(
-            &cfg.solana_rpc_url,
-            &cfg.pot_program_id,
-            &cfg.relayer_keypair_path,
-            false,
-        );
+        let extensions = pot_o_extensions::ExtensionRegistry::local_defaults("", 25);
 
         let state = crate::consensus::create_app_state(
             cfg,
@@ -1801,10 +1565,8 @@ mod tests {
             "/tmp/registry.json".to_string(),
             std::collections::HashMap::new(),
             create_test_hex_consensus(),
-            "test-tribe-mint".to_string(),
         );
 
-        // Generate multiple challenges
         for i in 0..3 {
             let req = ChallengeRequest {
                 slot: Some(100 + i),
@@ -1819,24 +1581,17 @@ mod tests {
             assert_eq!(status.status.as_u16(), 200);
         }
 
-        // Verify stats
         {
             let stats = state.stats.read().await;
             assert_eq!(stats.total_challenges_issued, 3);
         }
     }
 
-    /// Test that challenge generation succeeds even if network is not LocalOnly
     #[tokio::test]
     async fn test_challenge_generated_with_async_broadcast() {
         let cfg = create_test_config();
         let consensus = pot_o_mining::PotOConsensus::new(cfg.difficulty, cfg.max_tensor_dim);
-        let extensions = pot_o_extensions::ExtensionRegistry::local_defaults(
-            &cfg.solana_rpc_url,
-            &cfg.pot_program_id,
-            &cfg.relayer_keypair_path,
-            false,
-        );
+        let extensions = pot_o_extensions::ExtensionRegistry::local_defaults("", 25);
 
         let state = crate::consensus::create_app_state(
             cfg,
@@ -1845,10 +1600,8 @@ mod tests {
             "/tmp/registry.json".to_string(),
             std::collections::HashMap::new(),
             create_test_hex_consensus(),
-            "test-tribe-mint".to_string(),
         );
 
-        // Generate a challenge
         let req = ChallengeRequest {
             slot: Some(100),
             slot_hash: Some("0".repeat(64)),
@@ -1858,11 +1611,9 @@ mod tests {
         let body = Json(req);
         let response = get_challenge(State(state), body).await;
 
-        // Verify response is successful (broadcast happens async, non-blocking)
         let (status, _) = response.into_response().into_parts();
         assert_eq!(status.status.as_u16(), 200);
 
-        // Give async broadcast task time to complete
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     }
 }

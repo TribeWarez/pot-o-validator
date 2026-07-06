@@ -1,6 +1,6 @@
 [package]
 name = "pot-o-validator"
-version = "0.9.0"
+version = "0.9.1"
 edition = "2021"
 authors = ["TribeWarez"]
 description = "PoT-O (Proof of Tensor Optimizations) Validator Service"
@@ -39,6 +39,7 @@ hexchain-p2p = { path = "hexchain-p2p", version = "0.9" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.10"
+ed25519-dalek = "1.0"
 rand = "0.8"
 tokio = { version = "1.0", features = ["full"] }
 axum = { version = "0.7", features = ["ws"] }
@@ -51,8 +52,6 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 anyhow = "1.0"
 thiserror = "1.0"
-solana-client = "1.18"
-solana-sdk = "1.18"
 reqwest = { version = "0.11", features = ["json"] }
 
 [dev-dependencies]

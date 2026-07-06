@@ -1,8 +1,4 @@
-//! PoT-O extensions: chain bridge, DeFi client, device protocol, peer network, pool strategy,
-//! proof authority, and token ledger.
-
 pub mod chain_bridge;
-pub mod defi;
 pub mod device_protocol;
 pub mod genesis;
 pub mod gossip_client;
@@ -17,11 +13,7 @@ pub mod rewards;
 pub mod security;
 pub mod tx;
 
-pub use chain_bridge::{ChainBridge, SolanaBridge};
-pub use defi::{
-    DefiClient, EscrowInfo, LiquidityPoolInfo, StakeAccountInfo, StakingPoolInfo, SwapQuoteInfo,
-    TreasuryInfo, UserVaultInfo,
-};
+pub use chain_bridge::{ChainBridge, TribechainBridge};
 pub use device_protocol::{
     DeviceProtocol, DeviceStatus, DeviceType, ESP32SDevice, ESP8266Device, NativeDevice, WasmDevice,
 };
@@ -39,7 +31,7 @@ pub use peer_network::{LocalOnlyNetwork, PeerNetwork, VpnMeshConfig, VpnMeshNetw
 pub use pool_strategy::{
     MinerShare, PPLNSPool, PoolStrategy, PoolType, ProofRecord, ProportionalPool, SoloStrategy,
 };
-pub use rewards::{calculate_mining_reward, load_or_create_tribe_mint, BASE_REWARD};
+pub use rewards::calculate_mining_reward;
 pub use security::{Ed25519Authority, ProofAuthority};
 
 pub use crate::genesis::Genesis;
@@ -47,8 +39,6 @@ use hexchain_p2p::block_store::BlockStore;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-/// Central registry that holds the active extension implementations.
-/// Constructed once at startup from config/env, then passed by reference.
 pub struct ExtensionRegistry {
     pub device: Box<dyn DeviceProtocol>,
     pub network: Arc<dyn PeerNetwork>,
@@ -65,26 +55,18 @@ pub struct ExtensionRegistry {
 }
 
 impl ExtensionRegistry {
-    /// Build the default registry for single-node local operation.
-    pub fn local_defaults(
-        solana_rpc_url: &str,
-        program_id: &str,
-        relayer_keypair_path: &str,
-        auto_register_miners: bool,
-    ) -> Self {
+    pub fn local_defaults(protocol_fee_address: &str, marketplace_fee_bps: u64) -> Self {
         Self {
             device: Box::new(NativeDevice::new()),
             network: Arc::new(LocalOnlyNetwork::new()),
             pool: Box::new(SoloStrategy),
-            chain: Box::new(SolanaBridge::new(
-                solana_rpc_url.to_string(),
-                program_id.to_string(),
-                relayer_keypair_path.to_string(),
-                auto_register_miners,
-            )),
-            auth: Box::new(Ed25519Authority::new(relayer_keypair_path)),
-            ledger: Arc::new(RwLock::new(Ledger::new(String::new()))),
-            marketplace: Arc::new(RwLock::new(Marketplace::new(25, String::new()))),
+            chain: Box::new(TribechainBridge::new()),
+            auth: Box::new(Ed25519Authority::new("")),
+            ledger: Arc::new(RwLock::new(Ledger::new(protocol_fee_address.to_string()))),
+            marketplace: Arc::new(RwLock::new(Marketplace::new(
+                marketplace_fee_bps,
+                protocol_fee_address.to_string(),
+            ))),
             messaging: Messaging::new(),
             mempool: None,
             block_store: None,
@@ -93,27 +75,8 @@ impl ExtensionRegistry {
         }
     }
 
-    /// Build the registry from config strings specifying peer network mode and pool strategy.
-    ///
-    /// # Arguments
-    /// * `solana_rpc_url` - Solana RPC endpoint URL
-    /// * `program_id` - PoT-O program ID
-    /// * `relayer_keypair_path` - Path to relayer keypair
-    /// * `auto_register_miners` - Whether to auto-register miners
-    /// * `peer_network_mode` - Network mode: "local_only" or "vpn_mesh" (defaults to "local_only" if unknown)
-    /// * `pool_strategy` - Pool strategy: "solo", "proportional", or "pplns" (defaults to "solo" if unknown)
-    /// * `device_protocol` - Device protocol: "native", "esp32s", "esp8266", or "wasm" (defaults to "native" if unknown)
-    /// * `bootstrap_urls` - URLs for P2P bootstrap discovery (defaults to empty)
-    /// * `enable_mdns` - Enable mDNS peer discovery (defaults to false)
-    /// * `mdns_service_name` - Service name for mDNS registration
-    /// * `peer_timeout_secs` - Timeout for peer communication in seconds
-    /// * `challenge_relay_enabled` - Enable push/pull challenge gossip
     #[allow(clippy::too_many_arguments)]
     pub fn from_config(
-        solana_rpc_url: &str,
-        program_id: &str,
-        relayer_keypair_path: &str,
-        auto_register_miners: bool,
         peer_network_mode: &str,
         pool_strategy: &str,
         device_protocol: &str,
@@ -126,7 +89,6 @@ impl ExtensionRegistry {
         peer_timeout_secs: u64,
         _challenge_relay_enabled: bool,
     ) -> Self {
-        // Parse network mode
         let network: Arc<dyn PeerNetwork> = match peer_network_mode {
             "vpn_mesh" => {
                 let config = peer_network::VpnMeshConfig {
@@ -144,28 +106,26 @@ impl ExtensionRegistry {
                     peer_timeout_secs,
                 ) {
                     Ok(network) => Arc::new(network),
-                    Err(_) => Arc::new(LocalOnlyNetwork::new()), // Fallback on error
+                    Err(_) => Arc::new(LocalOnlyNetwork::new()),
                 }
             }
-            _ => Arc::new(LocalOnlyNetwork::new()), // Default: local_only
+            _ => Arc::new(LocalOnlyNetwork::new()),
         };
 
-        // Parse pool strategy
         let pool: Box<dyn PoolStrategy> = match pool_strategy {
             "proportional" => Box::new(ProportionalPool { min_stake: 1000 }),
             "pplns" => Box::new(PPLNSPool {
                 window_size: 100,
                 min_stake: 1000,
             }),
-            _ => Box::new(SoloStrategy), // Default: solo
+            _ => Box::new(SoloStrategy),
         };
 
-        // Parse device protocol
         let device: Box<dyn DeviceProtocol> = match device_protocol {
             "esp32s" => Box::new(ESP32SDevice::new(uuid::Uuid::new_v4().to_string())),
             "esp8266" => Box::new(ESP8266Device::new(uuid::Uuid::new_v4().to_string())),
             "wasm" => Box::new(WasmDevice),
-            _ => Box::new(NativeDevice::new()), // Default: native
+            _ => Box::new(NativeDevice::new()),
         };
 
         let ledger = ledger.unwrap_or_else(|| Ledger::new(protocol_fee_address.to_string()));
@@ -174,13 +134,8 @@ impl ExtensionRegistry {
             device,
             network,
             pool,
-            chain: Box::new(SolanaBridge::new(
-                solana_rpc_url.to_string(),
-                program_id.to_string(),
-                relayer_keypair_path.to_string(),
-                auto_register_miners,
-            )),
-            auth: Box::new(Ed25519Authority::new(relayer_keypair_path)),
+            chain: Box::new(TribechainBridge::new()),
+            auth: Box::new(Ed25519Authority::new("")),
             ledger: Arc::new(RwLock::new(ledger)),
             marketplace: Arc::new(RwLock::new(Marketplace::new(
                 marketplace_fee_bps,

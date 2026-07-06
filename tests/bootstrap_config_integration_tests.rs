@@ -10,10 +10,6 @@ fn test_build_registry_from_config_respects_network_mode() {
     let pool_strategy = "solo";
 
     let registry = ExtensionRegistry::from_config(
-        "https://api.devnet.solana.com",
-        "11111111111111111111111111111111",
-        "/path/to/keypair.json",
-        false,
         network_mode,
         pool_strategy,
         "native",
@@ -39,10 +35,6 @@ fn test_build_registry_from_config_respects_pool_strategy() {
     let pool_strategy = "proportional";
 
     let registry = ExtensionRegistry::from_config(
-        "https://api.devnet.solana.com",
-        "11111111111111111111111111111111",
-        "/path/to/keypair.json",
-        false,
         network_mode,
         pool_strategy,
         "native",
@@ -67,12 +59,8 @@ fn test_build_registry_from_config_respects_pool_strategy() {
 fn test_config_defaults_preserve_backward_compatibility() {
     // Verify that default config values (local_only + solo) are still supported
     let registry = ExtensionRegistry::from_config(
-        "https://api.devnet.solana.com",
-        "11111111111111111111111111111111",
-        "/path/to/keypair.json",
-        false,
-        "local_only", // Default from config.rs
-        "solo",       // Default from config.rs
+        "local_only",
+        "solo",
         "native",
         "",
         25,

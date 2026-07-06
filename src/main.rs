@@ -1,8 +1,4 @@
-//! PoT-O Validator binary: HTTP API server for challenge issuance, proof submission, and status.
-//!
-//! Loads config, builds consensus and extension registry, binds to the configured address/port,
-//! and serves the routes defined in `http_api`.
-
+pub(crate) mod auth;
 mod config;
 mod consensus;
 mod device_registry;
@@ -20,18 +16,15 @@ use hexchain_p2p::hex_consensus::HexConsensus;
 use hexchain_p2p::types::{ConsensusParams, MmlParams};
 use http_api::build_router;
 use pot_o_extensions::{
-    load_or_create_tribe_mint, peer_network::RegistrationConfig, spawn_persist_ledger,
-    DEFAULT_LEDGER_PATH,
+    peer_network::RegistrationConfig, spawn_persist_ledger, DEFAULT_LEDGER_PATH,
 };
 use pot_o_mining::PotOConsensus;
 use tokio::sync::RwLock;
 
-/// Crate version (from Cargo.toml).
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[tokio::main]
 async fn main() {
-    // Full info/debug by default; use RUST_LOG=pot_o_validator=trace for trace, or RUST_LOG=warn to reduce
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -79,9 +72,6 @@ async fn main() {
 
     let hex_consensus = HexConsensus::new(consensus_params);
 
-    let tribe_mint_address = load_or_create_tribe_mint(&cfg.tribe_mint_keypair_path);
-    tracing::info!(address = %tribe_mint_address, "TRIBE mint");
-
     let network = extensions.network.clone();
     let mempool = extensions.mempool.clone();
     let ledger = extensions.ledger.clone();
@@ -95,7 +85,6 @@ async fn main() {
         registry_path,
         device_registry,
         hex_consensus,
-        tribe_mint_address,
     );
 
     if let Some(ref bs) = block_store {
