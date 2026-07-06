@@ -312,8 +312,9 @@ async fn submit_proof(
                     .map(normalize_device_type)
                     .unwrap_or_else(|| "native".to_string());
                 // Record proof trace
-                state.proof_traces.record(
-                    pot_o_extensions::proof_trace::ProofTrace {
+                state
+                    .proof_traces
+                    .record(pot_o_extensions::proof_trace::ProofTrace {
                         challenge_id: body.proof.challenge_id.clone(),
                         miner_pubkey: body.proof.miner_pubkey.clone(),
                         device_type: device_type_normalized.clone(),
@@ -324,8 +325,7 @@ async fn submit_proof(
                         successful_paths: 0,
                         failed_paths: 0,
                         timestamp: now,
-                    },
-                );
+                    });
                 let registry_key: String = match &body.device_id {
                     Some(id) => id.clone(),
                     None => format!("{}:{}", body.proof.miner_pubkey, device_type_normalized),
@@ -1140,22 +1140,26 @@ async fn get_mempool(State(state): State<Arc<AppState>>) -> impl IntoResponse {
         Some(mp) => {
             let txs = mp.pending();
             txs.iter()
-                .map(|tx| serde_json::json!({
-                    "tx_hash": hex::encode(tx.tx_hash),
-                    "from": tx.from,
-                    "to": tx.to,
-                    "amount": tx.amount,
-                    "fee": tx.fee,
-                    "nonce": tx.nonce,
-                    "timestamp": tx.timestamp,
-                }))
+                .map(|tx| {
+                    serde_json::json!({
+                        "tx_hash": hex::encode(tx.tx_hash),
+                        "from": tx.from,
+                        "to": tx.to,
+                        "amount": tx.amount,
+                        "fee": tx.fee,
+                        "nonce": tx.nonce,
+                        "timestamp": tx.timestamp,
+                    })
+                })
                 .collect::<Vec<_>>()
         }
         None => vec![],
     };
 
     let stats = state.stats.read().await;
-    let pending_proofs = stats.total_proofs_received.saturating_sub(stats.total_proofs_valid);
+    let pending_proofs = stats
+        .total_proofs_received
+        .saturating_sub(stats.total_proofs_valid);
 
     (
         StatusCode::OK,
