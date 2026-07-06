@@ -171,6 +171,20 @@ pub fn verify_transfer_sig(tx: &TransferTransaction) -> Result<(), TxError> {
         tx.fee,
         tx.timestamp,
     );
+
+    tracing::debug!(
+        from = %tx.from,
+        nonce = tx.nonce,
+        to = %tx.to,
+        token = ?tx.token,
+        amount = tx.amount,
+        fee = tx.fee,
+        timestamp = tx.timestamp,
+        expected_hash = %hex::encode(expected_hash),
+        sig_from_tx = %hex::encode(&tx.signature[..]),
+        "verify_transfer_sig computing expected_hash"
+    );
+
     public_key
         .verify_strict(&expected_hash[..], &sig)
         .map_err(|_| TxError::InvalidSignature)

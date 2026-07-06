@@ -2,6 +2,7 @@
 //!
 //! Use this crate when building tooling or tests that need the same types as the validator binary.
 
+pub mod auth;
 pub mod config;
 pub mod consensus;
 pub mod device_registry;

@@ -25,9 +25,8 @@ impl Mempool {
     }
 
     /// Submit a transaction to the mempool after validation.
-    /// Uses `blocking_read()` on the async RwLock, which is safe since the lock is
-    /// held by a multi-threaded tokio runtime.
-    pub fn submit(
+    /// Uses `RwLock::read()` for non-blocking reads since this is called from async context.
+    pub async fn submit(
         &self,
         tx: TransferTransaction,
         ledger: &AsyncRwLock<Ledger>,
@@ -58,7 +57,7 @@ impl Mempool {
         // 6. Nonce and balance check against ledger + pending
         // Scope ledger read lock so it drops before acquiring mempool write locks (avoid ABBA deadlock)
         let (ledger_nonce, balance) = {
-            let guard = ledger.blocking_read();
+            let guard = ledger.read().await;
             (
                 guard.current_nonce(&tx.from),
                 guard.balance_of(&tx.from, &tx.token),

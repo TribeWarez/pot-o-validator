@@ -38,9 +38,8 @@ Run with: `cargo run --release --bin <name>`
 
 - Default: `config/default.toml`
 - Runtime load: tries `/config/default.toml` first, then `config/default.toml`, then built-in defaults
-- Most fields overridable via env vars — see `src/config.rs:172-249` for the full list. Key ones:
-  `SOLANA_RPC_URL`, `POT_O_DIFFICULTY`, `PORT`, `PEER_NETWORK_MODE`, `POOL_STRATEGY`,
-  `CHAIN_BRIDGE`, `RELAYER_KEYPAIR_PATH`, `ENABLE_MDNS`
+- Most fields overridable via env vars — see `src/config.rs` for the full list. Key ones:
+  `POT_O_DIFFICULTY`, `PORT`, `PEER_NETWORK_MODE`, `POOL_STRATEGY`, `ENABLE_MDNS`
 - HTTP port default: **8900**
 
 ## Release & publish
@@ -61,13 +60,11 @@ Run with: `cargo run --release --bin <name>`
 
 - `src/lib.rs` re-exports all workspace crates (`pub use ai3_lib::*;` etc.)
 - ESP32/8266 firmware lives in `firmware/esp-pot-o-miner/` (PlatformIO, not Cargo)
-- Solana keypairs in `keys/relayer.json` (submissions) and `keys/miner.json` (mining)
+- No Solana keypairs — Tribechain uses ed25519 auth; see `src/auth.rs`
 - Device registry persisted to `device_registry.json` at runtime
 - No `rust-toolchain.toml`, no `.cargo/config.toml`, no Makefile
 
 ## Important env vars for production
 
-- `SOLANA_RPC_URL` — Solana RPC endpoint
-- `RELAYER_KEYPAIR_PATH` — path to Solana keypair for on-chain submissions
 - `BOOTSTRAP_URLS` — comma-separated peer discovery URLs
 - `PEER_NETWORK_MODE` — `"local_only"` (default in code) vs `"vpn_mesh"` (default in config file)

@@ -1,6 +1,6 @@
 [package]
 name = "pot-o-mining"
-version = "0.8.0"
+version = "0.9.1"
 edition = "2021"
 authors = ["TribeWarez"]
 description = "Mining coordination and neural-path logic for PoT-O"
@@ -13,8 +13,8 @@ keywords = ["pot-o", "tribewarez", "blockchain", "tensor", "mining", "mml", "neu
 categories = ["cryptography::cryptocurrency", "development-tools"]
 
 [dependencies]
-pot-o-core = "0.8"
-ai3-lib = "0.8"
+pot-o-core = "0.9"
+ai3-lib = "0.9"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.10"

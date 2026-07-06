@@ -1,5 +1,3 @@
-//! Builds the extension registry from validator config (chain, pool, network, ledger, tribechain).
-
 use hexchain_p2p::block_store::BlockStore;
 use pot_o_extensions::{load_ledger, ExtensionRegistry, DEFAULT_LEDGER_PATH};
 use pot_o_extensions::{Genesis, Mempool};
@@ -8,8 +6,6 @@ use std::sync::Arc;
 
 use crate::config::ValidatorConfig;
 
-/// Builds an [`ExtensionRegistry`] from config with peer network mode and pool strategy support.
-/// When `tribechain_enabled` is true, also wires the mempool, block store, and genesis.
 pub fn build_extension_registry(cfg: &ValidatorConfig) -> ExtensionRegistry {
     let ledger_path =
         std::env::var("LEDGER_PATH").unwrap_or_else(|_| DEFAULT_LEDGER_PATH.to_string());
@@ -52,10 +48,6 @@ pub fn build_extension_registry(cfg: &ValidatorConfig) -> ExtensionRegistry {
         };
 
     let mut registry = ExtensionRegistry::from_config(
-        &cfg.solana_rpc_url,
-        &cfg.pot_program_id,
-        &cfg.relayer_keypair_path,
-        cfg.auto_register_miners,
         &cfg.peer_network_mode,
         &cfg.pool_strategy,
         &cfg.device_protocol,

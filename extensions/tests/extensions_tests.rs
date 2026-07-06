@@ -4,10 +4,11 @@
 
 use chrono::Utc;
 use pot_o_extensions::{
-    ChainBridge, DefiClient, DeviceProtocol, DeviceStatus, DeviceType, Ed25519Authority,
-    ExtensionRegistry, LocalOnlyNetwork, NativeDevice, PeerNetwork, PoolStrategy, ProofAuthority,
-    SolanaBridge, SoloStrategy,
+    ChainBridge, DeviceProtocol, DeviceStatus, DeviceType, Ed25519Authority, ExtensionRegistry,
+    LocalOnlyNetwork, NativeDevice, PeerNetwork, PoolStrategy, ProofAuthority, SoloStrategy,
+    TribechainBridge,
 };
+use tokio;
 
 #[test]
 fn test_device_type_variants() {
@@ -57,13 +58,8 @@ fn test_native_device_creation() {
 }
 
 #[test]
-fn test_solana_bridge_creation() {
-    let bridge = SolanaBridge::new(
-        "https://api.devnet.solana.com".to_string(),
-        "11111111111111111111111111111111".to_string(),
-        "/path/to/keypair.json".to_string(),
-        false,
-    );
+fn test_tribechain_bridge_creation() {
+    let bridge = TribechainBridge::new();
 
     // Bridge should be created
     let _: Box<dyn ChainBridge> = Box::new(bridge);
@@ -95,87 +91,62 @@ fn test_ed25519_authority_creation() {
 
 #[test]
 fn test_extension_registry_local_defaults() {
-    let registry = ExtensionRegistry::local_defaults(
-        "https://api.devnet.solana.com",
-        "11111111111111111111111111111111",
-        "/path/to/keypair.json",
-        true,
-    );
+    let registry = ExtensionRegistry::local_defaults("", 25);
 
     // Registry should have all components
-    assert!(true); // Registry creation successful
-}
-
-#[test]
-fn test_defi_client_creation() {
-    let client = DefiClient::new("https://api.devnet.solana.com".to_string());
-
-    // Client should be created
     assert!(true);
 }
 
 #[test]
-fn test_extension_registry_has_device() {
-    let registry = ExtensionRegistry::local_defaults(
-        "https://api.devnet.solana.com",
-        "11111111111111111111111111111111",
-        "/path/to/keypair.json",
-        false,
-    );
+#[tokio::test]
+async fn test_tribechain_bridge_noop_submit() {
+    let bridge = TribechainBridge::new();
+    let proof = pot_o_mining::ProofPayload {
+        proof: pot_o_mining::PotOProof {
+            challenge_id: "test".into(),
+            challenge_hash: "".into(),
+            tensor_result_hash: "aaaa".into(),
+            mml_score: 0.5,
+            path_signature: "sig".into(),
+            path_distance: 1,
+            computation_nonce: 0,
+            computation_hash: "bbbb".into(),
+            miner_pubkey: "miner1".into(),
+            timestamp: "".into(),
+        },
+        signature: vec![],
+    };
+    let result = bridge.submit_proof(&proof).await;
+    assert!(result.is_ok());
+}
 
-    // Should have a device protocol
+#[test]
+fn test_extension_registry_has_device() {
+    let registry = ExtensionRegistry::local_defaults("", 25);
     let _ = &registry.device;
 }
 
 #[test]
 fn test_extension_registry_has_network() {
-    let registry = ExtensionRegistry::local_defaults(
-        "https://api.devnet.solana.com",
-        "11111111111111111111111111111111",
-        "/path/to/keypair.json",
-        false,
-    );
-
-    // Should have a network protocol
+    let registry = ExtensionRegistry::local_defaults("", 25);
     let _ = &registry.network;
 }
 
 #[test]
 fn test_extension_registry_has_pool_strategy() {
-    let registry = ExtensionRegistry::local_defaults(
-        "https://api.devnet.solana.com",
-        "11111111111111111111111111111111",
-        "/path/to/keypair.json",
-        false,
-    );
-
-    // Should have a pool strategy
+    let registry = ExtensionRegistry::local_defaults("", 25);
     let _ = &registry.pool;
 }
 
 #[test]
 fn test_extension_registry_has_chain_bridge() {
-    let registry = ExtensionRegistry::local_defaults(
-        "https://api.devnet.solana.com",
-        "11111111111111111111111111111111",
-        "/path/to/keypair.json",
-        false,
-    );
-
-    // Should have a chain bridge
+    let registry = ExtensionRegistry::local_defaults("", 25);
     let _ = &registry.chain;
 }
 
 #[test]
 fn test_extension_registry_has_auth() {
-    let registry = ExtensionRegistry::local_defaults(
-        "https://api.devnet.solana.com",
-        "11111111111111111111111111111111",
-        "/path/to/keypair.json",
-        false,
-    );
-
-    // Should have an auth provider
+    let registry = ExtensionRegistry::local_defaults("", 25);
     let _ = &registry.auth;
 }
 
@@ -239,57 +210,21 @@ fn test_ed25519_authority_type() {
 }
 
 #[test]
-fn test_solana_bridge_configuration() {
-    let solana_url = "https://api.devnet.solana.com".to_string();
-    let program_id = "11111111111111111111111111111111".to_string();
-    let keypair_path = "/tmp/keypair.json".to_string();
-
-    let _bridge = SolanaBridge::new(solana_url, program_id, keypair_path, true);
-
-    // Bridge created successfully
+fn test_tribechain_bridge_configuration() {
+    let _bridge = TribechainBridge::new();
     assert!(true);
 }
 
 #[test]
-fn test_defi_client_rpc_config() {
-    let rpc_url = "https://api.devnet.solana.com".to_string();
-    let _client = DefiClient::new(rpc_url);
-
-    // Client created successfully
-    assert!(true);
-}
-
-#[test]
-fn test_extension_registry_auto_register_option() {
-    // With auto_register = true
-    let reg1 = ExtensionRegistry::local_defaults(
-        "https://api.devnet.solana.com",
-        "11111111111111111111111111111111",
-        "/path/to/keypair.json",
-        true, // auto-register enabled
-    );
-
-    // With auto_register = false
-    let reg2 = ExtensionRegistry::local_defaults(
-        "https://api.devnet.solana.com",
-        "11111111111111111111111111111111",
-        "/path/to/keypair.json",
-        false, // auto-register disabled
-    );
-
-    // Both registries should be created
+fn test_extension_registry_local_defaults_varies() {
+    let reg1 = ExtensionRegistry::local_defaults("fee_addr", 50);
+    let reg2 = ExtensionRegistry::local_defaults("", 25);
     let _ = (&reg1, &reg2);
 }
 
 #[test]
 fn test_chain_bridge_trait_object() {
-    let bridge: Box<dyn ChainBridge> = Box::new(SolanaBridge::new(
-        "https://api.devnet.solana.com".to_string(),
-        "11111111111111111111111111111111".to_string(),
-        "/path/to/keypair.json".to_string(),
-        false,
-    ));
-
+    let bridge: Box<dyn ChainBridge> = Box::new(TribechainBridge::new());
     let _ = bridge;
 }
 
@@ -319,14 +254,8 @@ fn test_proof_authority_trait_object() {
 
 #[test]
 fn test_extension_registry_trait_composition() {
-    let registry = ExtensionRegistry::local_defaults(
-        "https://api.devnet.solana.com",
-        "11111111111111111111111111111111",
-        "/path/to/keypair.json",
-        false,
-    );
+    let registry = ExtensionRegistry::local_defaults("", 25);
 
-    // All traits should be object-safe
     let _device: &dyn DeviceProtocol = &*registry.device;
     let _network: &dyn PeerNetwork = &*registry.network;
     let _pool: &dyn PoolStrategy = &*registry.pool;

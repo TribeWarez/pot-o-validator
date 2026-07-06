@@ -1,8 +1,4 @@
-//! PoT-O Validator binary: HTTP API server for challenge issuance, proof submission, and status.
-//!
-//! Loads config, builds consensus and extension registry, binds to the configured address/port,
-//! and serves the routes defined in `http_api`.
-
+pub(crate) mod auth;
 mod config;
 mod consensus;
 mod device_registry;
@@ -19,16 +15,16 @@ use device_registry::{load_registry, DEFAULT_REGISTRY_PATH};
 use hexchain_p2p::hex_consensus::HexConsensus;
 use hexchain_p2p::types::{ConsensusParams, MmlParams};
 use http_api::build_router;
-use pot_o_extensions::{load_or_create_tribe_mint, spawn_persist_ledger, DEFAULT_LEDGER_PATH};
+use pot_o_extensions::{
+    peer_network::RegistrationConfig, spawn_persist_ledger, DEFAULT_LEDGER_PATH,
+};
 use pot_o_mining::PotOConsensus;
 use tokio::sync::RwLock;
 
-/// Crate version (from Cargo.toml).
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[tokio::main]
 async fn main() {
-    // Full info/debug by default; use RUST_LOG=pot_o_validator=trace for trace, or RUST_LOG=warn to reduce
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -76,9 +72,7 @@ async fn main() {
 
     let hex_consensus = HexConsensus::new(consensus_params);
 
-    let tribe_mint_address = load_or_create_tribe_mint(&cfg.tribe_mint_keypair_path);
-    tracing::info!(address = %tribe_mint_address, "TRIBE mint");
-
+    let network = extensions.network.clone();
     let mempool = extensions.mempool.clone();
     let ledger = extensions.ledger.clone();
     let tribechain_enabled = extensions.tribechain_enabled;
@@ -91,7 +85,6 @@ async fn main() {
         registry_path,
         device_registry,
         hex_consensus,
-        tribe_mint_address,
     );
 
     if let Some(ref bs) = block_store {
@@ -110,6 +103,26 @@ async fn main() {
             }
         });
         tracing::info!("BlockStore background persistence started");
+    }
+
+    if !cfg.bootstrap_urls.is_empty() && cfg.peer_network_mode == "vpn_mesh" {
+        let reg_cfg = RegistrationConfig {
+            node_id: cfg.node_id.clone(),
+            address: cfg.listen_addr.clone(),
+            port: cfg.port,
+            version: VERSION.to_string(),
+            bootstrap_urls: cfg.bootstrap_urls.clone(),
+            timeout_secs: cfg.peer_timeout_secs,
+        };
+        let url_count = reg_cfg.bootstrap_urls.len();
+        tokio::spawn(async move {
+            let interval = tokio::time::Duration::from_secs(60);
+            loop {
+                let _ = network.register_with_bootstrap(&reg_cfg).await;
+                tokio::time::sleep(interval).await;
+            }
+        });
+        tracing::info!("Bootstrap registration task started ({} urls)", url_count);
     }
 
     let internal_state = internal_api::InternalApiState {

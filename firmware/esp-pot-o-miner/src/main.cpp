@@ -1,6 +1,7 @@
 // PoT-O Miner Firmware for ESP32-S / ESP8266
 // Connects to pot.rpc.gateway.tribewarez.com, fetches challenges,
 // runs tensor operations, and submits proofs.
+// Uses ed25519 challenge-response auth (Tribechain).
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
@@ -9,11 +10,16 @@
   #include <WiFi.h>
   #include <HTTPClient.h>
   #include <WiFiClientSecure.h>
+  #include <Preferences.h>
 #else
   #include <ESP8266WiFi.h>
   #include <ESP8266HTTPClient.h>
   #include <WiFiClientSecureBearSSL.h>
+  #include <Preferences.h>
 #endif
+
+#include <Crypto.h>
+#include <Ed25519.h>
 
 #include "pot_o/pot_o_config.h"
 #include "pot_o/tensor_ops.h"
@@ -21,9 +27,41 @@
 #include "pot_o/neural_path.h"
 #include "pot_o/mml_score.h"
 
-// ── Globals ─────────────────────────────────────────────────────────────────
+// ── Ed25519 auth globals ────────────────────────────────────────────────────
 
-static const char* MINER_PUBKEY = "esp_miner_" __DATE__ "_" __TIME__;
+static uint8_t g_privkey[32];
+static uint8_t g_pubkey[32];
+static bool g_have_keypair = false;
+static String g_auth_token;
+
+static const char* NVS_NS = "pot-o";
+static const char* NVS_PK = "privkey";
+static const char* NVS_PUB = "pubkey";
+
+// ── Hex helpers ─────────────────────────────────────────────────────────────
+
+static void hex_encode(const uint8_t* data, size_t len, char* out) {
+    static const char hex[] = "0123456789abcdef";
+    for (size_t i = 0; i < len; i++) {
+        out[i * 2] = hex[data[i] >> 4];
+        out[i * 2 + 1] = hex[data[i] & 0x0f];
+    }
+    out[len * 2] = '\0';
+}
+
+static bool hex_decode(const char* s, uint8_t* out, size_t out_len) {
+    size_t slen = strlen(s);
+    if (slen != out_len * 2) return false;
+    for (size_t i = 0; i < out_len; i++) {
+        char c1 = s[i * 2], c2 = s[i * 2 + 1];
+        uint8_t h = (c1 >= 'a') ? (c1 - 'a' + 10) : (c1 - '0');
+        uint8_t l = (c2 >= 'a') ? (c2 - 'a' + 10) : (c2 - '0');
+        out[i] = (h << 4) | l;
+    }
+    return true;
+}
+
+// ── Globals ─────────────────────────────────────────────────────────────────
 
 static float g_input_buf[MAX_TENSOR_DIM * MAX_TENSOR_DIM];
 static float g_output_buf[MAX_TENSOR_DIM * MAX_TENSOR_DIM];
@@ -44,9 +82,13 @@ static unsigned long g_last_heartbeat = 0;
 
 void wifi_connect();
 String rpc_url(const char* path);
+String bootstrap_url(const char* path);
 bool rpc_post(const char* path, const String& body, String& response);
 bool rpc_get(const char* path, String& response);
+void init_crypto();
+bool auth_handshake();
 bool register_device();
+bool discover_bootstrap_peers();
 bool fetch_challenge(JsonDocument& challenge_doc);
 bool mine_challenge(const JsonDocument& challenge, JsonDocument& proof_doc);
 bool submit_proof(const JsonDocument& proof);
@@ -72,7 +114,16 @@ void setup() {
 
     stats.uptime_start = millis();
     wifi_connect();
+    init_crypto();
+    if (auth_handshake()) {
+        Serial.println(F("[AUTH] Session established"));
+    } else {
+        Serial.println(F("[AUTH] Auth failed — mining will proceed without auth (limited)"));
+    }
     register_device();
+#ifdef POT_BOOTSTRAP_URL
+    discover_bootstrap_peers();
+#endif
 }
 
 // ── Main loop ───────────────────────────────────────────────────────────────
@@ -172,6 +223,12 @@ String rpc_url(const char* path) {
 #endif
 }
 
+#ifdef POT_BOOTSTRAP_URL
+String bootstrap_url(const char* path) {
+    return String("https://") + POT_BOOTSTRAP_URL + ":" + String(POT_BOOTSTRAP_PORT) + path;
+}
+#endif
+
 bool rpc_post(const char* path, const String& body, String& response) {
     HTTPClient http;
 #if defined(ESP32S_DEVICE)
@@ -184,6 +241,9 @@ bool rpc_post(const char* path, const String& body, String& response) {
     http.begin(*client, rpc_url(path));
 #endif
     http.addHeader("Content-Type", "application/json");
+    if (g_auth_token.length() > 0) {
+        http.addHeader("Authorization", "Bearer " + g_auth_token);
+    }
     http.setTimeout(15000);
 
     int code = http.POST(body);
@@ -219,6 +279,111 @@ bool rpc_get(const char* path, String& response) {
     return false;
 }
 
+// ── Ed25519 keypair (NVS) ───────────────────────────────────────────────────
+
+static void init_crypto() {
+    Preferences prefs;
+    prefs.begin(NVS_NS, false);
+
+    bool have = prefs.isKey(NVS_PK) && prefs.isKey(NVS_PUB);
+    if (have) {
+        size_t pk_len = prefs.getBytes(NVS_PK, g_privkey, 32);
+        size_t pu_len = prefs.getBytes(NVS_PUB, g_pubkey, 32);
+        have = (pk_len == 32 && pu_len == 32);
+    }
+
+    if (!have) {
+        Serial.println(F("[CRYPTO] Generating ed25519 keypair..."));
+        Ed25519::generatePrivateKey(g_privkey);
+        Ed25519::derivePublicKey(g_pubkey, g_privkey);
+        prefs.putBytes(NVS_PK, g_privkey, 32);
+        prefs.putBytes(NVS_PUB, g_pubkey, 32);
+        Serial.println(F("[CRYPTO] Keypair saved to NVS"));
+    } else {
+        Serial.println(F("[CRYPTO] Loaded keypair from NVS"));
+    }
+    prefs.end();
+    g_have_keypair = true;
+
+    char hex[65];
+    hex_encode(g_pubkey, 32, hex);
+    Serial.printf("[CRYPTO] Pubkey: %s\n", hex);
+}
+
+// ── Auth handshake (challenge-response) ─────────────────────────────────────
+
+static bool auth_handshake() {
+    if (!g_have_keypair) {
+        Serial.println(F("[AUTH] No keypair, skipping auth"));
+        return false;
+    }
+
+    char pubkey_hex[65];
+    hex_encode(g_pubkey, 32, pubkey_hex);
+
+    // Step 1: POST /auth/challenge
+    Serial.println(F("[AUTH] Requesting challenge..."));
+    String chal_body = String("{\"pubkey\":\"") + pubkey_hex + "\"}";
+    String chal_resp;
+    if (!rpc_post("/auth/challenge", chal_body, chal_resp)) {
+        Serial.println(F("[AUTH] Challenge request failed"));
+        return false;
+    }
+
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, chal_resp);
+    if (err) {
+        Serial.printf("[AUTH] JSON error: %s\n", err.c_str());
+        return false;
+    }
+
+    const char* nonce_hex = doc["nonce"] | "";
+    if (strlen(nonce_hex) != 64) {
+        Serial.println(F("[AUTH] Invalid nonce"));
+        return false;
+    }
+
+    uint8_t nonce[32];
+    if (!hex_decode(nonce_hex, nonce, 32)) {
+        Serial.println(F("[AUTH] Nonce decode failed"));
+        return false;
+    }
+
+    // Step 2: sign nonce with ed25519
+    uint8_t sig[64];
+    Ed25519::sign(sig, g_privkey, g_pubkey, nonce, 32);
+
+    char sig_hex[129];
+    hex_encode(sig, 64, sig_hex);
+
+    // Step 3: POST /auth/verify
+    String ver_body = String("{\"pubkey\":\"") + pubkey_hex +
+                      "\",\"signature\":\"" + sig_hex +
+                      "\",\"message\":\"" + nonce_hex + "\"}";
+    String ver_resp;
+    if (!rpc_post("/auth/verify", ver_body, ver_resp)) {
+        Serial.println(F("[AUTH] Verify request failed"));
+        return false;
+    }
+
+    JsonDocument vdoc;
+    err = deserializeJson(vdoc, ver_resp);
+    if (err) {
+        Serial.printf("[AUTH] Verify JSON error: %s\n", err.c_str());
+        return false;
+    }
+
+    const char* token = vdoc["token"] | "";
+    if (strlen(token) == 0) {
+        Serial.println(F("[AUTH] No token in response"));
+        return false;
+    }
+
+    g_auth_token = token;
+    Serial.println(F("[AUTH] Authenticated successfully"));
+    return true;
+}
+
 // ── Device registration ─────────────────────────────────────────────────────
 
 bool register_device() {
@@ -241,6 +406,54 @@ bool register_device() {
     g_device_id = WiFi.macAddress();
     return false;
 }
+
+// ── Bootstrap peer discovery ────────────────────────────────────────────────
+
+#ifdef POT_BOOTSTRAP_URL
+bool discover_bootstrap_peers() {
+    Serial.printf("[BOOTSTRAP] Discovering peers via %s\n", POT_BOOTSTRAP_URL);
+    String resp;
+    HTTPClient http;
+#if defined(ESP32S_DEVICE)
+    WiFiClientSecure client;
+    client.setInsecure();
+    http.begin(client, bootstrap_url("/peers"));
+#else
+    std::unique_ptr<BearSSL::WiFiClientSecure> client(new BearSSL::WiFiClientSecure);
+    client->setInsecure();
+    http.begin(*client, bootstrap_url("/peers"));
+#endif
+    http.setTimeout(10000);
+
+    int code = http.GET();
+    if (code > 0) {
+        resp = http.getString();
+        http.end();
+        if (code >= 200 && code < 300) {
+            JsonDocument doc;
+            DeserializationError err = deserializeJson(doc, resp);
+            if (err) {
+                Serial.printf("[BOOTSTRAP] JSON parse error: %s\n", err.c_str());
+                return false;
+            }
+            JsonArray peers = doc["peers"].as<JsonArray>();
+            int count = 0;
+            for (JsonVariant v : peers) {
+                const char* host = v["host"] | "";
+                int port = v["port"] | 8900;
+                if (strlen(host) > 0) {
+                    Serial.printf("[BOOTSTRAP] Peer %d: %s:%d\n", ++count, host, port);
+                }
+            }
+            Serial.printf("[BOOTSTRAP] Discovery complete: %d peer(s) found\n", count);
+            return true;
+        }
+    }
+    http.end();
+    Serial.println(F("[BOOTSTRAP] Discovery failed (non-fatal)"));
+    return false;
+}
+#endif
 
 // ── Challenge fetch ─────────────────────────────────────────────────────────
 

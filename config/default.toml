@@ -3,8 +3,6 @@
 
 listen_addr = "0.0.0.0"
 port = 8900
-solana_rpc_url = "http://testnet-solana-rpc-gateway:8899"
-pot_program_id = "PoToVa1idator11111111111111111111111111111"
 difficulty = 2
 max_tensor_dim = 64
 max_mine_iterations = 10000
@@ -12,7 +10,6 @@ max_mine_iterations = 10000
 # Extension point modes (defaults for single-node local operation)
 peer_network_mode = "vpn_mesh"
 pool_strategy = "solo"
-chain_bridge = "solana"
 device_protocol = "native"
 
 # P2P network configuration
@@ -24,9 +21,6 @@ mdns_service_name = "pot-o-validator"
 internal_api_port = 8900
 peer_timeout_secs = 30
 challenge_relay_enabled = true
-
-# Pool and validator configuration
-primary_validator_url = "http://validator-1.tribewarez.com:8899"
 
 # Token ledger
 protocol_fee_address = ""

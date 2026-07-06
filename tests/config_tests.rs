@@ -139,27 +139,6 @@ fn test_challenge_relay_enabled_default() {
     assert_eq!(cfg.challenge_relay_enabled, true);
 }
 
-/// Test primary_validator_url from TOML
-#[test]
-fn test_primary_validator_url_from_toml() {
-    let toml_content = r#"
-primary_validator_url = "http://validator-1.tribewarez.com:8899"
-"#;
-    let cfg: ValidatorConfig = toml::from_str(toml_content).expect("Failed to parse TOML");
-    assert_eq!(
-        cfg.primary_validator_url,
-        "http://validator-1.tribewarez.com:8899"
-    );
-}
-
-/// Test primary_validator_url default
-#[test]
-fn test_primary_validator_url_default() {
-    let toml_content = r#""#;
-    let cfg: ValidatorConfig = toml::from_str(toml_content).expect("Failed to parse TOML");
-    assert_eq!(cfg.primary_validator_url, "http://localhost:8899");
-}
-
 /// Test all network fields together in TOML
 #[test]
 fn test_all_network_fields_from_toml() {
@@ -170,7 +149,6 @@ mdns_service_name = "custom-validator"
 internal_api_port = 9000
 peer_timeout_secs = 45
 challenge_relay_enabled = false
-primary_validator_url = "http://prod-validator:8899"
 "#;
     let cfg: ValidatorConfig = toml::from_str(toml_content).expect("Failed to parse TOML");
 
@@ -183,7 +161,6 @@ primary_validator_url = "http://prod-validator:8899"
     assert_eq!(cfg.internal_api_port, 9000);
     assert_eq!(cfg.peer_timeout_secs, 45);
     assert_eq!(cfg.challenge_relay_enabled, false);
-    assert_eq!(cfg.primary_validator_url, "http://prod-validator:8899");
 }
 
 /// Test BOOTSTRAP_URLS environment variable override (comma-separated)
@@ -286,28 +263,6 @@ challenge_relay_enabled = true
     assert_eq!(cfg.challenge_relay_enabled, false);
 }
 
-/// Test PRIMARY_VALIDATOR_URL environment variable override
-#[test]
-fn test_primary_validator_url_env_override() {
-    let toml_content = r#"
-primary_validator_url = "http://localhost:8899"
-"#;
-    let mut cfg: ValidatorConfig = toml::from_str(toml_content).expect("Failed to parse TOML");
-
-    // Simulate env override
-    if let Ok(v) = env::var("PRIMARY_VALIDATOR_URL") {
-        cfg.primary_validator_url = v;
-    }
-
-    // Manually set for testing
-    cfg.primary_validator_url = "http://prod-validator.tribewarez.com:8899".to_string();
-
-    assert_eq!(
-        cfg.primary_validator_url,
-        "http://prod-validator.tribewarez.com:8899"
-    );
-}
-
 /// Test all network and pool fields at top level (flat TOML)
 #[test]
 fn test_network_and_pool_flat_toml() {
@@ -318,7 +273,6 @@ mdns_service_name = "pot-o-validator"
 internal_api_port = 8900
 peer_timeout_secs = 30
 challenge_relay_enabled = true
-primary_validator_url = "http://validator-1.tribewarez.com:8899"
 "#;
     let cfg: ValidatorConfig = toml::from_str(toml_content).expect("Failed to parse TOML");
 
@@ -331,8 +285,4 @@ primary_validator_url = "http://validator-1.tribewarez.com:8899"
     assert_eq!(cfg.internal_api_port, 8900);
     assert_eq!(cfg.peer_timeout_secs, 30);
     assert_eq!(cfg.challenge_relay_enabled, true);
-    assert_eq!(
-        cfg.primary_validator_url,
-        "http://validator-1.tribewarez.com:8899"
-    );
 }
