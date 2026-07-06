@@ -58,6 +58,7 @@ pub struct Ledger {
     nonces: HashMap<String, u64>,
     coinbase_maturity: HashMap<String, Vec<CoinbaseEntry>>,
     total_supply_map: HashMap<TokenType, u64>,
+    last_interaction: HashMap<(String, TokenType), u64>, // block height of last interaction
 }
 
 impl Ledger {
@@ -71,6 +72,7 @@ impl Ledger {
             nonces: HashMap::new(),
             coinbase_maturity: HashMap::new(),
             total_supply_map: HashMap::new(),
+            last_interaction: HashMap::new(),
         }
     }
 
@@ -142,20 +144,34 @@ impl Ledger {
         amount: u64,
         fee: u64,
     ) -> Result<TxReceipt, String> {
+        use pot_o_core::token_config::token_config;
+        
         if amount == 0 {
             return Err("Transfer amount must be positive".into());
         }
+        
+        // Calculate burn amount based on token configuration
+        let config_set = token_config();
+        let burn = if let Some(config) = config_set.get(token) {
+            config.calculate_burn(amount)
+        } else {
+            0
+        };
+        
         let total = amount.checked_add(fee).ok_or("Overflow in amount + fee")?;
         let from_key = (from.to_string(), token.clone());
         let from_bal = self.balances.get(&from_key).copied().unwrap_or(0);
-        if from_bal < total {
+        
+        // Sender must have: amount + fee + burn
+        let total_needed = total.checked_add(burn).ok_or("Overflow in total + burn")?;
+        if from_bal < total_needed {
             return Err(format!(
-                "Insufficient balance: have {}, need {} (amount {} + fee {})",
-                from_bal, total, amount, fee
+                "Insufficient balance: have {}, need {} (amount {} + fee {} + burn {})",
+                from_bal, total_needed, amount, fee, burn
             ));
         }
 
-        self.balances.insert(from_key, from_bal - total);
+        self.balances.insert(from_key.clone(), from_bal - total_needed);
 
         let to_key = (to.to_string(), token.clone());
         let to_bal = self.balances.entry(to_key).or_insert(0);
@@ -169,6 +185,12 @@ impl Ledger {
                 let fee_bal = self.balances.entry(fee_key).or_insert(0);
                 *fee_bal = fee_bal.saturating_add(fee);
             }
+        }
+
+        // Update total supply to reflect burn
+        if burn > 0 {
+            let total = self.total_supply_map.entry(token.clone()).or_insert(0);
+            *total = total.saturating_sub(burn);
         }
 
         self.block_height = self.block_height.saturating_add(1);
@@ -239,6 +261,37 @@ impl Ledger {
 
     pub fn total_supply_of(&self, token: &TokenType) -> u64 {
         self.total_supply_map.get(token).copied().unwrap_or(0)
+    }
+
+    /// Record an interaction (transfer/issue) for an address-token pair
+    pub fn update_interaction(&mut self, address: &str, token: &TokenType) {
+        let key = (address.to_string(), token.clone());
+        self.last_interaction.insert(key, self.block_height);
+    }
+
+    /// Get the block height of the last interaction for an address-token pair
+    pub fn last_interaction(&self, address: &str, token: &TokenType) -> Option<u64> {
+        self.last_interaction
+            .get(&(address.to_string(), token.clone()))
+            .copied()
+    }
+
+    /// Apply age-based decay to a balance based on blocks elapsed
+    /// Returns the decayed amount using exponential decay formula
+    pub fn apply_decay(&self, address: &str, token: &TokenType, blocks_elapsed: u64) -> u64 {
+        use pot_o_core::token_config::token_config;
+        
+        let balance = self.balance_of(address, token);
+        
+        // Get token configuration
+        let config_set = token_config();
+        
+        if let Some(config) = config_set.get(token) {
+            config.apply_decay(balance, blocks_elapsed)
+        } else {
+            // No decay configured for this token
+            balance
+        }
     }
 
     pub fn is_coinbase_mature(&self, _address: &str, height: u64, current_height: u64) -> bool {

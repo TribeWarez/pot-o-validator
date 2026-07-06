@@ -335,3 +335,162 @@ mod task2_supply_caps {
         assert!(ledger.balance_of("a1", &TokenType::TribeChain) > 0);
     }
 }
+
+// ============================================================================
+// TASK 3: Age Decay and Transfer Burn Tests
+// ============================================================================
+
+#[cfg(test)]
+mod task3_decay_and_burn {
+    use pot_o_core::TokenType;
+    use pot_o_extensions::ledger::Ledger;
+
+    #[test]
+    fn test_apply_decay_stomp() {
+        let mut ledger = Ledger::new("fee".to_string());
+        
+        // Issue STOMP tokens
+        ledger.issue("alice", &TokenType::STOMP, 1_000_000);
+        
+        // Immediately check balance
+        assert_eq!(ledger.balance_of("alice", &TokenType::STOMP), 1_000_000);
+        
+        // Apply decay at 0 blocks - should have no effect
+        let amount = ledger.apply_decay("alice", &TokenType::STOMP, 0);
+        assert_eq!(amount, 1_000_000);
+        
+        // Apply decay at half-life (1M blocks) - should be ~50%
+        let amount = ledger.apply_decay("alice", &TokenType::STOMP, 1_000_000);
+        assert!(amount > 490_000 && amount < 510_000, "Expected ~500_000 at half-life, got {}", amount);
+    }
+
+    #[test]
+    fn test_apply_decay_ravecoin() {
+        let mut ledger = Ledger::new("fee".to_string());
+        
+        // RAVECOIN has 500K block half-life
+        ledger.issue("bob", &TokenType::RAVECOIN, 1_000_000);
+        
+        // At 0 blocks
+        let amount = ledger.apply_decay("bob", &TokenType::RAVECOIN, 0);
+        assert_eq!(amount, 1_000_000);
+        
+        // At half-life (500K blocks)
+        let amount = ledger.apply_decay("bob", &TokenType::RAVECOIN, 500_000);
+        assert!(amount > 490_000 && amount < 510_000);
+    }
+
+    #[test]
+    fn test_update_interaction_timestamp() {
+        let mut ledger = Ledger::new("fee".to_string());
+        
+        // Update interaction time for an address
+        ledger.update_interaction("charlie", &TokenType::STOMP);
+        
+        // Should record the current block height
+        assert!(ledger.last_interaction("charlie", &TokenType::STOMP).is_some());
+    }
+
+    #[test]
+    fn test_transfer_with_burn_stomp() {
+        let mut ledger = Ledger::new("fee".to_string());
+        
+        // Issue tokens
+        ledger.issue("alice", &TokenType::STOMP, 10_000);
+        
+        // Transfer 1000 tokens (burn rate is 50 bps = 0.5%)
+        // Expected burn: 1000 * 50 / 10000 = 5 tokens
+        let result = ledger.transfer("alice", "bob", &TokenType::STOMP, 1000, 0);
+        assert!(result.is_ok());
+        
+        // Alice should have lost: 1000 (transferred) + 5 (burn) = 1005
+        assert_eq!(ledger.balance_of("alice", &TokenType::STOMP), 10_000 - 1005);
+        
+        // Bob should have received: 1000
+        assert_eq!(ledger.balance_of("bob", &TokenType::STOMP), 1000);
+        
+        // Total supply reduced by burn amount
+        // 10_000 issued -> 5 burned -> 9_995 total
+        let total = ledger.total_supply_of(&TokenType::STOMP);
+        assert_eq!(total, 9_995);
+    }
+
+    #[test]
+    fn test_transfer_burn_ravecoin() {
+        let mut ledger = Ledger::new("fee".to_string());
+        
+        ledger.issue("alice", &TokenType::RAVECOIN, 10_000);
+        
+        // RAVECOIN has 100 bps = 1% burn rate
+        // Expected burn: 1000 * 100 / 10000 = 10 tokens
+        let result = ledger.transfer("alice", "bob", &TokenType::RAVECOIN, 1000, 0);
+        assert!(result.is_ok());
+        
+        // Alice loses 1000 + 10 = 1010
+        assert_eq!(ledger.balance_of("alice", &TokenType::RAVECOIN), 10_000 - 1010);
+        
+        // Bob gets 1000
+        assert_eq!(ledger.balance_of("bob", &TokenType::RAVECOIN), 1000);
+    }
+
+    #[test]
+    fn test_transfer_no_burn_aum() {
+        let mut ledger = Ledger::new("fee".to_string());
+        
+        ledger.issue("alice", &TokenType::AUM, 10_000);
+        
+        // AUM has 0 bps = no burn
+        let result = ledger.transfer("alice", "bob", &TokenType::AUM, 1000, 0);
+        assert!(result.is_ok());
+        
+        // Alice loses exactly 1000 (no burn)
+        assert_eq!(ledger.balance_of("alice", &TokenType::AUM), 9_000);
+        
+        // Bob gets exactly 1000
+        assert_eq!(ledger.balance_of("bob", &TokenType::AUM), 1000);
+    }
+
+    #[test]
+    fn test_transfer_with_fee_and_burn() {
+        let mut ledger = Ledger::new("fee_collector".to_string());
+        
+        ledger.issue("alice", &TokenType::STOMP, 10_000);
+        
+        // Transfer with fee: 100 amount, 10 fee, 50 bps burn
+        // Burn on amount: 100 * 50 / 10000 = 0 (rounded down)
+        // Total burn from amount is negligible
+        let result = ledger.transfer("alice", "bob", &TokenType::STOMP, 100, 10);
+        assert!(result.is_ok());
+        
+        // Alice should lose: 100 (amount) + 10 (fee) + 0 (burn negligible) = 110
+        // Bob should receive: 100
+        // fee_collector should receive: 10
+        assert_eq!(ledger.balance_of("alice", &TokenType::STOMP), 10_000 - 100 - 10);
+        assert_eq!(ledger.balance_of("bob", &TokenType::STOMP), 100);
+        assert_eq!(ledger.balance_of("fee_collector", &TokenType::STOMP), 10);
+    }
+
+    #[test]
+    fn test_multiple_transfers_accumulate_burn() {
+        let mut ledger = Ledger::new("fee".to_string());
+        
+        ledger.issue("alice", &TokenType::RAVECOIN, 100_000);
+        
+        // RAVECOIN: 100 bps = 1% burn
+        // First transfer: 10_000 amount -> 100 burn
+        let _ = ledger.transfer("alice", "bob", &TokenType::RAVECOIN, 10_000, 0);
+        // Alice: 100_000 - 10_000 - 100 = 89_900
+        // Bob: 10_000
+        // Total: 89_900 + 10_000 = 99_900
+        
+        // Second transfer: from bob to charlie
+        // 5_000 amount -> 50 burn
+        let _ = ledger.transfer("bob", "charlie", &TokenType::RAVECOIN, 5_000, 0);
+        // Bob: 10_000 - 5_000 - 50 = 4_950
+        // Charlie: 5_000
+        // Total: 89_900 + 4_950 + 5_000 = 99_850
+        
+        let total = ledger.total_supply_of(&TokenType::RAVECOIN);
+        assert_eq!(total, 99_850);
+    }
+}
