@@ -101,6 +101,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/blocks", get(get_tribechain_blocks))
         .route("/api/supply", get(get_token_supply))
         .route("/api/tx/:hash", get(get_tx_by_hash))
+        .route("/api/proof-trace", get(get_proof_trace))
         .route("/marketplace/order", post(post_marketplace_order))
         .route("/marketplace/order/{id}", delete(delete_marketplace_order))
         .route("/marketplace/order/{id}", get(get_marketplace_order))
@@ -309,6 +310,21 @@ async fn submit_proof(
                     .as_deref()
                     .map(normalize_device_type)
                     .unwrap_or_else(|| "native".to_string());
+                // Record proof trace
+                state.proof_traces.record(
+                    pot_o_extensions::proof_trace::ProofTrace {
+                        challenge_id: body.proof.challenge_id.clone(),
+                        miner_pubkey: body.proof.miner_pubkey.clone(),
+                        device_type: device_type_normalized.clone(),
+                        accepted: true,
+                        path_distance: body.proof.path_distance,
+                        mml_score: body.proof.mml_score,
+                        neural_paths_tested: 0,
+                        successful_paths: 0,
+                        failed_paths: 0,
+                        timestamp: now,
+                    },
+                );
                 let registry_key: String = match &body.device_id {
                     Some(id) => id.clone(),
                     None => format!("{}:{}", body.proof.miner_pubkey, device_type_normalized),
@@ -1089,6 +1105,26 @@ async fn get_tx_by_hash(
     (
         StatusCode::NOT_FOUND,
         Json(serde_json::json!({ "error": "transaction not found" })),
+    )
+}
+
+// ---------------------------------------------------------------------------
+// Proof trace handler
+// ---------------------------------------------------------------------------
+
+async fn get_proof_trace(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<HashMap<String, usize>>,
+) -> impl IntoResponse {
+    tracing::debug!("GET /api/proof-trace");
+    let limit = query.get("limit").copied().unwrap_or(50).min(200);
+    let traces = state.proof_traces.recent(limit);
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "traces": traces,
+            "count": traces.len(),
+        })),
     )
 }
 

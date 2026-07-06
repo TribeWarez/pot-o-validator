@@ -47,6 +47,8 @@ pub struct AppState {
     pub canonical_tip_height: RwLock<u64>,
     /// Optional URL of the wallet service to record mining rewards
     pub wallet_url: Option<String>,
+    /// Proof trace store for recent proof submissions
+    pub proof_traces: pot_o_extensions::proof_trace::ProofTraceStore,
 }
 
 pub fn create_app_state(
@@ -71,6 +73,7 @@ pub fn create_app_state(
         auth: AuthState::new(),
         canonical_tip_height: RwLock::new(0),
         wallet_url,
+        proof_traces: pot_o_extensions::proof_trace::ProofTraceStore::new(1000),
     })
 }
 

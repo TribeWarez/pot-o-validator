@@ -9,6 +9,7 @@ pub mod mempool;
 pub mod messaging;
 pub mod peer_network;
 pub mod pool_strategy;
+pub mod proof_trace;
 pub mod rewards;
 pub mod security;
 pub mod tx;
