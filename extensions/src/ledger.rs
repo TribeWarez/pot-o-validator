@@ -89,8 +89,49 @@ impl Ledger {
         let key = (to.to_string(), token.clone());
         let entry = self.balances.entry(key).or_insert(0);
         *entry = entry.saturating_add(amount);
+        
+        // Update total supply map
+        let total = self.total_supply_map.entry(token.clone()).or_insert(0);
+        *total = total.saturating_add(amount);
+        
         self.block_height = self.block_height.saturating_add(1);
         self.modified = true;
+    }
+
+    /// Try to issue tokens, respecting supply caps from token_config
+    pub fn try_issue(&mut self, to: &str, token: &TokenType, amount: u64) -> Result<(), String> {
+        use pot_o_core::token_config::token_config;
+        
+        // Get token configuration
+        let config_set = token_config();
+        
+        // Check if token has a supply cap configured
+        if let Some(config) = config_set.get(token) {
+            // Calculate current total supply
+            let current_supply = self.total_supply_of(token);
+            
+            // Check if adding this amount would exceed the cap
+            if current_supply.saturating_add(amount) > config.supply_cap {
+                return Err(format!(
+                    "Supply cap exceeded for {:?}: current={}, requested={}, cap={}",
+                    token, current_supply, amount, config.supply_cap
+                ));
+            }
+        }
+        
+        // If all checks pass, issue the tokens
+        let key = (to.to_string(), token.clone());
+        let entry = self.balances.entry(key).or_insert(0);
+        *entry = entry.saturating_add(amount);
+        
+        // Update total supply map
+        let total = self.total_supply_map.entry(token.clone()).or_insert(0);
+        *total = total.saturating_add(amount);
+        
+        self.block_height = self.block_height.saturating_add(1);
+        self.modified = true;
+        
+        Ok(())
     }
 
     pub fn transfer(

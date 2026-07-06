@@ -91,13 +91,12 @@ fn test_ed25519_authority_creation() {
 
 #[test]
 fn test_extension_registry_local_defaults() {
-    let registry = ExtensionRegistry::local_defaults("", 25);
+    let _registry = ExtensionRegistry::local_defaults("", 25);
 
     // Registry should have all components
     assert!(true);
 }
 
-#[test]
 #[tokio::test]
 async fn test_tribechain_bridge_noop_submit() {
     let bridge = TribechainBridge::new();
@@ -112,7 +111,7 @@ async fn test_tribechain_bridge_noop_submit() {
             computation_nonce: 0,
             computation_hash: "bbbb".into(),
             miner_pubkey: "miner1".into(),
-            timestamp: "".into(),
+            timestamp: chrono::Utc::now(),
         },
         signature: vec![],
     };
@@ -261,4 +260,78 @@ fn test_extension_registry_trait_composition() {
     let _pool: &dyn PoolStrategy = &*registry.pool;
     let _chain: &dyn ChainBridge = &*registry.chain;
     let _auth: &dyn ProofAuthority = &*registry.auth;
+}
+
+// ============================================================================
+// TASK 2: Supply Cap Enforcement Tests
+// ============================================================================
+
+#[cfg(test)]
+mod task2_supply_caps {
+    use pot_o_core::TokenType;
+    use pot_o_extensions::ledger::Ledger;
+
+    #[test]
+    fn test_issue_respects_supply_cap() {
+        let mut ledger = Ledger::new("fee_address".to_string());
+        
+        // Try to issue STOMP above its 1T cap
+        // Cap is 1_000_000_000_000
+        ledger.issue("address1", &TokenType::STOMP, 900_000_000_000);
+        assert_eq!(ledger.balance_of("address1", &TokenType::STOMP), 900_000_000_000);
+        
+        // Try to issue more that would exceed cap
+        let result = ledger.try_issue("address2", &TokenType::STOMP, 200_000_000_000);
+        assert!(result.is_err(), "Should reject issue that exceeds supply cap");
+        
+        // Should only allow 100_000_000_000 more
+        let result = ledger.try_issue("address2", &TokenType::STOMP, 100_000_000_000);
+        assert!(result.is_ok(), "Should allow issue within supply cap");
+        assert_eq!(ledger.balance_of("address2", &TokenType::STOMP), 100_000_000_000);
+        assert_eq!(ledger.total_supply_of(&TokenType::STOMP), 1_000_000_000_000);
+    }
+
+    #[test]
+    fn test_supply_cap_enforcement_aum() {
+        let mut ledger = Ledger::new("fee".to_string());
+        
+        // AUM has 2T cap
+        let cap = 2_000_000_000_000;
+        
+        ledger.issue("a1", &TokenType::AUM, cap / 2);
+        ledger.issue("a2", &TokenType::AUM, cap / 2);
+        
+        assert_eq!(ledger.total_supply_of(&TokenType::AUM), cap);
+        
+        // Any additional issue should fail
+        let result = ledger.try_issue("a3", &TokenType::AUM, 1);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_supply_cap_enforcement_ravecoin() {
+        let mut ledger = Ledger::new("fee".to_string());
+        
+        // RAVECOIN has 500B cap
+        let cap = 500_000_000_000;
+        
+        let result = ledger.try_issue("addr", &TokenType::RAVECOIN, cap);
+        assert!(result.is_ok());
+        
+        let result = ledger.try_issue("addr", &TokenType::RAVECOIN, 1);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_supply_cap_not_enforced_for_uncapped_tokens() {
+        let mut ledger = Ledger::new("fee".to_string());
+        
+        // TribeChain should not have supply cap enforcement
+        // (or should have very high cap)
+        ledger.issue("a1", &TokenType::TribeChain, 1_000_000_000_000_000);
+        ledger.issue("a2", &TokenType::TribeChain, 1_000_000_000_000_000);
+        
+        // Should succeed without error
+        assert!(ledger.balance_of("a1", &TokenType::TribeChain) > 0);
+    }
 }
