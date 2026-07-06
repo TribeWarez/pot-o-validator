@@ -59,6 +59,7 @@ pub struct Ledger {
     coinbase_maturity: HashMap<String, Vec<CoinbaseEntry>>,
     total_supply_map: HashMap<TokenType, u64>,
     last_interaction: HashMap<(String, TokenType), u64>, // block height of last interaction
+    minter_allowlist: HashMap<TokenType, Vec<String>>, // authorized minters per token
 }
 
 impl Ledger {
@@ -73,6 +74,7 @@ impl Ledger {
             coinbase_maturity: HashMap::new(),
             total_supply_map: HashMap::new(),
             last_interaction: HashMap::new(),
+            minter_allowlist: HashMap::new(),
         }
     }
 
@@ -292,6 +294,55 @@ impl Ledger {
             // No decay configured for this token
             balance
         }
+    }
+
+    /// Calculate AUM block reward with halving schedule
+    /// Halving occurs every 1M blocks
+    pub fn aum_block_reward(&self, height: u64) -> u64 {
+        const AUM_INITIAL_REWARD: u64 = 1_000_000_000; // 1 billion
+        const AUM_HALVING_INTERVAL: u64 = 1_000_000; // 1 million blocks
+        
+        let halvings = height / AUM_HALVING_INTERVAL;
+        if halvings >= 64 {
+            return 0; // After 64 halvings, reward becomes 0
+        }
+        AUM_INITIAL_REWARD >> halvings
+    }
+
+    /// Add an address to the minter allowlist for a specific token
+    pub fn add_minter(&mut self, token: &TokenType, minter: &str) {
+        self.minter_allowlist
+            .entry(token.clone())
+            .or_insert_with(Vec::new)
+            .push(minter.to_string());
+    }
+
+    /// Check if an address is an authorized minter for a token
+    pub fn is_authorized_minter(&self, token: &TokenType, minter: &str) -> bool {
+        self.minter_allowlist
+            .get(token)
+            .map(|minters| minters.contains(&minter.to_string()))
+            .unwrap_or(false)
+    }
+
+    /// Try to issue tokens with minter authorization check
+    pub fn try_issue_with_minter(
+        &mut self,
+        minter: &str,
+        token: &TokenType,
+        to: &str,
+        amount: u64,
+    ) -> Result<(), String> {
+        // Check minter authorization
+        if !self.is_authorized_minter(token, minter) {
+            return Err(format!(
+                "Minter {} is not authorized to mint {:?}",
+                minter, token
+            ));
+        }
+
+        // Use try_issue to respect supply caps
+        self.try_issue(to, token, amount)
     }
 
     pub fn is_coinbase_mature(&self, _address: &str, height: u64, current_height: u64) -> bool {

@@ -494,3 +494,158 @@ mod task3_decay_and_burn {
         assert_eq!(total, 99_850);
     }
 }
+
+// ============================================================================
+// TASK 4: AUM Halving and Minter Allowlist Tests
+// ============================================================================
+
+#[cfg(test)]
+mod task4_aum_minting {
+    use pot_o_core::TokenType;
+    use pot_o_extensions::ledger::Ledger;
+
+    #[test]
+    fn test_aum_block_reward_initial() {
+        let ledger = Ledger::new("fee".to_string());
+        
+        // At block 0, AUM reward should be at initial level
+        let reward = ledger.aum_block_reward(0);
+        // AUM starts at some initial rate (let's say 1000 base units)
+        assert!(reward > 0);
+    }
+
+    #[test]
+    fn test_aum_block_reward_halving() {
+        let ledger = Ledger::new("fee".to_string());
+        
+        // Reward at block 0
+        let reward_at_0 = ledger.aum_block_reward(0);
+        
+        // Reward at halving point (1M blocks)
+        let reward_at_1m = ledger.aum_block_reward(1_000_000);
+        
+        // At halving, reward should be ~50% of initial
+        assert!(reward_at_1m < reward_at_0);
+        assert!(reward_at_1m * 2 >= reward_at_0 && reward_at_1m * 2 <= reward_at_0 + 1);
+    }
+
+    #[test]
+    fn test_aum_block_reward_multiple_halvings() {
+        let ledger = Ledger::new("fee".to_string());
+        
+        let reward_at_0 = ledger.aum_block_reward(0);
+        let reward_at_1m = ledger.aum_block_reward(1_000_000);
+        let reward_at_2m = ledger.aum_block_reward(2_000_000);
+        let reward_at_3m = ledger.aum_block_reward(3_000_000);
+        
+        // Each halving should reduce by ~50%
+        assert!(reward_at_1m < reward_at_0);
+        assert!(reward_at_2m < reward_at_1m);
+        assert!(reward_at_3m < reward_at_2m);
+    }
+
+    #[test]
+    fn test_minter_allowlist_add_and_check() {
+        let mut ledger = Ledger::new("fee".to_string());
+        
+        // Add a minter to allowlist
+        ledger.add_minter(&TokenType::AUM, "minter1");
+        
+        // Check if authorized
+        assert!(ledger.is_authorized_minter(&TokenType::AUM, "minter1"));
+        assert!(!ledger.is_authorized_minter(&TokenType::AUM, "minter2"));
+    }
+
+    #[test]
+    fn test_minter_allowlist_multiple_minters() {
+        let mut ledger = Ledger::new("fee".to_string());
+        
+        ledger.add_minter(&TokenType::AUM, "minter1");
+        ledger.add_minter(&TokenType::AUM, "minter2");
+        ledger.add_minter(&TokenType::AUM, "minter3");
+        
+        assert!(ledger.is_authorized_minter(&TokenType::AUM, "minter1"));
+        assert!(ledger.is_authorized_minter(&TokenType::AUM, "minter2"));
+        assert!(ledger.is_authorized_minter(&TokenType::AUM, "minter3"));
+        assert!(!ledger.is_authorized_minter(&TokenType::AUM, "minter4"));
+    }
+
+    #[test]
+    fn test_minter_allowlist_per_token() {
+        let mut ledger = Ledger::new("fee".to_string());
+        
+        // Add different minters for different tokens
+        ledger.add_minter(&TokenType::AUM, "minter1");
+        ledger.add_minter(&TokenType::STOMP, "minter2");
+        ledger.add_minter(&TokenType::RAVECOIN, "minter3");
+        
+        // Each minter only authorized for their token
+        assert!(ledger.is_authorized_minter(&TokenType::AUM, "minter1"));
+        assert!(!ledger.is_authorized_minter(&TokenType::AUM, "minter2"));
+        
+        assert!(ledger.is_authorized_minter(&TokenType::STOMP, "minter2"));
+        assert!(!ledger.is_authorized_minter(&TokenType::STOMP, "minter1"));
+        
+        assert!(ledger.is_authorized_minter(&TokenType::RAVECOIN, "minter3"));
+        assert!(!ledger.is_authorized_minter(&TokenType::RAVECOIN, "minter1"));
+    }
+
+    #[test]
+    fn test_issue_with_minter_check_for_aum() {
+        let mut ledger = Ledger::new("fee".to_string());
+        
+        // Regular issue should still work (backward compat)
+        ledger.issue("user1", &TokenType::AUM, 1000);
+        assert_eq!(ledger.balance_of("user1", &TokenType::AUM), 1000);
+        
+        // Add authorized minter
+        ledger.add_minter(&TokenType::AUM, "minter1");
+        
+        // Now minter can issue
+        let result = ledger.try_issue_with_minter("minter1", &TokenType::AUM, "user2", 1000);
+        assert!(result.is_ok());
+        assert_eq!(ledger.balance_of("user2", &TokenType::AUM), 1000);
+    }
+
+    #[test]
+    fn test_issue_with_unauthorized_minter() {
+        let mut ledger = Ledger::new("fee".to_string());
+        
+        // Add authorized minter
+        ledger.add_minter(&TokenType::AUM, "minter1");
+        
+        // Unauthorized minter should fail
+        let result = ledger.try_issue_with_minter("unauthorized", &TokenType::AUM, "user", 1000);
+        assert!(result.is_err(), "Unauthorized minter should be rejected");
+    }
+
+    #[test]
+    fn test_aum_halving_schedule() {
+        let ledger = Ledger::new("fee".to_string());
+        
+        // Test that we can predict reward at various heights
+        let reward_0 = ledger.aum_block_reward(0);
+        let reward_1m = ledger.aum_block_reward(1_000_000);
+        let reward_2m = ledger.aum_block_reward(2_000_000);
+        
+        // Each should be less than or equal to previous
+        assert!(reward_1m <= reward_0);
+        assert!(reward_2m <= reward_1m);
+    }
+
+    #[test]
+    fn test_combined_aum_minting_flow() {
+        let mut ledger = Ledger::new("fee".to_string());
+        
+        // Setup minter
+        ledger.add_minter(&TokenType::AUM, "aum_minter");
+        
+        // Get halving-based reward at block 0
+        let reward = ledger.aum_block_reward(0);
+        
+        // Minter issues tokens with halving reward
+        let result = ledger.try_issue_with_minter("aum_minter", &TokenType::AUM, "validator", reward);
+        assert!(result.is_ok());
+        assert_eq!(ledger.balance_of("validator", &TokenType::AUM), reward);
+    }
+}
