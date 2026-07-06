@@ -231,6 +231,9 @@ impl ValidatorConfig {
             .unwrap_or_else(Self::defaults);
 
         // Env overrides
+        if let Ok(v) = std::env::var("NODE_ID") {
+            cfg.node_id = v;
+        }
         if let Ok(v) = std::env::var("SOLANA_RPC_URL") {
             cfg.solana_rpc_url = v;
         }

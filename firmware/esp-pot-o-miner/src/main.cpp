@@ -44,9 +44,11 @@ static unsigned long g_last_heartbeat = 0;
 
 void wifi_connect();
 String rpc_url(const char* path);
+String bootstrap_url(const char* path);
 bool rpc_post(const char* path, const String& body, String& response);
 bool rpc_get(const char* path, String& response);
 bool register_device();
+bool discover_bootstrap_peers();
 bool fetch_challenge(JsonDocument& challenge_doc);
 bool mine_challenge(const JsonDocument& challenge, JsonDocument& proof_doc);
 bool submit_proof(const JsonDocument& proof);
@@ -73,6 +75,9 @@ void setup() {
     stats.uptime_start = millis();
     wifi_connect();
     register_device();
+#ifdef POT_BOOTSTRAP_URL
+    discover_bootstrap_peers();
+#endif
 }
 
 // ── Main loop ───────────────────────────────────────────────────────────────
@@ -172,6 +177,12 @@ String rpc_url(const char* path) {
 #endif
 }
 
+#ifdef POT_BOOTSTRAP_URL
+String bootstrap_url(const char* path) {
+    return String("https://") + POT_BOOTSTRAP_URL + ":" + String(POT_BOOTSTRAP_PORT) + path;
+}
+#endif
+
 bool rpc_post(const char* path, const String& body, String& response) {
     HTTPClient http;
 #if defined(ESP32S_DEVICE)
@@ -241,6 +252,54 @@ bool register_device() {
     g_device_id = WiFi.macAddress();
     return false;
 }
+
+// ── Bootstrap peer discovery ────────────────────────────────────────────────
+
+#ifdef POT_BOOTSTRAP_URL
+bool discover_bootstrap_peers() {
+    Serial.printf("[BOOTSTRAP] Discovering peers via %s\n", POT_BOOTSTRAP_URL);
+    String resp;
+    HTTPClient http;
+#if defined(ESP32S_DEVICE)
+    WiFiClientSecure client;
+    client.setInsecure();
+    http.begin(client, bootstrap_url("/peers"));
+#else
+    std::unique_ptr<BearSSL::WiFiClientSecure> client(new BearSSL::WiFiClientSecure);
+    client->setInsecure();
+    http.begin(*client, bootstrap_url("/peers"));
+#endif
+    http.setTimeout(10000);
+
+    int code = http.GET();
+    if (code > 0) {
+        resp = http.getString();
+        http.end();
+        if (code >= 200 && code < 300) {
+            JsonDocument doc;
+            DeserializationError err = deserializeJson(doc, resp);
+            if (err) {
+                Serial.printf("[BOOTSTRAP] JSON parse error: %s\n", err.c_str());
+                return false;
+            }
+            JsonArray peers = doc["peers"].as<JsonArray>();
+            int count = 0;
+            for (JsonVariant v : peers) {
+                const char* host = v["host"] | "";
+                int port = v["port"] | 8900;
+                if (strlen(host) > 0) {
+                    Serial.printf("[BOOTSTRAP] Peer %d: %s:%d\n", ++count, host, port);
+                }
+            }
+            Serial.printf("[BOOTSTRAP] Discovery complete: %d peer(s) found\n", count);
+            return true;
+        }
+    }
+    http.end();
+    Serial.println(F("[BOOTSTRAP] Discovery failed (non-fatal)"));
+    return false;
+}
+#endif
 
 // ── Challenge fetch ─────────────────────────────────────────────────────────
 

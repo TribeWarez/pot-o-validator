@@ -1,16 +1,15 @@
 # pot-o-validator
 
 [![crates.io](https://img.shields.io/crates/v/pot-o-validator.svg)](https://crates.io/crates/pot-o-validator)
-[![GitHub release](https://img.shields.io/github/v/release/TribeWarez/pot-o-validator)](https://github.com/TribeWarez/pot-o-validator/releases/latest)
 [![docs.rs](https://img.shields.io/docsrs/pot-o-validator)](https://docs.rs/pot-o-validator)
-[![CI](https://img.shields.io/github/actions/workflow/status/TribeWarez/pot-o-validator/pot-o-validator.yml?branch=main)](https://github.com/TribeWarez/pot-o-validator/actions)
-[![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
+[![CI](https://img.shields.io/github/actions/workflow/status/TribeWarez/tribe/pot-o-validator.yml?branch=main)](https://github.com/TribeWarez/tribe/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 PoT-O (Proof of Tensor Optimizations) Validator Service — HTTP API and consensus node for the TribeWarez testnet.
 
 - **Crate:** [crates.io/crates/pot-o-validator](https://crates.io/crates/pot-o-validator)
 - **Docs:** [docs.rs/pot-o-validator](https://docs.rs/pot-o-validator)
-- **Repository:** [github.com/TribeWarez/pot-o-validator](https://github.com/TribeWarez/pot-o-validator)
+- **Repository:** [github.com/TribeWarez/tribe](https://github.com/TribeWarez/tribe) (path: `gateway.tribewarez.com/testnet.rpc.gateway.tribewarez.com/pot-o-validator`)
 
 ## Crates
 
@@ -40,4 +39,4 @@ Releases follow semantic versioning. To publish a new release:
 
 ## License
 
-[GPL-3.0](LICENSE) — TribeWarez.
+[MIT](LICENSE) — TribeWarez.

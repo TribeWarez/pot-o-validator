@@ -62,6 +62,23 @@ pub trait PeerNetwork: Send + Sync {
     async fn push_lattice(&self, _snapshot: &serde_json::Value) -> TribeResult<usize> {
         Ok(0)
     }
+
+    /// Register this node with bootstrap registry URL(s).
+    /// Default is no-op; VpnMeshNetwork overrides with HTTP POST.
+    async fn register_with_bootstrap(&self, _cfg: &RegistrationConfig) -> TribeResult<()> {
+        Ok(())
+    }
+}
+
+/// Configuration for bootstrap registry self-registration.
+#[derive(Debug, Clone)]
+pub struct RegistrationConfig {
+    pub node_id: String,
+    pub address: String,
+    pub port: u16,
+    pub version: String,
+    pub bootstrap_urls: Vec<String>,
+    pub timeout_secs: u64,
 }
 
 // ---------------------------------------------------------------------------
@@ -379,6 +396,25 @@ impl PeerNetwork for VpnMeshNetwork {
                 .post(&url)
                 .timeout(std::time::Duration::from_secs(self.peer_timeout_secs))
                 .json(tx)
+                .send()
+                .await;
+        }
+        Ok(())
+    }
+
+    async fn register_with_bootstrap(&self, cfg: &RegistrationConfig) -> TribeResult<()> {
+        let body = serde_json::json!({
+            "node_id": cfg.node_id,
+            "address": cfg.address,
+            "port": cfg.port,
+            "version": cfg.version,
+        });
+        for url in &cfg.bootstrap_urls {
+            let register_url = format!("{}/register", url.trim_end_matches('/'));
+            let _ = reqwest::Client::new()
+                .post(&register_url)
+                .timeout(std::time::Duration::from_secs(cfg.timeout_secs))
+                .json(&body)
                 .send()
                 .await;
         }

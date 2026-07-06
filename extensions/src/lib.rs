@@ -51,7 +51,7 @@ use tokio::sync::RwLock;
 /// Constructed once at startup from config/env, then passed by reference.
 pub struct ExtensionRegistry {
     pub device: Box<dyn DeviceProtocol>,
-    pub network: Box<dyn PeerNetwork>,
+    pub network: Arc<dyn PeerNetwork>,
     pub pool: Box<dyn PoolStrategy>,
     pub chain: Box<dyn ChainBridge>,
     pub auth: Box<dyn ProofAuthority>,
@@ -74,7 +74,7 @@ impl ExtensionRegistry {
     ) -> Self {
         Self {
             device: Box::new(NativeDevice::new()),
-            network: Box::new(LocalOnlyNetwork::new()),
+            network: Arc::new(LocalOnlyNetwork::new()),
             pool: Box::new(SoloStrategy),
             chain: Box::new(SolanaBridge::new(
                 solana_rpc_url.to_string(),
@@ -127,7 +127,7 @@ impl ExtensionRegistry {
         _challenge_relay_enabled: bool,
     ) -> Self {
         // Parse network mode
-        let network: Box<dyn PeerNetwork> = match peer_network_mode {
+        let network: Arc<dyn PeerNetwork> = match peer_network_mode {
             "vpn_mesh" => {
                 let config = peer_network::VpnMeshConfig {
                     wireguard_interface: "wg0".into(),
@@ -143,11 +143,11 @@ impl ExtensionRegistry {
                     mdns_service_name,
                     peer_timeout_secs,
                 ) {
-                    Ok(network) => Box::new(network),
-                    Err(_) => Box::new(LocalOnlyNetwork::new()), // Fallback on error
+                    Ok(network) => Arc::new(network),
+                    Err(_) => Arc::new(LocalOnlyNetwork::new()), // Fallback on error
                 }
             }
-            _ => Box::new(LocalOnlyNetwork::new()), // Default: local_only
+            _ => Arc::new(LocalOnlyNetwork::new()), // Default: local_only
         };
 
         // Parse pool strategy

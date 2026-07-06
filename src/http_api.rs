@@ -1099,7 +1099,6 @@ async fn post_tribechain_tx(
     Json(body): Json<TribechainTxRequest>,
 ) -> impl IntoResponse {
     tracing::info!("POST /api/tx received");
-    
     tracing::debug!(from = %body.tx.from, "POST /api/tx");
 
     if !state.extensions.tribechain_enabled {
@@ -1118,10 +1117,17 @@ async fn post_tribechain_tx(
         );
     };
 
-    tracing::debug!(sig_len = body.tx.signature.len(), hash_len = body.tx.tx_hash.len(), "tx fields");
+    tracing::debug!(
+        sig_len = body.tx.signature.len(),
+        hash_len = body.tx.tx_hash.len(),
+        "tx fields"
+    );
 
     if body.tx.signature.len() != 64 {
-        tracing::warn!(sig_len = body.tx.signature.len(), "invalid signature length");
+        tracing::warn!(
+            sig_len = body.tx.signature.len(),
+            "invalid signature length"
+        );
         return (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": "invalid signature length"})),
@@ -1137,7 +1143,10 @@ async fn post_tribechain_tx(
     }
 
     tracing::info!("calling mempool.submit");
-    match mempool.submit(body.tx.clone(), &state.extensions.ledger).await {
+    match mempool
+        .submit(body.tx.clone(), &state.extensions.ledger)
+        .await
+    {
         Ok(tx_hash) => {
             let tx_json = serde_json::to_value(&body.tx).unwrap_or_default();
             let _ = state

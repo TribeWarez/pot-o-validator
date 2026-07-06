@@ -108,13 +108,14 @@ fn parse_pubkey(s: &str) -> Result<Pubkey, TribeError> {
         return Ok(pk);
     }
     // Fallback: try hex decode to 32 bytes
-    let bytes = hex::decode(s)
-        .map_err(|e| TribeError::ChainBridgeError(format!("invalid miner pubkey (not base58 or hex): {e}")))?;
-    let arr: [u8; 32] = bytes
-        .try_into()
-        .map_err(|_| TribeError::ChainBridgeError(
-            "invalid miner pubkey: hex must decode to exactly 32 bytes".into()
-        ))?;
+    let bytes = hex::decode(s).map_err(|e| {
+        TribeError::ChainBridgeError(format!("invalid miner pubkey (not base58 or hex): {e}"))
+    })?;
+    let arr: [u8; 32] = bytes.try_into().map_err(|_| {
+        TribeError::ChainBridgeError(
+            "invalid miner pubkey: hex must decode to exactly 32 bytes".into(),
+        )
+    })?;
     Ok(Pubkey::from(arr))
 }
 
