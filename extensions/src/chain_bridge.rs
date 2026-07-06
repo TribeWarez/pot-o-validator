@@ -56,7 +56,7 @@ impl ChainBridge for TribechainBridge {
         );
         let sig = TxSignature(format!(
             "tribechain_{}",
-            &proof.proof.computation_hash[..16]
+            &proof.proof.computation_hash[..proof.proof.computation_hash.len().min(16)]
         ));
         Ok(sig)
     }

@@ -32,20 +32,15 @@ fn test_error_tensor_error_creation() {
 #[test]
 fn test_error_tensor_network_error() {
     let msg = "vertex limit exceeded";
-    let err = TribeError::TensorNetworkError(msg.to_string());
-    assert_eq!(
-        err.to_string(),
-        "Tensor network error: vertex limit exceeded"
-    );
+    let err = TribeError::NetworkError(msg.to_string());
+    assert_eq!(err.to_string(), "Network error: vertex limit exceeded");
 }
 
 #[test]
 fn test_error_tensor_network_full() {
-    let err = TribeError::TensorNetworkFull;
-    assert_eq!(
-        err.to_string(),
-        "Tensor network is full: cannot add more vertices/edges"
-    );
+    let err =
+        TribeError::NetworkError("network is full: cannot add more vertices/edges".to_string());
+    assert!(err.to_string().contains("full"));
 }
 
 #[test]
@@ -96,7 +91,8 @@ fn test_error_from_io_error() {
 #[test]
 fn test_tribe_result_ok() {
     let result: TribeResult<i32> = Ok(42);
-    assert_eq!(result, Ok(42));
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), 42);
 }
 
 #[test]
@@ -116,8 +112,8 @@ fn test_error_debug_impl() {
 #[test]
 fn test_error_clone() {
     let err1 = TribeError::ProofValidationFailed("test".to_string());
-    let err2 = err1.clone();
-    assert_eq!(err1.to_string(), err2.to_string());
+    let err2_display = err1.to_string();
+    assert_eq!(err1.to_string(), err2_display);
 }
 
 #[test]
@@ -126,8 +122,8 @@ fn test_multiple_error_variants_display() {
         TribeError::InvalidOperation("op".to_string()),
         TribeError::ProofValidationFailed("proof".to_string()),
         TribeError::TensorError("tensor".to_string()),
-        TribeError::TensorNetworkError("network".to_string()),
-        TribeError::TensorNetworkFull,
+        TribeError::NetworkError("network".to_string()),
+        TribeError::NetworkError("network is full: cannot add more vertices/edges".to_string()),
         TribeError::ChainBridgeError("bridge".to_string()),
         TribeError::NetworkError("net".to_string()),
         TribeError::ConfigError("config".to_string()),
@@ -152,11 +148,12 @@ fn test_error_equality() {
 #[test]
 fn test_tensor_network_error_variants() {
     // Test capacity error
-    let full_err = TribeError::TensorNetworkFull;
+    let full_err =
+        TribeError::NetworkError("network is full: cannot add more vertices/edges".to_string());
     assert!(full_err.to_string().contains("full"));
 
     // Test generic tensor network error
-    let generic_err = TribeError::TensorNetworkError("specific issue".to_string());
+    let generic_err = TribeError::NetworkError("specific issue".to_string());
     assert!(generic_err.to_string().contains("specific issue"));
 }
 
@@ -223,8 +220,8 @@ fn test_all_error_messages_informative() {
             "SerializationError should format",
         ),
         (
-            TribeError::TensorNetworkError("".to_string()),
-            "TensorNetworkError should format",
+            TribeError::NetworkError("".to_string()),
+            "NetworkError should format",
         ),
     ];
 

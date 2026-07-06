@@ -45,6 +45,14 @@ impl HexConsensus {
         }
     }
 
+    /// Create a HexConsensus that loads/saves its lattice at `lattice_path`.
+    pub fn new_with_path(params: ConsensusParams, lattice_path: &str) -> Self {
+        Self {
+            params,
+            store: Arc::new(LatticeStore::with_path(lattice_path)),
+        }
+    }
+
     pub fn generate_challenge(&self, slot: u64, slot_hash: &str) -> HexChallenge {
         let coord = self.pick_coord();
         let neighbor_hashes = fill_neighbor_slots_from_store(coord, |c| self.store.hash_at(c));

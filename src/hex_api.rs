@@ -78,6 +78,10 @@ async fn post_hex_submit(
                     }
                     *state.canonical_tip_height.write().await += 1;
                 }
+                // Persist lattice immediately so restarts never lose accepted blocks
+                if let Err(e) = state.hex_consensus.store.save_to_file() {
+                    tracing::warn!(error = %e, "Hex lattice post-submit persist failed (non-fatal)");
+                }
                 tracing::info!(
                     challenge_id = %proof.challenge_id,
                     coord = ?proof.block.coord,
@@ -119,6 +123,10 @@ async fn post_hex_submit(
                             );
                         }
                         *state.canonical_tip_height.write().await += 1;
+                    }
+                    // Persist lattice immediately (genesis mode)
+                    if let Err(e) = state.hex_consensus.store.save_to_file() {
+                        tracing::warn!(error = %e, "Hex lattice genesis persist failed (non-fatal)");
                     }
                     (
                         StatusCode::OK,

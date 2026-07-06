@@ -4,7 +4,7 @@
 
 use ai3_lib::{
     AI3Engine, ESPCompatibility, ESPDeviceType, ESPMiningConfig, EngineConfig, EngineStats,
-    MiningResult, MiningTask, TaskDistributor, Tensor, TensorData, TensorEngine, TensorShape,
+    MiningTask, TaskDistributor, Tensor, TensorData, TensorEngine, TensorShape,
 };
 use std::time::Duration;
 
@@ -12,23 +12,23 @@ use std::time::Duration;
 fn test_tensor_shape_creation() {
     let shape = TensorShape::new(vec![2, 3]);
 
-    assert_eq!(shape.dims(), &[2, 3]);
+    assert_eq!(shape.dims, &[2, 3]);
 }
 
 #[test]
 fn test_tensor_shape_multidimensional() {
     let shape = TensorShape::new(vec![2, 3, 4]);
 
-    assert_eq!(shape.dims().len(), 3);
-    assert_eq!(shape.dims()[0], 2);
-    assert_eq!(shape.dims()[1], 3);
-    assert_eq!(shape.dims()[2], 4);
+    assert_eq!(shape.dims.len(), 3);
+    assert_eq!(shape.dims[0], 2);
+    assert_eq!(shape.dims[1], 3);
+    assert_eq!(shape.dims[2], 4);
 }
 
 #[test]
 fn test_tensor_creation() {
     let shape = TensorShape::new(vec![1, 1]);
-    let data = TensorData::from_vec(vec![1.0_f32]);
+    let data = TensorData::F32(vec![1.0_f32]);
 
     let tensor = Tensor::new(shape, data);
     assert!(tensor.is_ok());
@@ -37,10 +37,10 @@ fn test_tensor_creation() {
 #[test]
 fn test_tensor_access() {
     let shape = TensorShape::new(vec![2, 2]);
-    let data = TensorData::from_vec(vec![1.0_f32, 2.0_f32, 3.0_f32, 4.0_f32]);
+    let data = TensorData::F32(vec![1.0_f32, 2.0_f32, 3.0_f32, 4.0_f32]);
 
     let tensor = Tensor::new(shape, data).unwrap();
-    assert_eq!(tensor.shape().dims(), &[2, 2]);
+    assert_eq!(tensor.shape.dims, &[2, 2]);
 }
 
 #[test]
@@ -81,19 +81,18 @@ fn test_engine_stats_defaults() {
 
 #[test]
 fn test_ai3_engine_creation() {
-    let engine = AI3Engine::new();
+    let _engine = AI3Engine::new();
 
     // Engine should be created successfully
     assert!(true);
 }
 
 #[test]
-fn test_ai3_engine_clone() {
+fn test_ai3_engine_no_panic() {
+    // Verify engine can be created and stats accessed without panicking
     let engine = AI3Engine::new();
-    let engine2 = engine.clone();
-
-    // Cloning should work
-    assert!(true);
+    let stats = engine.get_stats();
+    assert_eq!(stats.total_tasks_processed, 0);
 }
 
 #[test]
@@ -123,7 +122,7 @@ fn test_mining_task_creation() {
 #[test]
 fn test_mining_task_with_inputs() {
     let shape = TensorShape::new(vec![1, 1]);
-    let data = TensorData::from_vec(vec![1.0_f32]);
+    let data = TensorData::F32(vec![1.0_f32]);
     let tensor = Tensor::new(shape, data).unwrap();
 
     let task = MiningTask::new(
@@ -164,7 +163,7 @@ fn test_mining_task_deadline() {
         "miner1".to_string(),
     );
 
-    assert_eq!(task.deadline_seconds, 600);
+    assert_eq!(task.max_computation_time, 600);
 }
 
 #[test]
@@ -183,7 +182,7 @@ fn test_mining_task_requester() {
 
 #[test]
 fn test_task_distributor_creation() {
-    let distributor = TaskDistributor::new();
+    let _distributor = TaskDistributor::new();
 
     assert!(true); // Distributor created
 }
@@ -191,52 +190,44 @@ fn test_task_distributor_creation() {
 #[test]
 fn test_esp_device_type_variants() {
     let types = vec![
-        ESPDeviceType::ESP32S3,
-        ESPDeviceType::ESP32C3,
-        ESPDeviceType::ESP32H2,
+        ESPDeviceType::ESP32,
+        ESPDeviceType::ESP32S,
+        ESPDeviceType::ESP8266,
     ];
 
-    assert!(types.len() > 0);
+    assert_eq!(types.len(), 3);
 }
 
 #[test]
-fn test_esp_compatibility_creation() {
-    let compat = ESPCompatibility::new(ESPDeviceType::ESP32S3);
+fn test_esp_compatibility_config() {
+    let config = ESPCompatibility::get_recommended_config(ESPDeviceType::ESP32S);
 
-    // Should be created
-    assert!(true);
+    // Should return a valid config
+    assert!(config.max_tensor_dim > 0);
 }
 
 #[test]
 fn test_esp_mining_config_creation() {
-    let config = ESPMiningConfig {
-        max_tensor_dim: 64,
-        chunk_size: 16,
-        battery_mode: false,
-    };
+    let config = ESPMiningConfig::for_device(ESPDeviceType::ESP32);
 
     assert_eq!(config.max_tensor_dim, 64);
-    assert_eq!(config.chunk_size, 16);
-    assert!(!config.battery_mode);
+    assert_eq!(config.rpc_port, 8900);
 }
 
 #[test]
-fn test_esp_mining_config_battery_mode() {
-    let config = ESPMiningConfig {
-        max_tensor_dim: 32,
-        chunk_size: 8,
-        battery_mode: true,
-    };
+fn test_esp_mining_config_esp8266() {
+    let config = ESPMiningConfig::for_device(ESPDeviceType::ESP8266);
 
-    assert!(config.battery_mode);
+    // ESP8266 has a smaller max tensor dim
     assert_eq!(config.max_tensor_dim, 32);
+    assert!(config.max_tensor_dim > 0);
 }
 
 #[test]
-fn test_tensor_data_from_vec() {
-    let data = TensorData::from_vec(vec![1.0_f32, 2.0_f32, 3.0_f32]);
+fn test_tensor_data_f32() {
+    let data = TensorData::F32(vec![1.0_f32, 2.0_f32, 3.0_f32]);
 
-    assert!(true); // Data created
+    assert_eq!(data.len(), 3);
 }
 
 #[test]
@@ -244,7 +235,7 @@ fn test_tensor_shape_vector_consistency() {
     let dims = vec![4, 4];
     let shape = TensorShape::new(dims.clone());
 
-    assert_eq!(shape.dims(), &dims[..]);
+    assert_eq!(shape.dims, &dims[..]);
 }
 
 #[test]
@@ -277,7 +268,7 @@ fn test_tensor_shape_clone() {
     let shape = TensorShape::new(vec![2, 3]);
     let shape2 = shape.clone();
 
-    assert_eq!(shape.dims(), shape2.dims());
+    assert_eq!(shape.dims, shape2.dims);
 }
 
 #[test]
@@ -299,28 +290,25 @@ fn test_engine_stats_clone() {
 #[test]
 fn test_mining_result_type_exists() {
     // Just verify the type is available
-    let _: &std::any::Any = &();
+    let _: &dyn std::any::Any = &();
 }
 
 #[test]
 fn test_tensor_dimension_limits_esp_compatible() {
     // ESP32 max dimension should be 64
     let max_dim = 64usize;
-    let shape = TensorShape::new(vec![max_dim as u32; 2]);
+    let shape = TensorShape::new(vec![max_dim; 2]);
 
-    assert_eq!(shape.dims()[0], max_dim as u32);
+    assert_eq!(shape.dims[0], max_dim);
 }
 
 #[test]
 fn test_mining_config_reasonable_bounds() {
-    let config = ESPMiningConfig {
-        max_tensor_dim: 64,
-        chunk_size: 16,
-        battery_mode: true,
-    };
+    let config = ESPMiningConfig::for_device(ESPDeviceType::ESP32);
 
-    // Chunk size should be <= max tensor dim
-    assert!(config.chunk_size <= config.max_tensor_dim);
+    // Max tensor dim should be positive and reasonable
+    assert!(config.max_tensor_dim > 0);
+    assert!(config.max_tensor_dim <= 256);
 }
 
 #[test]

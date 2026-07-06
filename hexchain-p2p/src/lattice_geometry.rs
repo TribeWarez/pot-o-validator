@@ -37,17 +37,25 @@ fn upper_offsets(a_layer: bool) -> [HCPCoord; 3] {
 }
 
 fn lower_offsets(a_layer: bool) -> [HCPCoord; 3] {
+    // Lower offsets must be exact negatives of the OPPOSITE layer's upper offsets
+    // so that neighbor relationships are symmetric (A sees B ↔ B sees A).
+    //
+    // a-layer upper = {(0,0,1),(1,-1,1),(-1,0,1)}
+    // b-layer upper = {(0,0,1),(-1,1,1),(0,1,1)}
+    //
+    // b-layer lower = neg(a-layer upper) = {(0,0,-1),(-1,1,-1),(1,0,-1)}
+    // a-layer lower = neg(b-layer upper) = {(0,0,-1),(1,-1,-1),(0,-1,-1)}
     if a_layer {
         [
             HCPCoord { q: 0, r: 0, s: -1 },
             HCPCoord { q: 1, r: -1, s: -1 },
-            HCPCoord { q: -1, r: 0, s: -1 },
+            HCPCoord { q: 0, r: -1, s: -1 },
         ]
     } else {
         [
             HCPCoord { q: 0, r: 0, s: -1 },
             HCPCoord { q: -1, r: 1, s: -1 },
-            HCPCoord { q: 0, r: -1, s: -1 },
+            HCPCoord { q: 1, r: 0, s: -1 },
         ]
     }
 }
@@ -167,7 +175,7 @@ mod tests {
         let n = get_neighbors(HCPCoord { q: 0, r: 0, s: 0 });
         assert_eq!(n[9], HCPCoord { q: 0, r: 0, s: -1 });
         assert_eq!(n[10], HCPCoord { q: 1, r: -1, s: -1 });
-        assert_eq!(n[11], HCPCoord { q: -1, r: 0, s: -1 });
+        assert_eq!(n[11], HCPCoord { q: 0, r: -1, s: -1 }); // neg of b-layer upper (0,1,1)
     }
 
     #[test]
@@ -183,7 +191,7 @@ mod tests {
         let n = get_neighbors(HCPCoord { q: 0, r: 0, s: 1 });
         assert_eq!(n[9], HCPCoord { q: 0, r: 0, s: 0 });
         assert_eq!(n[10], HCPCoord { q: -1, r: 1, s: 0 });
-        assert_eq!(n[11], HCPCoord { q: 0, r: -1, s: 0 });
+        assert_eq!(n[11], HCPCoord { q: 1, r: 0, s: 0 }); // neg of a-layer upper (-1,0,1)
     }
 
     #[test]
@@ -211,6 +219,23 @@ mod tests {
         let nn = get_neighbors(upper);
         let found = nn.iter().any(|&x| x == origin);
         assert!(found, "(0,0,1) should include (0,0,0) via lower slot");
+    }
+
+    #[test]
+    fn test_all_neighbors_mutual_symmetry() {
+        // Every neighbor of origin must also list origin as one of its neighbors.
+        // This catches asymmetric cross-layer offsets (the historical bug: slots 8 and 11).
+        let origin = HCPCoord { q: 0, r: 0, s: 0 };
+        let neighbors = get_neighbors(origin);
+        for (i, &nb) in neighbors.iter().enumerate() {
+            let back = get_neighbors(nb);
+            let found = back.iter().any(|&x| x == origin);
+            assert!(
+                found,
+                "neighbor[{}] {:?} does not include origin {:?} in its neighbors",
+                i, nb, origin
+            );
+        }
     }
 
     #[test]

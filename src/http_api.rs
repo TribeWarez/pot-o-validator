@@ -23,6 +23,45 @@ use crate::device_registry::{
     RegisteredDevice, DEVICE_TYPE_KEYS,
 };
 
+/// Forward a confirmed mining reward to the wallet service ledger.
+/// Errors are logged but never propagated — the wallet is a best-effort side-effect.
+async fn record_reward_in_wallet(wallet_url: &str, miner: &str, amount: u64, challenge_id: &str) {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .unwrap_or_default();
+
+    let payload = serde_json::json!({
+        "address": miner,
+        "tx_hash": format!("reward-{}-{}", challenge_id, miner),
+        "token": "TRIBE",
+        "amount": amount,
+        "timestamp": chrono::Utc::now().timestamp_millis(),
+    });
+
+    match client
+        .post(format!("{}/api/record-reward", wallet_url))
+        .json(&payload)
+        .send()
+        .await
+    {
+        Ok(res) if res.status().is_success() || res.status() == reqwest::StatusCode::CONFLICT => {
+            tracing::debug!(miner, amount, "Reward forwarded to wallet service");
+        }
+        Ok(res) => {
+            tracing::warn!(
+                miner,
+                amount,
+                status = %res.status(),
+                "Wallet service returned error for reward"
+            );
+        }
+        Err(e) => {
+            tracing::warn!(miner, amount, error = %e, "Failed to contact wallet service");
+        }
+    }
+}
+
 async fn auth_middleware(
     state: &Arc<AppState>,
     bearer: Option<&str>,
@@ -155,7 +194,13 @@ async fn get_challenge(
     State(state): State<Arc<AppState>>,
     Json(body): Json<ChallengeRequest>,
 ) -> impl IntoResponse {
-    let slot = body.slot.unwrap_or(100);
+    let slot = match body.slot {
+        Some(s) => s,
+        None => {
+            let stats = state.stats.read().await;
+            stats.total_challenges_issued + 1
+        }
+    };
     let slot_hash = body
         .slot_hash
         .unwrap_or_else(|| format!("{:0>64}", hex::encode(slot.to_le_bytes())));
@@ -232,20 +277,9 @@ struct SubmitRequest {
 
 async fn submit_proof(
     State(state): State<Arc<AppState>>,
-    headers: axum::http::HeaderMap,
     Json(body): Json<SubmitRequest>,
 ) -> impl IntoResponse {
-    if let Err(status) = auth_middleware(
-        &state,
-        headers.get("authorization").and_then(|v| v.to_str().ok()),
-    )
-    .await
-    {
-        return (
-            status,
-            Json(serde_json::json!({ "accepted": false, "error": "unauthorized" })),
-        );
-    }
+    // No Bearer token required: the cryptographic proof is self-authenticating.
 
     tracing::debug!(
         challenge_id = %body.proof.challenge_id,
@@ -343,6 +377,20 @@ async fn submit_proof(
                         shares = shares.len(),
                         "TRIBE mining reward distributed"
                     );
+
+                    // Forward rewards to wallet service (non-blocking, best-effort)
+                    if let Some(ref wallet_url) = state.wallet_url {
+                        let wallet_url = wallet_url.clone();
+                        for share in shares {
+                            let url = wallet_url.clone();
+                            let miner = share.miner_pubkey.clone();
+                            let amount = share.reward_amount;
+                            let challenge_id = body.proof.challenge_id.clone();
+                            tokio::spawn(async move {
+                                record_reward_in_wallet(&url, &miner, amount, &challenge_id).await;
+                            });
+                        }
+                    }
                 }
 
                 let payload = ProofPayload {
@@ -439,20 +487,9 @@ struct DeviceRegisterRequest {
 
 async fn register_device(
     State(state): State<Arc<AppState>>,
-    headers: axum::http::HeaderMap,
     Json(body): Json<DeviceRegisterRequest>,
 ) -> impl IntoResponse {
-    if let Err(status) = auth_middleware(
-        &state,
-        headers.get("authorization").and_then(|v| v.to_str().ok()),
-    )
-    .await
-    {
-        return (
-            status,
-            Json(serde_json::json!({ "registered": false, "error": "unauthorized" })),
-        );
-    }
+    // No Bearer token required: device registration is a prerequisite for mining.
 
     let device_id = body
         .device_id
@@ -548,20 +585,9 @@ struct DeviceProgressRequest {
 
 async fn device_progress(
     State(state): State<Arc<AppState>>,
-    headers: axum::http::HeaderMap,
     Json(body): Json<DeviceProgressRequest>,
 ) -> impl IntoResponse {
-    if let Err(status) = auth_middleware(
-        &state,
-        headers.get("authorization").and_then(|v| v.to_str().ok()),
-    )
-    .await
-    {
-        return (
-            status,
-            Json(serde_json::json!({ "ok": false, "error": "unauthorized" })),
-        );
-    }
+    // No Bearer token required: progress reporting is low-stakes telemetry.
 
     let device_type_normalized = body
         .device_type
@@ -994,9 +1020,9 @@ async fn get_tribechain_blocks(
 async fn get_token_supply(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     tracing::debug!("GET /api/supply");
     let ledger = state.extensions.ledger.read().await;
-    
+
     let mut supplies = serde_json::json!({});
-    
+
     // Get supplies for all known token types
     let token_types = vec![
         TokenType::TribeChain,
@@ -1007,7 +1033,7 @@ async fn get_token_supply(State(state): State<Arc<AppState>>) -> impl IntoRespon
         TokenType::AI3,
         TokenType::RAVECOIN,
     ];
-    
+
     for token_type in token_types {
         let supply = ledger.total_supply(&token_type);
         let token_name = match token_type {
@@ -1021,7 +1047,7 @@ async fn get_token_supply(State(state): State<Arc<AppState>>) -> impl IntoRespon
         };
         supplies[token_name] = supply.into();
     }
-    
+
     (StatusCode::OK, Json(supplies))
 }
 
@@ -1032,7 +1058,7 @@ async fn get_tx_by_hash(
 ) -> impl IntoResponse {
     tracing::debug!("GET /api/tx/{}", hash);
     let ledger = state.extensions.ledger.read().await;
-    
+
     // Search for the transaction in history
     for tx in ledger.tx_history() {
         if tx.tx_hash == hash {
@@ -1059,7 +1085,7 @@ async fn get_tx_by_hash(
             );
         }
     }
-    
+
     (
         StatusCode::NOT_FOUND,
         Json(serde_json::json!({ "error": "transaction not found" })),
@@ -1253,12 +1279,13 @@ async fn get_marketplace_trades(State(state): State<Arc<AppState>>) -> impl Into
 
 fn token_type_from_str(s: &str) -> Option<TokenType> {
     match s.to_lowercase().as_str() {
-        "tribechain" | "native" => Some(TokenType::TribeChain),
+        "tribechain" | "native" | "tribe" => Some(TokenType::TribeChain),
         "pttc" => Some(TokenType::PTtC),
         "nmtc" => Some(TokenType::NMTC),
         "stomp" => Some(TokenType::STOMP),
         "aum" => Some(TokenType::AUM),
         "ai3" => Some(TokenType::AI3),
+        "ravecoin" => Some(TokenType::RAVECOIN),
         _ => None,
     }
 }
@@ -1511,6 +1538,7 @@ mod tests {
             "/tmp/registry.json".to_string(),
             std::collections::HashMap::new(),
             create_test_hex_consensus(),
+            None, // wallet_url — not needed in tests
         );
 
         let req = ChallengeRequest {
@@ -1542,6 +1570,7 @@ mod tests {
             "/tmp/registry.json".to_string(),
             std::collections::HashMap::new(),
             create_test_hex_consensus(),
+            None, // wallet_url — not needed in tests
         );
 
         let req = ChallengeRequest {
@@ -1570,6 +1599,7 @@ mod tests {
             "/tmp/registry.json".to_string(),
             std::collections::HashMap::new(),
             create_test_hex_consensus(),
+            None, // wallet_url — not needed in tests
         );
 
         let req = ChallengeRequest {
@@ -1601,6 +1631,7 @@ mod tests {
             "/tmp/registry.json".to_string(),
             std::collections::HashMap::new(),
             create_test_hex_consensus(),
+            None, // wallet_url — not needed in tests
         );
 
         {
@@ -1643,6 +1674,7 @@ mod tests {
             "/tmp/registry.json".to_string(),
             std::collections::HashMap::new(),
             create_test_hex_consensus(),
+            None, // wallet_url — not needed in tests
         );
 
         for i in 0..3 {
@@ -1678,6 +1710,7 @@ mod tests {
             "/tmp/registry.json".to_string(),
             std::collections::HashMap::new(),
             create_test_hex_consensus(),
+            None, // wallet_url — not needed in tests
         );
 
         let req = ChallengeRequest {

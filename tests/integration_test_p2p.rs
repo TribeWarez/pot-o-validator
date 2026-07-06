@@ -216,7 +216,12 @@ mod p2p_integration_tests {
         let _ = wait_for_validator(&v2.url(), 5).await;
 
         // Try to fetch peer info from both validators
-        let client = reqwest::Client::new();
+        // Use a short timeout so the test doesn't hang when a real validator is
+        // running locally on port 8900 (discover_peers can block for 5+ seconds).
+        let client = reqwest::ClientBuilder::new()
+            .timeout(Duration::from_secs(3))
+            .build()
+            .unwrap_or_default();
 
         // Attempt to get peers from V1
         match client

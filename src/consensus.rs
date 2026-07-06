@@ -45,6 +45,8 @@ pub struct AppState {
     pub hex_current_challenge: RwLock<Option<HexChallenge>>,
     pub auth: AuthState,
     pub canonical_tip_height: RwLock<u64>,
+    /// Optional URL of the wallet service to record mining rewards
+    pub wallet_url: Option<String>,
 }
 
 pub fn create_app_state(
@@ -54,6 +56,7 @@ pub fn create_app_state(
     registry_path: String,
     device_registry: HashMap<String, RegisteredDevice>,
     hex_consensus: HexConsensus,
+    wallet_url: Option<String>,
 ) -> Arc<AppState> {
     Arc::new(AppState {
         config: cfg,
@@ -67,6 +70,7 @@ pub fn create_app_state(
         hex_current_challenge: RwLock::new(None),
         auth: AuthState::new(),
         canonical_tip_height: RwLock::new(0),
+        wallet_url,
     })
 }
 

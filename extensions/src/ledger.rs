@@ -59,7 +59,7 @@ pub struct Ledger {
     coinbase_maturity: HashMap<String, Vec<CoinbaseEntry>>,
     total_supply_map: HashMap<TokenType, u64>,
     last_interaction: HashMap<(String, TokenType), u64>, // block height of last interaction
-    minter_allowlist: HashMap<TokenType, Vec<String>>, // authorized minters per token
+    minter_allowlist: HashMap<TokenType, Vec<String>>,   // authorized minters per token
 }
 
 impl Ledger {
@@ -93,11 +93,11 @@ impl Ledger {
         let key = (to.to_string(), token.clone());
         let entry = self.balances.entry(key).or_insert(0);
         *entry = entry.saturating_add(amount);
-        
+
         // Update total supply map
         let total = self.total_supply_map.entry(token.clone()).or_insert(0);
         *total = total.saturating_add(amount);
-        
+
         self.block_height = self.block_height.saturating_add(1);
         self.modified = true;
     }
@@ -105,15 +105,15 @@ impl Ledger {
     /// Try to issue tokens, respecting supply caps from token_config
     pub fn try_issue(&mut self, to: &str, token: &TokenType, amount: u64) -> Result<(), String> {
         use pot_o_core::token_config::token_config;
-        
+
         // Get token configuration
         let config_set = token_config();
-        
+
         // Check if token has a supply cap configured
         if let Some(config) = config_set.get(token) {
             // Calculate current total supply
             let current_supply = self.total_supply_of(token);
-            
+
             // Check if adding this amount would exceed the cap
             if current_supply.saturating_add(amount) > config.supply_cap {
                 return Err(format!(
@@ -122,19 +122,19 @@ impl Ledger {
                 ));
             }
         }
-        
+
         // If all checks pass, issue the tokens
         let key = (to.to_string(), token.clone());
         let entry = self.balances.entry(key).or_insert(0);
         *entry = entry.saturating_add(amount);
-        
+
         // Update total supply map
         let total = self.total_supply_map.entry(token.clone()).or_insert(0);
         *total = total.saturating_add(amount);
-        
+
         self.block_height = self.block_height.saturating_add(1);
         self.modified = true;
-        
+
         Ok(())
     }
 
@@ -147,11 +147,11 @@ impl Ledger {
         fee: u64,
     ) -> Result<TxReceipt, String> {
         use pot_o_core::token_config::token_config;
-        
+
         if amount == 0 {
             return Err("Transfer amount must be positive".into());
         }
-        
+
         // Calculate burn amount based on token configuration
         let config_set = token_config();
         let burn = if let Some(config) = config_set.get(token) {
@@ -159,11 +159,11 @@ impl Ledger {
         } else {
             0
         };
-        
+
         let total = amount.checked_add(fee).ok_or("Overflow in amount + fee")?;
         let from_key = (from.to_string(), token.clone());
         let from_bal = self.balances.get(&from_key).copied().unwrap_or(0);
-        
+
         // Sender must have: amount + fee + burn
         let total_needed = total.checked_add(burn).ok_or("Overflow in total + burn")?;
         if from_bal < total_needed {
@@ -173,7 +173,8 @@ impl Ledger {
             ));
         }
 
-        self.balances.insert(from_key.clone(), from_bal - total_needed);
+        self.balances
+            .insert(from_key.clone(), from_bal - total_needed);
 
         let to_key = (to.to_string(), token.clone());
         let to_bal = self.balances.entry(to_key).or_insert(0);
@@ -282,12 +283,12 @@ impl Ledger {
     /// Returns the decayed amount using exponential decay formula
     pub fn apply_decay(&self, address: &str, token: &TokenType, blocks_elapsed: u64) -> u64 {
         use pot_o_core::token_config::token_config;
-        
+
         let balance = self.balance_of(address, token);
-        
+
         // Get token configuration
         let config_set = token_config();
-        
+
         if let Some(config) = config_set.get(token) {
             config.apply_decay(balance, blocks_elapsed)
         } else {
@@ -301,7 +302,7 @@ impl Ledger {
     pub fn aum_block_reward(&self, height: u64) -> u64 {
         const AUM_INITIAL_REWARD: u64 = 1_000_000_000; // 1 billion
         const AUM_HALVING_INTERVAL: u64 = 1_000_000; // 1 million blocks
-        
+
         let halvings = height / AUM_HALVING_INTERVAL;
         if halvings >= 64 {
             return 0; // After 64 halvings, reward becomes 0
@@ -313,7 +314,7 @@ impl Ledger {
     pub fn add_minter(&mut self, token: &TokenType, minter: &str) {
         self.minter_allowlist
             .entry(token.clone())
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(minter.to_string());
     }
 
@@ -565,8 +566,8 @@ impl Ledger {
         if current + amount > TRIBE_HARD_CAP && *token == TokenType::TribeChain {
             return Err("Supply cap exceeded".into());
         }
+        // issue() already updates total_supply_map — do not increment again
         self.issue(to, token, amount);
-        *self.total_supply_map.entry(token.clone()).or_insert(0) += amount;
         Ok(())
     }
 }

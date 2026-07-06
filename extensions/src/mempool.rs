@@ -251,7 +251,7 @@ mod tests {
     use ed25519_dalek::{Keypair, PublicKey, SecretKey, Signer};
     use std::sync::Arc;
 
-    fn test_mempool_submit_and_drain_impl(ledger: &AsyncRwLock<Ledger>) {
+    async fn test_mempool_submit_and_drain_impl(ledger: &AsyncRwLock<Ledger>) {
         use ed25519_dalek::{Keypair, PublicKey, SecretKey, Signer};
 
         let secret = SecretKey::from_bytes(&[42u8; 32]).unwrap();
@@ -261,7 +261,8 @@ mod tests {
         let to = bs58::encode([99u8; 32]).into_string();
 
         ledger
-            .blocking_write()
+            .write()
+            .await
             .issue(&from, &TokenType::TribeChain, 1000);
         let mempool = Mempool::new(1000, 0);
 
@@ -293,7 +294,7 @@ mod tests {
             timestamp,
         };
 
-        let result = mempool.submit(tx, ledger);
+        let result = mempool.submit(tx, ledger).await;
         assert!(result.is_ok(), "submit should succeed: {:?}", result);
         assert_eq!(mempool.len(), 1);
 
@@ -310,10 +311,10 @@ mod tests {
         assert_eq!(mempool.len(), 0);
     }
 
-    #[test]
-    fn test_mempool_submit_and_drain() {
+    #[tokio::test]
+    async fn test_mempool_submit_and_drain() {
         let ledger = AsyncRwLock::new(Ledger::new("protocol".to_string()));
-        test_mempool_submit_and_drain_impl(&ledger);
+        test_mempool_submit_and_drain_impl(&ledger).await;
     }
 
     #[test]

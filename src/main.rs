@@ -70,13 +70,33 @@ async fn main() {
         mml: MmlParams::default(),
     };
 
-    let hex_consensus = HexConsensus::new(consensus_params);
+    // ── Lattice persistence ───────────────────────────────────────────
+    // Default to /blockstore/lattice.json so it lands in the same Docker
+    // volume as the block store (pot-o-blockstore).
+    let lattice_path =
+        std::env::var("LATTICE_PATH").unwrap_or_else(|_| "/blockstore/lattice.json".to_string());
+    let hex_consensus = HexConsensus::new_with_path(consensus_params, &lattice_path);
+    match hex_consensus.store.load_from_file() {
+        Ok(n) => tracing::info!(entries = n, path = %lattice_path, "Hex lattice loaded from disk"),
+        Err(e) => {
+            tracing::info!(reason = %e, path = %lattice_path, "Hex lattice starting fresh (no saved state)")
+        }
+    }
 
     let network = extensions.network.clone();
     let mempool = extensions.mempool.clone();
     let ledger = extensions.ledger.clone();
     let tribechain_enabled = extensions.tribechain_enabled;
     let block_store = extensions.block_store.clone();
+
+    let wallet_url = std::env::var("WALLET_URL").ok();
+    if let Some(ref url) = wallet_url {
+        tracing::info!(wallet_url = %url, "Wallet service integration enabled");
+    } else {
+        tracing::info!(
+            "WALLET_URL not set — mining rewards will not be forwarded to wallet service"
+        );
+    }
 
     let state = create_app_state(
         cfg.clone(),
@@ -85,6 +105,7 @@ async fn main() {
         registry_path,
         device_registry,
         hex_consensus,
+        wallet_url,
     );
 
     if let Some(ref bs) = block_store {
@@ -103,6 +124,21 @@ async fn main() {
             }
         });
         tracing::info!("BlockStore background persistence started");
+    }
+
+    // Persist hex lattice every 10 seconds (same cadence as block store)
+    {
+        let lattice = state.hex_consensus.store.clone();
+        tokio::spawn(async move {
+            let interval = tokio::time::Duration::from_secs(10);
+            loop {
+                tokio::time::sleep(interval).await;
+                if let Err(e) = lattice.save_to_file() {
+                    tracing::warn!(error = %e, "Failed to persist hex lattice");
+                }
+            }
+        });
+        tracing::info!(path = %lattice_path, "Hex lattice background persistence started");
     }
 
     if !cfg.bootstrap_urls.is_empty() && cfg.peer_network_mode == "vpn_mesh" {

@@ -274,35 +274,44 @@ mod task2_supply_caps {
     #[test]
     fn test_issue_respects_supply_cap() {
         let mut ledger = Ledger::new("fee_address".to_string());
-        
+
         // Try to issue STOMP above its 1T cap
         // Cap is 1_000_000_000_000
         ledger.issue("address1", &TokenType::STOMP, 900_000_000_000);
-        assert_eq!(ledger.balance_of("address1", &TokenType::STOMP), 900_000_000_000);
-        
+        assert_eq!(
+            ledger.balance_of("address1", &TokenType::STOMP),
+            900_000_000_000
+        );
+
         // Try to issue more that would exceed cap
         let result = ledger.try_issue("address2", &TokenType::STOMP, 200_000_000_000);
-        assert!(result.is_err(), "Should reject issue that exceeds supply cap");
-        
+        assert!(
+            result.is_err(),
+            "Should reject issue that exceeds supply cap"
+        );
+
         // Should only allow 100_000_000_000 more
         let result = ledger.try_issue("address2", &TokenType::STOMP, 100_000_000_000);
         assert!(result.is_ok(), "Should allow issue within supply cap");
-        assert_eq!(ledger.balance_of("address2", &TokenType::STOMP), 100_000_000_000);
+        assert_eq!(
+            ledger.balance_of("address2", &TokenType::STOMP),
+            100_000_000_000
+        );
         assert_eq!(ledger.total_supply_of(&TokenType::STOMP), 1_000_000_000_000);
     }
 
     #[test]
     fn test_supply_cap_enforcement_aum() {
         let mut ledger = Ledger::new("fee".to_string());
-        
+
         // AUM has 2T cap
         let cap = 2_000_000_000_000;
-        
+
         ledger.issue("a1", &TokenType::AUM, cap / 2);
         ledger.issue("a2", &TokenType::AUM, cap / 2);
-        
+
         assert_eq!(ledger.total_supply_of(&TokenType::AUM), cap);
-        
+
         // Any additional issue should fail
         let result = ledger.try_issue("a3", &TokenType::AUM, 1);
         assert!(result.is_err());
@@ -311,13 +320,13 @@ mod task2_supply_caps {
     #[test]
     fn test_supply_cap_enforcement_ravecoin() {
         let mut ledger = Ledger::new("fee".to_string());
-        
+
         // RAVECOIN has 500B cap
         let cap = 500_000_000_000;
-        
+
         let result = ledger.try_issue("addr", &TokenType::RAVECOIN, cap);
         assert!(result.is_ok());
-        
+
         let result = ledger.try_issue("addr", &TokenType::RAVECOIN, 1);
         assert!(result.is_err());
     }
@@ -325,12 +334,12 @@ mod task2_supply_caps {
     #[test]
     fn test_supply_cap_not_enforced_for_uncapped_tokens() {
         let mut ledger = Ledger::new("fee".to_string());
-        
+
         // TribeChain should not have supply cap enforcement
         // (or should have very high cap)
         ledger.issue("a1", &TokenType::TribeChain, 1_000_000_000_000_000);
         ledger.issue("a2", &TokenType::TribeChain, 1_000_000_000_000_000);
-        
+
         // Should succeed without error
         assert!(ledger.balance_of("a1", &TokenType::TribeChain) > 0);
     }
@@ -348,33 +357,37 @@ mod task3_decay_and_burn {
     #[test]
     fn test_apply_decay_stomp() {
         let mut ledger = Ledger::new("fee".to_string());
-        
+
         // Issue STOMP tokens
         ledger.issue("alice", &TokenType::STOMP, 1_000_000);
-        
+
         // Immediately check balance
         assert_eq!(ledger.balance_of("alice", &TokenType::STOMP), 1_000_000);
-        
+
         // Apply decay at 0 blocks - should have no effect
         let amount = ledger.apply_decay("alice", &TokenType::STOMP, 0);
         assert_eq!(amount, 1_000_000);
-        
+
         // Apply decay at half-life (1M blocks) - should be ~50%
         let amount = ledger.apply_decay("alice", &TokenType::STOMP, 1_000_000);
-        assert!(amount > 490_000 && amount < 510_000, "Expected ~500_000 at half-life, got {}", amount);
+        assert!(
+            amount > 490_000 && amount < 510_000,
+            "Expected ~500_000 at half-life, got {}",
+            amount
+        );
     }
 
     #[test]
     fn test_apply_decay_ravecoin() {
         let mut ledger = Ledger::new("fee".to_string());
-        
+
         // RAVECOIN has 500K block half-life
         ledger.issue("bob", &TokenType::RAVECOIN, 1_000_000);
-        
+
         // At 0 blocks
         let amount = ledger.apply_decay("bob", &TokenType::RAVECOIN, 0);
         assert_eq!(amount, 1_000_000);
-        
+
         // At half-life (500K blocks)
         let amount = ledger.apply_decay("bob", &TokenType::RAVECOIN, 500_000);
         assert!(amount > 490_000 && amount < 510_000);
@@ -383,32 +396,34 @@ mod task3_decay_and_burn {
     #[test]
     fn test_update_interaction_timestamp() {
         let mut ledger = Ledger::new("fee".to_string());
-        
+
         // Update interaction time for an address
         ledger.update_interaction("charlie", &TokenType::STOMP);
-        
+
         // Should record the current block height
-        assert!(ledger.last_interaction("charlie", &TokenType::STOMP).is_some());
+        assert!(ledger
+            .last_interaction("charlie", &TokenType::STOMP)
+            .is_some());
     }
 
     #[test]
     fn test_transfer_with_burn_stomp() {
         let mut ledger = Ledger::new("fee".to_string());
-        
+
         // Issue tokens
         ledger.issue("alice", &TokenType::STOMP, 10_000);
-        
+
         // Transfer 1000 tokens (burn rate is 50 bps = 0.5%)
         // Expected burn: 1000 * 50 / 10000 = 5 tokens
         let result = ledger.transfer("alice", "bob", &TokenType::STOMP, 1000, 0);
         assert!(result.is_ok());
-        
+
         // Alice should have lost: 1000 (transferred) + 5 (burn) = 1005
         assert_eq!(ledger.balance_of("alice", &TokenType::STOMP), 10_000 - 1005);
-        
+
         // Bob should have received: 1000
         assert_eq!(ledger.balance_of("bob", &TokenType::STOMP), 1000);
-        
+
         // Total supply reduced by burn amount
         // 10_000 issued -> 5 burned -> 9_995 total
         let total = ledger.total_supply_of(&TokenType::STOMP);
@@ -418,17 +433,20 @@ mod task3_decay_and_burn {
     #[test]
     fn test_transfer_burn_ravecoin() {
         let mut ledger = Ledger::new("fee".to_string());
-        
+
         ledger.issue("alice", &TokenType::RAVECOIN, 10_000);
-        
+
         // RAVECOIN has 100 bps = 1% burn rate
         // Expected burn: 1000 * 100 / 10000 = 10 tokens
         let result = ledger.transfer("alice", "bob", &TokenType::RAVECOIN, 1000, 0);
         assert!(result.is_ok());
-        
+
         // Alice loses 1000 + 10 = 1010
-        assert_eq!(ledger.balance_of("alice", &TokenType::RAVECOIN), 10_000 - 1010);
-        
+        assert_eq!(
+            ledger.balance_of("alice", &TokenType::RAVECOIN),
+            10_000 - 1010
+        );
+
         // Bob gets 1000
         assert_eq!(ledger.balance_of("bob", &TokenType::RAVECOIN), 1000);
     }
@@ -436,16 +454,16 @@ mod task3_decay_and_burn {
     #[test]
     fn test_transfer_no_burn_aum() {
         let mut ledger = Ledger::new("fee".to_string());
-        
+
         ledger.issue("alice", &TokenType::AUM, 10_000);
-        
+
         // AUM has 0 bps = no burn
         let result = ledger.transfer("alice", "bob", &TokenType::AUM, 1000, 0);
         assert!(result.is_ok());
-        
+
         // Alice loses exactly 1000 (no burn)
         assert_eq!(ledger.balance_of("alice", &TokenType::AUM), 9_000);
-        
+
         // Bob gets exactly 1000
         assert_eq!(ledger.balance_of("bob", &TokenType::AUM), 1000);
     }
@@ -453,19 +471,22 @@ mod task3_decay_and_burn {
     #[test]
     fn test_transfer_with_fee_and_burn() {
         let mut ledger = Ledger::new("fee_collector".to_string());
-        
+
         ledger.issue("alice", &TokenType::STOMP, 10_000);
-        
+
         // Transfer with fee: 100 amount, 10 fee, 50 bps burn
         // Burn on amount: 100 * 50 / 10000 = 0 (rounded down)
         // Total burn from amount is negligible
         let result = ledger.transfer("alice", "bob", &TokenType::STOMP, 100, 10);
         assert!(result.is_ok());
-        
+
         // Alice should lose: 100 (amount) + 10 (fee) + 0 (burn negligible) = 110
         // Bob should receive: 100
         // fee_collector should receive: 10
-        assert_eq!(ledger.balance_of("alice", &TokenType::STOMP), 10_000 - 100 - 10);
+        assert_eq!(
+            ledger.balance_of("alice", &TokenType::STOMP),
+            10_000 - 100 - 10
+        );
         assert_eq!(ledger.balance_of("bob", &TokenType::STOMP), 100);
         assert_eq!(ledger.balance_of("fee_collector", &TokenType::STOMP), 10);
     }
@@ -473,23 +494,23 @@ mod task3_decay_and_burn {
     #[test]
     fn test_multiple_transfers_accumulate_burn() {
         let mut ledger = Ledger::new("fee".to_string());
-        
+
         ledger.issue("alice", &TokenType::RAVECOIN, 100_000);
-        
+
         // RAVECOIN: 100 bps = 1% burn
         // First transfer: 10_000 amount -> 100 burn
         let _ = ledger.transfer("alice", "bob", &TokenType::RAVECOIN, 10_000, 0);
         // Alice: 100_000 - 10_000 - 100 = 89_900
         // Bob: 10_000
         // Total: 89_900 + 10_000 = 99_900
-        
+
         // Second transfer: from bob to charlie
         // 5_000 amount -> 50 burn
         let _ = ledger.transfer("bob", "charlie", &TokenType::RAVECOIN, 5_000, 0);
         // Bob: 10_000 - 5_000 - 50 = 4_950
         // Charlie: 5_000
         // Total: 89_900 + 4_950 + 5_000 = 99_850
-        
+
         let total = ledger.total_supply_of(&TokenType::RAVECOIN);
         assert_eq!(total, 99_850);
     }
@@ -507,7 +528,7 @@ mod task4_aum_minting {
     #[test]
     fn test_aum_block_reward_initial() {
         let ledger = Ledger::new("fee".to_string());
-        
+
         // At block 0, AUM reward should be at initial level
         let reward = ledger.aum_block_reward(0);
         // AUM starts at some initial rate (let's say 1000 base units)
@@ -517,13 +538,13 @@ mod task4_aum_minting {
     #[test]
     fn test_aum_block_reward_halving() {
         let ledger = Ledger::new("fee".to_string());
-        
+
         // Reward at block 0
         let reward_at_0 = ledger.aum_block_reward(0);
-        
+
         // Reward at halving point (1M blocks)
         let reward_at_1m = ledger.aum_block_reward(1_000_000);
-        
+
         // At halving, reward should be ~50% of initial
         assert!(reward_at_1m < reward_at_0);
         assert!(reward_at_1m * 2 >= reward_at_0 && reward_at_1m * 2 <= reward_at_0 + 1);
@@ -532,12 +553,12 @@ mod task4_aum_minting {
     #[test]
     fn test_aum_block_reward_multiple_halvings() {
         let ledger = Ledger::new("fee".to_string());
-        
+
         let reward_at_0 = ledger.aum_block_reward(0);
         let reward_at_1m = ledger.aum_block_reward(1_000_000);
         let reward_at_2m = ledger.aum_block_reward(2_000_000);
         let reward_at_3m = ledger.aum_block_reward(3_000_000);
-        
+
         // Each halving should reduce by ~50%
         assert!(reward_at_1m < reward_at_0);
         assert!(reward_at_2m < reward_at_1m);
@@ -547,10 +568,10 @@ mod task4_aum_minting {
     #[test]
     fn test_minter_allowlist_add_and_check() {
         let mut ledger = Ledger::new("fee".to_string());
-        
+
         // Add a minter to allowlist
         ledger.add_minter(&TokenType::AUM, "minter1");
-        
+
         // Check if authorized
         assert!(ledger.is_authorized_minter(&TokenType::AUM, "minter1"));
         assert!(!ledger.is_authorized_minter(&TokenType::AUM, "minter2"));
@@ -559,11 +580,11 @@ mod task4_aum_minting {
     #[test]
     fn test_minter_allowlist_multiple_minters() {
         let mut ledger = Ledger::new("fee".to_string());
-        
+
         ledger.add_minter(&TokenType::AUM, "minter1");
         ledger.add_minter(&TokenType::AUM, "minter2");
         ledger.add_minter(&TokenType::AUM, "minter3");
-        
+
         assert!(ledger.is_authorized_minter(&TokenType::AUM, "minter1"));
         assert!(ledger.is_authorized_minter(&TokenType::AUM, "minter2"));
         assert!(ledger.is_authorized_minter(&TokenType::AUM, "minter3"));
@@ -573,19 +594,19 @@ mod task4_aum_minting {
     #[test]
     fn test_minter_allowlist_per_token() {
         let mut ledger = Ledger::new("fee".to_string());
-        
+
         // Add different minters for different tokens
         ledger.add_minter(&TokenType::AUM, "minter1");
         ledger.add_minter(&TokenType::STOMP, "minter2");
         ledger.add_minter(&TokenType::RAVECOIN, "minter3");
-        
+
         // Each minter only authorized for their token
         assert!(ledger.is_authorized_minter(&TokenType::AUM, "minter1"));
         assert!(!ledger.is_authorized_minter(&TokenType::AUM, "minter2"));
-        
+
         assert!(ledger.is_authorized_minter(&TokenType::STOMP, "minter2"));
         assert!(!ledger.is_authorized_minter(&TokenType::STOMP, "minter1"));
-        
+
         assert!(ledger.is_authorized_minter(&TokenType::RAVECOIN, "minter3"));
         assert!(!ledger.is_authorized_minter(&TokenType::RAVECOIN, "minter1"));
     }
@@ -593,14 +614,14 @@ mod task4_aum_minting {
     #[test]
     fn test_issue_with_minter_check_for_aum() {
         let mut ledger = Ledger::new("fee".to_string());
-        
+
         // Regular issue should still work (backward compat)
         ledger.issue("user1", &TokenType::AUM, 1000);
         assert_eq!(ledger.balance_of("user1", &TokenType::AUM), 1000);
-        
+
         // Add authorized minter
         ledger.add_minter(&TokenType::AUM, "minter1");
-        
+
         // Now minter can issue
         let result = ledger.try_issue_with_minter("minter1", &TokenType::AUM, "user2", 1000);
         assert!(result.is_ok());
@@ -610,10 +631,10 @@ mod task4_aum_minting {
     #[test]
     fn test_issue_with_unauthorized_minter() {
         let mut ledger = Ledger::new("fee".to_string());
-        
+
         // Add authorized minter
         ledger.add_minter(&TokenType::AUM, "minter1");
-        
+
         // Unauthorized minter should fail
         let result = ledger.try_issue_with_minter("unauthorized", &TokenType::AUM, "user", 1000);
         assert!(result.is_err(), "Unauthorized minter should be rejected");
@@ -622,12 +643,12 @@ mod task4_aum_minting {
     #[test]
     fn test_aum_halving_schedule() {
         let ledger = Ledger::new("fee".to_string());
-        
+
         // Test that we can predict reward at various heights
         let reward_0 = ledger.aum_block_reward(0);
         let reward_1m = ledger.aum_block_reward(1_000_000);
         let reward_2m = ledger.aum_block_reward(2_000_000);
-        
+
         // Each should be less than or equal to previous
         assert!(reward_1m <= reward_0);
         assert!(reward_2m <= reward_1m);
@@ -636,15 +657,16 @@ mod task4_aum_minting {
     #[test]
     fn test_combined_aum_minting_flow() {
         let mut ledger = Ledger::new("fee".to_string());
-        
+
         // Setup minter
         ledger.add_minter(&TokenType::AUM, "aum_minter");
-        
+
         // Get halving-based reward at block 0
         let reward = ledger.aum_block_reward(0);
-        
+
         // Minter issues tokens with halving reward
-        let result = ledger.try_issue_with_minter("aum_minter", &TokenType::AUM, "validator", reward);
+        let result =
+            ledger.try_issue_with_minter("aum_minter", &TokenType::AUM, "validator", reward);
         assert!(result.is_ok());
         assert_eq!(ledger.balance_of("validator", &TokenType::AUM), reward);
     }
