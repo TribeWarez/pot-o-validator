@@ -1,0 +1,67 @@
+[
+  {
+    "address": "Tc1AumReserve",
+    "token": "AUM",
+    "balance": 1000000000
+  },
+  {
+    "address": "Tc1StompReserve",
+    "token": "STOMP",
+    "balance": 100000000000
+  },
+  {
+    "address": "Tc1RavecoinReserve",
+    "token": "RAVECOIN",
+    "balance": 10000000000000
+  },
+  {
+    "address": "Tc1Validator1",
+    "token": "TRIBE",
+    "balance": 1000000000000
+  },
+  {
+    "address": "Tc1Validator2",
+    "token": "TRIBE",
+    "balance": 1000000000000
+  },
+  {
+    "address": "Tc1Validator3",
+    "token": "TRIBE",
+    "balance": 1000000000000
+  },
+  {
+    "address": "Tc1Validator4",
+    "token": "TRIBE",
+    "balance": 1000000000000
+  },
+  {
+    "address": "Tc1Validator5",
+    "token": "TRIBE",
+    "balance": 1000000000000
+  },
+  {
+    "address": "Tc1Validator6",
+    "token": "TRIBE",
+    "balance": 1000000000000
+  },
+  {
+    "address": "Tc1Validator7",
+    "token": "TRIBE",
+    "balance": 1000000000000
+  },
+  {
+    "address": "Tc1Validator8",
+    "token": "TRIBE",
+    "balance": 1000000000000
+  },
+  {
+    "address": "Tc1Validator9",
+    "token": "TRIBE",
+    "balance": 1000000000000
+  },
+  {
+    "address": "Tc1Validator10",
+    "token": "TRIBE",
+    "balance": 1000000000000
+  }
+]

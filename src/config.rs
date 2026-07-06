@@ -139,7 +139,7 @@ fn default_tribechain_max_txs_per_block() -> usize {
     1000
 }
 fn default_tribechain_genesis_path() -> String {
-    String::new()
+    "tribechain_genesis.json".to_string()
 }
 fn default_tribechain_miner_address() -> String {
     String::new()
