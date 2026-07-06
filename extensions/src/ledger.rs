@@ -100,6 +100,25 @@ impl Ledger {
 
         self.block_height = self.block_height.saturating_add(1);
         self.modified = true;
+
+        let mut hasher = Sha256::new();
+        hasher.update(b"MINTER");
+        hasher.update(to.as_bytes());
+        hasher.update(amount.to_le_bytes());
+        hasher.update(self.block_height.to_le_bytes());
+        let tx_hash = hex::encode(hasher.finalize());
+
+        let receipt = TxReceipt {
+            tx_hash,
+            from: "MINTER".to_string(),
+            to: to.to_string(),
+            token: token.clone(),
+            amount,
+            fee: 0,
+            block_height: self.block_height,
+            timestamp: chrono::Utc::now().timestamp() as u64,
+        };
+        self.tx_history.push(receipt);
     }
 
     /// Try to issue tokens, respecting supply caps from token_config
@@ -134,6 +153,25 @@ impl Ledger {
 
         self.block_height = self.block_height.saturating_add(1);
         self.modified = true;
+
+        let mut hasher = Sha256::new();
+        hasher.update(b"MINTER");
+        hasher.update(to.as_bytes());
+        hasher.update(amount.to_le_bytes());
+        hasher.update(self.block_height.to_le_bytes());
+        let tx_hash = hex::encode(hasher.finalize());
+
+        let receipt = TxReceipt {
+            tx_hash,
+            from: "MINTER".to_string(),
+            to: to.to_string(),
+            token: token.clone(),
+            amount,
+            fee: 0,
+            block_height: self.block_height,
+            timestamp: chrono::Utc::now().timestamp() as u64,
+        };
+        self.tx_history.push(receipt);
 
         Ok(())
     }
@@ -672,9 +710,9 @@ mod tests {
         ledger
             .transfer("alice", "bob", &TokenType::TribeChain, 200, 5)
             .unwrap();
-        assert_eq!(ledger.tx_history().len(), 1);
+        assert_eq!(ledger.tx_history().len(), 2);
         let alice_txs = ledger.tx_history_for("alice");
-        assert_eq!(alice_txs.len(), 1);
+        assert_eq!(alice_txs.len(), 2);
         let bob_txs = ledger.tx_history_for("bob");
         assert_eq!(bob_txs.len(), 1);
         let charlie_txs = ledger.tx_history_for("charlie");

@@ -170,11 +170,15 @@ fn test_tx_history_recorded() {
     ledger.apply_transfer(&tx, "miner").unwrap();
 
     let history = ledger.tx_history_for("alice");
-    assert_eq!(history.len(), 1);
-    assert_eq!(history[0].amount, 300);
-    assert_eq!(history[0].from, "alice");
-    assert_eq!(history[0].to, "bob");
+    assert_eq!(history.len(), 2);
+    assert_eq!(history[0].amount, 1000);
+    assert_eq!(history[0].from, "MINTER");
+    assert_eq!(history[0].to, "alice");
+    assert_eq!(history[1].amount, 300);
+    assert_eq!(history[1].from, "alice");
+    assert_eq!(history[1].to, "bob");
 
     let bob_history = ledger.tx_history_for("bob");
     assert_eq!(bob_history.len(), 1);
+    assert_eq!(bob_history[0].from, "alice");
 }
