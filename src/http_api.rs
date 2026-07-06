@@ -102,6 +102,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/supply", get(get_token_supply))
         .route("/api/tx/:hash", get(get_tx_by_hash))
         .route("/api/proof-trace", get(get_proof_trace))
+        .route("/mempool", get(get_mempool))
         .route("/marketplace/order", post(post_marketplace_order))
         .route("/marketplace/order/{id}", delete(delete_marketplace_order))
         .route("/marketplace/order/{id}", get(get_marketplace_order))
@@ -1124,6 +1125,46 @@ async fn get_proof_trace(
         Json(serde_json::json!({
             "traces": traces,
             "count": traces.len(),
+        })),
+    )
+}
+
+// ---------------------------------------------------------------------------
+// Mempool handler
+// ---------------------------------------------------------------------------
+
+async fn get_mempool(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    tracing::debug!("GET /mempool");
+
+    let pending_txs = match &state.extensions.mempool {
+        Some(mp) => {
+            let txs = mp.pending();
+            txs.iter()
+                .map(|tx| serde_json::json!({
+                    "tx_hash": hex::encode(tx.tx_hash),
+                    "from": tx.from,
+                    "to": tx.to,
+                    "amount": tx.amount,
+                    "fee": tx.fee,
+                    "nonce": tx.nonce,
+                    "timestamp": tx.timestamp,
+                }))
+                .collect::<Vec<_>>()
+        }
+        None => vec![],
+    };
+
+    let stats = state.stats.read().await;
+    let pending_proofs = stats.total_proofs_received.saturating_sub(stats.total_proofs_valid);
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "pending_transactions": pending_txs,
+            "pending_proofs": pending_proofs,
+            "total_proofs_received": stats.total_proofs_received,
+            "total_proofs_valid": stats.total_proofs_valid,
+            "total_challenges_issued": stats.total_challenges_issued,
         })),
     )
 }
