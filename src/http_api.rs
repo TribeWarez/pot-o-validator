@@ -60,6 +60,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/tx", post(post_tribechain_tx))
         .route("/api/nonce/:address", get(get_tribechain_nonce))
         .route("/api/blocks", get(get_tribechain_blocks))
+        .route("/api/supply", get(get_token_supply))
+        .route("/api/tx/:hash", get(get_tx_by_hash))
         .route("/marketplace/order", post(post_marketplace_order))
         .route("/marketplace/order/{id}", delete(delete_marketplace_order))
         .route("/marketplace/order/{id}", get(get_marketplace_order))
@@ -985,6 +987,82 @@ async fn get_tribechain_blocks(
             "blocks": blocks,
             "latest_height": latest,
         })),
+    )
+}
+
+// Get all token supplies across the network
+async fn get_token_supply(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    tracing::debug!("GET /api/supply");
+    let ledger = state.extensions.ledger.read().await;
+    
+    let mut supplies = serde_json::json!({});
+    
+    // Get supplies for all known token types
+    let token_types = vec![
+        TokenType::TribeChain,
+        TokenType::PTtC,
+        TokenType::NMTC,
+        TokenType::STOMP,
+        TokenType::AUM,
+        TokenType::AI3,
+        TokenType::RAVECOIN,
+    ];
+    
+    for token_type in token_types {
+        let supply = ledger.total_supply(&token_type);
+        let token_name = match token_type {
+            TokenType::TribeChain => "TRIBE",
+            TokenType::PTtC => "PTtC",
+            TokenType::NMTC => "NMTC",
+            TokenType::STOMP => "STOMP",
+            TokenType::AUM => "AUM",
+            TokenType::AI3 => "AI3",
+            TokenType::RAVECOIN => "RAVECOIN",
+        };
+        supplies[token_name] = supply.into();
+    }
+    
+    (StatusCode::OK, Json(supplies))
+}
+
+// Get transaction details by hash
+async fn get_tx_by_hash(
+    State(state): State<Arc<AppState>>,
+    Path(hash): Path<String>,
+) -> impl IntoResponse {
+    tracing::debug!("GET /api/tx/{}", hash);
+    let ledger = state.extensions.ledger.read().await;
+    
+    // Search for the transaction in history
+    for tx in ledger.tx_history() {
+        if tx.tx_hash == hash {
+            return (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "tx_hash": tx.tx_hash,
+                    "from": tx.from,
+                    "to": tx.to,
+                    "token": match &tx.token {
+                        TokenType::TribeChain => "TRIBE",
+                        TokenType::PTtC => "PTtC",
+                        TokenType::NMTC => "NMTC",
+                        TokenType::STOMP => "STOMP",
+                        TokenType::AUM => "AUM",
+                        TokenType::AI3 => "AI3",
+                        TokenType::RAVECOIN => "RAVECOIN",
+                    },
+                    "amount": tx.amount,
+                    "fee": tx.fee,
+                    "block_height": tx.block_height,
+                    "timestamp": tx.timestamp,
+                })),
+            );
+        }
+    }
+    
+    (
+        StatusCode::NOT_FOUND,
+        Json(serde_json::json!({ "error": "transaction not found" })),
     )
 }
 
