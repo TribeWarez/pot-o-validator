@@ -171,6 +171,9 @@ impl ValidatorConfig {
                 cfg.difficulty = d;
             }
         }
+        if let Ok(v) = std::env::var("LISTEN_ADDR") {
+            cfg.listen_addr = v;
+        }
         if let Ok(v) = std::env::var("PORT") {
             if let Ok(p) = v.parse() {
                 cfg.port = p;

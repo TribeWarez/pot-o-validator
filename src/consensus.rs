@@ -25,6 +25,7 @@ pub struct ValidatorStats {
     pub total_challenges_issued: u64,
     pub total_proofs_received: u64,
     pub total_proofs_valid: u64,
+    pub total_proofs_rejected: u64,
     pub active_miners: u64,
     pub uptime_secs: u64,
     pub paths_in_block: u64,

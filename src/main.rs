@@ -16,7 +16,7 @@ use hexchain_p2p::hex_consensus::HexConsensus;
 use hexchain_p2p::types::{ConsensusParams, MmlParams};
 use http_api::build_router;
 use pot_o_extensions::{
-    peer_network::RegistrationConfig, spawn_persist_ledger, DEFAULT_LEDGER_PATH,
+    peer_network::RegistrationConfig, spawn_persist_ledger, LedgerEntry, DEFAULT_LEDGER_PATH,
 };
 use pot_o_mining::PotOConsensus;
 use tokio::sync::RwLock;
@@ -48,7 +48,7 @@ async fn main() {
 
     let ledger_path =
         std::env::var("LEDGER_PATH").unwrap_or_else(|_| DEFAULT_LEDGER_PATH.to_string());
-    spawn_persist_ledger(extensions.ledger.clone(), ledger_path);
+    spawn_persist_ledger(extensions.ledger.clone(), ledger_path.clone());
 
     let registry_path =
         std::env::var("DEVICE_REGISTRY_PATH").unwrap_or_else(|_| DEFAULT_REGISTRY_PATH.to_string());
@@ -71,8 +71,6 @@ async fn main() {
     };
 
     // ── Lattice persistence ───────────────────────────────────────────
-    // Default to /blockstore/lattice.json so it lands in the same Docker
-    // volume as the block store (pot-o-blockstore).
     let lattice_path =
         std::env::var("LATTICE_PATH").unwrap_or_else(|_| "/blockstore/lattice.json".to_string());
     let hex_consensus = HexConsensus::new_with_path(consensus_params, &lattice_path);
@@ -177,5 +175,71 @@ async fn main() {
     let addr = format!("{}:{}", cfg.listen_addr, cfg.port);
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
     tracing::info!("Listening on {addr}");
-    axum::serve(listener, app).await.unwrap();
+
+    // ── Graceful shutdown: persist state on SIGTERM/SIGINT ────────────
+    let shutdown_state = Arc::clone(&state);
+    let shutdown_ledger = state.extensions.ledger.clone();
+    let shutdown_ledger_path = ledger_path.clone();
+
+    axum::serve(listener, app)
+        .with_graceful_shutdown(async move {
+            let sigterm = async {
+                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                    .expect("failed to register SIGTERM handler")
+                    .recv()
+                    .await;
+            };
+            let sigint = async {
+                tokio::signal::ctrl_c().await.expect("failed to register SIGINT handler");
+            };
+            tokio::select! {
+                _ = sigterm => {},
+                _ = sigint => {},
+            }
+            tracing::info!("Shutdown signal received — force-persisting state...");
+
+            // Force-save ledger (write regardless of modified flag)
+            {
+                let l = shutdown_ledger.read().await;
+                let entries: Vec<LedgerEntry> = l
+                    .balances()
+                    .iter()
+                    .map(|((addr, token), bal)| LedgerEntry {
+                        address: addr.clone(),
+                        token: token.clone(),
+                        balance: *bal,
+                    })
+                    .collect();
+                if let Err(e) = std::fs::write(
+                    &shutdown_ledger_path,
+                    serde_json::to_string_pretty(&entries).unwrap(),
+                ) {
+                    tracing::error!("Failed to persist ledger on shutdown: {}", e);
+                } else {
+                    tracing::info!("Ledger saved to {}", shutdown_ledger_path);
+                }
+            }
+
+            // Force-save block store
+            if let Some(ref bs) = shutdown_state.extensions.block_store {
+                if bs.is_modified() {
+                    if let Err(e) = bs.save_to_file() {
+                        tracing::error!("Failed to persist block store on shutdown: {}", e);
+                    } else {
+                        tracing::info!("BlockStore saved");
+                    }
+                }
+            }
+
+            // Force-save lattice
+            if let Err(e) = shutdown_state.hex_consensus.store.save_to_file() {
+                tracing::warn!("Failed to persist lattice on shutdown: {}", e);
+            } else {
+                tracing::info!("Hex lattice saved");
+            }
+
+            tracing::info!("State persistence complete — exiting.");
+        })
+        .await
+        .unwrap();
 }

@@ -98,6 +98,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/token/tribe/supply", get(get_tribe_supply))
         .route("/api/tx", post(post_tribechain_tx))
         .route("/api/nonce/:address", get(get_tribechain_nonce))
+        .route("/internal/mint", post(post_internal_mint))
         .route("/api/blocks", get(get_tribechain_blocks))
         .route("/api/supply", get(get_token_supply))
         .route("/api/tx/:hash", get(get_tx_by_hash))
@@ -442,6 +443,7 @@ async fn submit_proof(
             }
             Ok(false) => {
                 tracing::info!(challenge_id = %body.proof.challenge_id, "POST /submit rejected (validation failed)");
+                state.stats.write().await.total_proofs_rejected += 1;
                 (
                     StatusCode::BAD_REQUEST,
                     Json(
@@ -451,6 +453,7 @@ async fn submit_proof(
             }
             Err(e) => {
                 tracing::warn!(error = %e, "POST /submit verify error");
+                state.stats.write().await.total_proofs_rejected += 1;
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(serde_json::json!({ "accepted": false, "error": e.to_string() })),
@@ -459,6 +462,7 @@ async fn submit_proof(
         }
     } else {
         tracing::debug!("POST /submit rejected (no active challenge)");
+        state.stats.write().await.total_proofs_rejected += 1;
         (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "accepted": false, "error": "No active challenge" })),
@@ -983,6 +987,39 @@ async fn get_tribechain_nonce(
 }
 
 #[derive(Debug, Deserialize)]
+struct InternalMintRequest {
+    to: String,
+    token_type: String,
+    amount: u64,
+}
+
+async fn post_internal_mint(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<InternalMintRequest>,
+) -> impl IntoResponse {
+    tracing::info!(to = %body.to, token = %body.token_type, amount = body.amount, "POST /internal/mint");
+    let token = match token_type_from_str(&body.token_type) {
+        Some(t) => t,
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": format!("Unknown token: {}", body.token_type)})),
+            );
+        }
+    };
+    let mut ledger = state.extensions.ledger.write().await;
+    ledger.issue(&body.to, &token, body.amount);
+    let receipt = serde_json::json!({
+        "status": "ok",
+        "to": body.to,
+        "token": body.token_type,
+        "amount": body.amount,
+        "tx_hash": format!("mint-{}-{}", body.to, body.token_type),
+    });
+    (StatusCode::OK, Json(receipt))
+}
+
+#[derive(Debug, Deserialize)]
 struct BlocksQuery {
     from_height: Option<u64>,
     limit: Option<usize>,
@@ -1157,7 +1194,7 @@ async fn get_mempool(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     };
 
     let stats = state.stats.read().await;
-    let pending_proofs = stats
+    let pending_or_failed = stats
         .total_proofs_received
         .saturating_sub(stats.total_proofs_valid);
 
@@ -1165,9 +1202,11 @@ async fn get_mempool(State(state): State<Arc<AppState>>) -> impl IntoResponse {
         StatusCode::OK,
         Json(serde_json::json!({
             "pending_transactions": pending_txs,
-            "pending_proofs": pending_proofs,
+            "pending_or_failed": pending_or_failed,
+            "pending_proofs": 0,
             "total_proofs_received": stats.total_proofs_received,
             "total_proofs_valid": stats.total_proofs_valid,
+            "total_proofs_rejected": stats.total_proofs_rejected,
             "total_challenges_issued": stats.total_challenges_issued,
         })),
     )
