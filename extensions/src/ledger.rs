@@ -10,10 +10,10 @@ use tracing;
 use crate::tx::{CoinbaseTransaction, TransferTransaction};
 use hexchain_p2p::block::HexBlock;
 
-pub const TRIBE_HARD_CAP: u64 = 21_000_000_000_000_000;
-pub const TRIBE_BLOCK_REWARD_INITIAL: u64 = 100_000_000_000;
-pub const TRIBE_HALVING_INTERVAL: u64 = 210_000;
-pub const TRIBE_PROOF_REWARD: u64 = 1_000_000_000;
+pub const TRIBE_HARD_CAP: u64 = 1_000_000_000_000_000; // 1 billion TRIBE (6 dec)
+pub const TRIBE_BLOCK_REWARD_INITIAL: u64 = 1_000_000_000; // 1,000 TRIBE per block
+pub const TRIBE_HALVING_INTERVAL: u64 = 210_000; // ~73 days at 30s blocks
+pub const TRIBE_PROOF_REWARD: u64 = 10_000_000; // 10 TRIBE per proof
 pub const COINBASE_MATURITY_DEPTH: u64 = 100;
 
 pub fn block_reward_at_height(height: u64) -> u64 {
@@ -35,6 +35,14 @@ pub struct LedgerEntry {
     pub address: String,
     pub token: TokenType,
     pub balance: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LedgerSnapshot {
+    pub entries: Vec<LedgerEntry>,
+    pub tx_history: Vec<TxReceipt>,
+    pub nonces: Vec<(String, u64)>,
+    pub block_height: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -274,6 +282,10 @@ impl Ledger {
 
     pub fn block_height(&self) -> u64 {
         self.block_height
+    }
+
+    pub fn nonces(&self) -> &HashMap<String, u64> {
+        &self.nonces
     }
 
     pub fn is_modified(&self) -> bool {
@@ -612,14 +624,25 @@ impl Ledger {
 
 pub fn load_ledger(path: &str, protocol_fee_address: &str) -> Ledger {
     let content = std::fs::read_to_string(path).ok();
-    let entries: Vec<LedgerEntry> = match content {
-        Some(ref s) => serde_json::from_str(s).unwrap_or_default(),
-        None => Vec::new(),
-    };
     let mut ledger = Ledger::new(protocol_fee_address.to_string());
-    for entry in entries {
-        let key = (entry.address, entry.token);
-        ledger.balances.insert(key, entry.balance);
+    if let Some(ref s) = content {
+        // Try full snapshot first, fall back to old entry list for backward compat
+        if let Ok(snapshot) = serde_json::from_str::<LedgerSnapshot>(s) {
+            for entry in snapshot.entries {
+                let key = (entry.address, entry.token);
+                ledger.balances.insert(key, entry.balance);
+            }
+            ledger.tx_history = snapshot.tx_history;
+            for (addr, nonce) in snapshot.nonces {
+                ledger.nonces.insert(addr, nonce);
+            }
+            ledger.block_height = snapshot.block_height;
+        } else if let Ok(entries) = serde_json::from_str::<Vec<LedgerEntry>>(s) {
+            for entry in entries {
+                let key = (entry.address, entry.token);
+                ledger.balances.insert(key, entry.balance);
+            }
+        }
     }
     ledger.modified = false;
     ledger
@@ -630,21 +653,31 @@ pub fn spawn_persist_ledger(ledger: Arc<RwLock<Ledger>>, path: String) {
         let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(5));
         loop {
             interval.tick().await;
-            let entries: Vec<LedgerEntry> = {
+            let snapshot: LedgerSnapshot = {
                 let l = ledger.read().await;
                 if !l.is_modified() {
                     continue;
                 }
-                l.balances
+                let entries: Vec<LedgerEntry> = l
+                    .balances
                     .iter()
                     .map(|((addr, token), bal)| LedgerEntry {
                         address: addr.clone(),
                         token: token.clone(),
                         balance: *bal,
                     })
-                    .collect()
+                    .collect();
+                let nonces: Vec<(String, u64)> =
+                    l.nonces.iter().map(|(k, v)| (k.clone(), *v)).collect();
+                LedgerSnapshot {
+                    entries,
+                    tx_history: l.tx_history.clone(),
+                    nonces,
+                    block_height: l.block_height,
+                }
             };
-            if let Err(e) = std::fs::write(&path, serde_json::to_string_pretty(&entries).unwrap()) {
+            if let Err(e) = std::fs::write(&path, serde_json::to_string_pretty(&snapshot).unwrap())
+            {
                 tracing::warn!(error = %e, "Failed to persist ledger");
             } else {
                 let mut l = ledger.write().await;

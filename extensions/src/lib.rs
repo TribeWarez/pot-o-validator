@@ -20,7 +20,8 @@ pub use device_protocol::{
 };
 pub use gossip_client::GossipClient;
 pub use ledger::{
-    load_ledger, spawn_persist_ledger, Ledger, LedgerEntry, TxReceipt, DEFAULT_LEDGER_PATH,
+    load_ledger, spawn_persist_ledger, Ledger, LedgerEntry, LedgerSnapshot, TxReceipt,
+    DEFAULT_LEDGER_PATH,
 };
 pub use marketplace::{
     parse_market_asset, MarketAsset, Marketplace, Order, OrderBook, OrderSide, OrderStatus, Trade,
