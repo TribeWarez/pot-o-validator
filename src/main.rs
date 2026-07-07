@@ -190,7 +190,9 @@ async fn main() {
                     .await;
             };
             let sigint = async {
-                tokio::signal::ctrl_c().await.expect("failed to register SIGINT handler");
+                tokio::signal::ctrl_c()
+                    .await
+                    .expect("failed to register SIGINT handler");
             };
             tokio::select! {
                 _ = sigterm => {},
