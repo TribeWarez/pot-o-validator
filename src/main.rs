@@ -97,6 +97,27 @@ async fn main() {
         );
     }
 
+    // Mempool persistence
+    let mempool_path =
+        std::env::var("MEMPOOL_PATH").unwrap_or_else(|_| "/blockstore/mempool.json".to_string());
+    if let Some(ref mp) = mempool {
+        mp.set_path(&mempool_path);
+        mp.load_from_file(&mempool_path);
+        let mp = mp.clone();
+        tokio::spawn(async move {
+            let interval = tokio::time::Duration::from_secs(10);
+            loop {
+                tokio::time::sleep(interval).await;
+                if mp.is_modified() {
+                    if let Err(e) = mp.save_to_file() {
+                        tracing::warn!(error = %e, "Failed to persist mempool");
+                    }
+                }
+            }
+        });
+        tracing::info!(path = %mempool_path, "Mempool persistence started");
+    }
+
     let state = create_app_state(
         cfg.clone(),
         consensus,
@@ -247,6 +268,17 @@ async fn main() {
                 tracing::warn!("Failed to persist lattice on shutdown: {}", e);
             } else {
                 tracing::info!("Hex lattice saved");
+            }
+
+            // Force-save mempool
+            if let Some(ref mp) = shutdown_state.extensions.mempool {
+                if mp.is_modified() {
+                    if let Err(e) = mp.save_to_file() {
+                        tracing::warn!("Failed to persist mempool on shutdown: {}", e);
+                    } else {
+                        tracing::info!("Mempool saved");
+                    }
+                }
             }
 
             tracing::info!("State persistence complete — exiting.");

@@ -1,8 +1,15 @@
 use crate::ledger::Ledger;
 use crate::tx::{verify_transfer_sig, TransferTransaction, TxError};
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::RwLock;
 use tokio::sync::RwLock as AsyncRwLock;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct MempoolEntry {
+    tx: TransferTransaction,
+    pending_nonces: HashMap<String, u64>,
+}
 
 /// Pending transaction pool
 pub struct Mempool {
@@ -11,6 +18,8 @@ pub struct Mempool {
     by_fee: RwLock<BTreeMap<(u64, u64), [u8; 32]>>, // (fee, timestamp_ns) → tx_hash
     max_size: usize,
     min_fee: u64,
+    path: RwLock<String>,
+    modified: RwLock<bool>,
 }
 
 impl Mempool {
@@ -21,7 +30,62 @@ impl Mempool {
             by_fee: RwLock::new(BTreeMap::new()),
             max_size,
             min_fee,
+            path: RwLock::new(String::new()),
+            modified: RwLock::new(false),
         }
+    }
+
+    pub fn set_path(&self, path: &str) {
+        *self.path.write().unwrap() = path.to_string();
+    }
+
+    pub fn load_from_file(&self, path: &str) {
+        let content = std::fs::read_to_string(path).ok();
+        if let Some(ref s) = content {
+            if let Ok(entries) = serde_json::from_str::<Vec<MempoolEntry>>(s) {
+                let mut txs = self.txs.write().unwrap();
+                let mut by_fee = self.by_fee.write().unwrap();
+                let mut nonces = self.address_nonces.write().unwrap();
+                let mut now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos() as u64;
+                for entry in entries {
+                    let hash = entry.tx.tx_hash;
+                    txs.insert(hash, entry.tx);
+                    by_fee.insert((0, now), hash);
+                    now += 1;
+                    for (addr, n) in entry.pending_nonces {
+                        nonces.insert(addr, n);
+                    }
+                }
+            }
+        }
+        *self.path.write().unwrap() = path.to_string();
+    }
+
+    pub fn save_to_file(&self) -> Result<(), String> {
+        let path = self.path.read().unwrap();
+        if path.is_empty() {
+            return Ok(());
+        }
+        let txs = self.txs.read().unwrap();
+        let nonces = self.address_nonces.read().unwrap();
+        let entries: Vec<MempoolEntry> = txs
+            .values()
+            .map(|tx| MempoolEntry {
+                tx: tx.clone(),
+                pending_nonces: nonces.clone(),
+            })
+            .collect();
+        let json = serde_json::to_string_pretty(&entries).map_err(|e| e.to_string())?;
+        std::fs::write(path.as_str(), json).map_err(|e| e.to_string())?;
+        *self.modified.write().unwrap() = false;
+        Ok(())
+    }
+
+    pub fn is_modified(&self) -> bool {
+        *self.modified.read().unwrap()
     }
 
     /// Submit a transaction to the mempool after validation.
@@ -109,6 +173,8 @@ impl Mempool {
         // Evict if over capacity
         self.evict_over_capacity();
 
+        *self.modified.write().unwrap() = true;
+
         Ok(tx_hash)
     }
 
@@ -149,6 +215,7 @@ impl Mempool {
         }
         by_fee_map.retain(|_k, v| !remove_set.contains(v));
 
+        *self.modified.write().unwrap() = true;
         result
     }
 
@@ -170,6 +237,7 @@ impl Mempool {
             }
         }
         by_fee_map.retain(|_k, v| !remove_set.contains(v));
+        *self.modified.write().unwrap() = true;
     }
 
     /// Revalidate all pending txs against current ledger state
@@ -211,6 +279,7 @@ impl Mempool {
             }
         }
         by_fee_map.retain(|_k, v| !remove_set.contains(v));
+        *self.modified.write().unwrap() = true;
     }
 
     pub fn pending(&self) -> Vec<TransferTransaction> {
