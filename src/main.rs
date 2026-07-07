@@ -16,7 +16,8 @@ use hexchain_p2p::hex_consensus::HexConsensus;
 use hexchain_p2p::types::{ConsensusParams, MmlParams};
 use http_api::build_router;
 use pot_o_extensions::{
-    peer_network::RegistrationConfig, spawn_persist_ledger, LedgerEntry, DEFAULT_LEDGER_PATH,
+    peer_network::RegistrationConfig, spawn_persist_ledger, LedgerEntry, LedgerSnapshot,
+    DEFAULT_LEDGER_PATH,
 };
 use pot_o_mining::PotOConsensus;
 use tokio::sync::RwLock;
@@ -212,9 +213,17 @@ async fn main() {
                         balance: *bal,
                     })
                     .collect();
+                let nonces: Vec<(String, u64)> =
+                    l.nonces().iter().map(|(k, v)| (k.clone(), *v)).collect();
+                let snapshot = LedgerSnapshot {
+                    entries,
+                    tx_history: l.tx_history().to_vec(),
+                    nonces,
+                    block_height: l.block_height(),
+                };
                 if let Err(e) = std::fs::write(
                     &shutdown_ledger_path,
-                    serde_json::to_string_pretty(&entries).unwrap(),
+                    serde_json::to_string_pretty(&snapshot).unwrap(),
                 ) {
                     tracing::error!("Failed to persist ledger on shutdown: {}", e);
                 } else {
