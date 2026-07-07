@@ -214,12 +214,12 @@ async fn main() {
                     })
                     .collect();
                 let nonces: Vec<(String, u64)> =
-                    l.nonces.iter().map(|(k, v)| (k.clone(), *v)).collect();
+                    l.nonces().iter().map(|(k, v)| (k.clone(), *v)).collect();
                 let snapshot = LedgerSnapshot {
                     entries,
-                    tx_history: l.tx_history.clone(),
+                    tx_history: l.tx_history().to_vec(),
                     nonces,
-                    block_height: l.block_height,
+                    block_height: l.block_height(),
                 };
                 if let Err(e) = std::fs::write(
                     &shutdown_ledger_path,
