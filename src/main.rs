@@ -12,17 +12,25 @@ use std::sync::Arc;
 use config::ValidatorConfig;
 use consensus::create_app_state;
 use device_registry::{load_registry, DEFAULT_REGISTRY_PATH};
-use hexchain_p2p::hex_consensus::HexConsensus;
-use hexchain_p2p::types::{ConsensusParams, MmlParams};
+use hexchain_p2p::block::HexBlock;
+use hexchain_p2p::hex_consensus::{HexConsensus, HexProof};
+use hexchain_p2p::types::{BlockHash, ConsensusParams, MmlParams};
 use http_api::build_router;
 use pot_o_extensions::{
     peer_network::RegistrationConfig, spawn_persist_ledger, LedgerEntry, LedgerSnapshot,
     DEFAULT_LEDGER_PATH,
 };
 use pot_o_mining::PotOConsensus;
+use sha2::{Digest, Sha256};
 use tokio::sync::RwLock;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Saved alongside ledger for canonical_tip_height + proof_traces path
+#[derive(serde::Serialize, serde::Deserialize)]
+struct ValidatorStateSnapshot {
+    canonical_tip_height: u64,
+}
 
 #[tokio::main]
 async fn main() {
@@ -50,6 +58,18 @@ async fn main() {
     let ledger_path =
         std::env::var("LEDGER_PATH").unwrap_or_else(|_| DEFAULT_LEDGER_PATH.to_string());
     spawn_persist_ledger(extensions.ledger.clone(), ledger_path.clone());
+
+    let state_path =
+        std::env::var("STATE_PATH").unwrap_or_else(|_| "/blockstore/state.json".to_string());
+    let proof_trace_path = std::env::var("PROOF_TRACE_PATH")
+        .unwrap_or_else(|_| "/blockstore/proof_traces.json".to_string());
+
+    // Load canonical_tip_height from state.json
+    let loaded_canonical_tip = std::fs::read_to_string(&state_path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<ValidatorStateSnapshot>(&s).ok())
+        .map(|s| s.canonical_tip_height)
+        .unwrap_or(0);
 
     let registry_path =
         std::env::var("DEVICE_REGISTRY_PATH").unwrap_or_else(|_| DEFAULT_REGISTRY_PATH.to_string());
@@ -83,7 +103,7 @@ async fn main() {
     }
 
     let network = extensions.network.clone();
-    let mempool = extensions.mempool.clone();
+    let mempool_clone = extensions.mempool.clone();
     let ledger = extensions.ledger.clone();
     let tribechain_enabled = extensions.tribechain_enabled;
     let block_store = extensions.block_store.clone();
@@ -100,14 +120,14 @@ async fn main() {
     // Mempool persistence
     let mempool_path =
         std::env::var("MEMPOOL_PATH").unwrap_or_else(|_| "/blockstore/mempool.json".to_string());
-    if let Some(ref mp) = mempool {
+    if let Some(ref mp) = mempool_clone {
         mp.set_path(&mempool_path);
         mp.load_from_file(&mempool_path);
         let mp = mp.clone();
         tokio::spawn(async move {
-            let interval = tokio::time::Duration::from_secs(10);
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(10));
             loop {
-                tokio::time::sleep(interval).await;
+                interval.tick().await;
                 if mp.is_modified() {
                     if let Err(e) = mp.save_to_file() {
                         tracing::warn!(error = %e, "Failed to persist mempool");
@@ -128,12 +148,35 @@ async fn main() {
         wallet_url,
     );
 
+    // Restore canonical tip height
+    if loaded_canonical_tip > 0 {
+        *state.canonical_tip_height.write().await = loaded_canonical_tip;
+        tracing::info!(
+            height = loaded_canonical_tip,
+            "Canonical tip height restored"
+        );
+    }
+
+    // Proof traces persistence
+    state.proof_traces.set_path(&proof_trace_path);
+    state.proof_traces.load_from_file();
+    {
+        let pt = state.proof_traces.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(30));
+            loop {
+                interval.tick().await;
+                let _ = pt.save_to_file();
+            }
+        });
+    }
+
     if let Some(ref bs) = block_store {
         let bs = bs.clone();
         tokio::spawn(async move {
-            let interval = tokio::time::Duration::from_secs(10);
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(10));
             loop {
-                tokio::time::sleep(interval).await;
+                interval.tick().await;
                 if bs.is_modified() {
                     if let Err(e) = bs.save_to_file() {
                         tracing::error!("Failed to persist block store: {}", e);
@@ -146,19 +189,128 @@ async fn main() {
         tracing::info!("BlockStore background persistence started");
     }
 
-    // Persist hex lattice every 10 seconds (same cadence as block store)
+    // Persist hex lattice every 10 seconds
     {
         let lattice = state.hex_consensus.store.clone();
         tokio::spawn(async move {
-            let interval = tokio::time::Duration::from_secs(10);
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(10));
             loop {
-                tokio::time::sleep(interval).await;
+                interval.tick().await;
                 if let Err(e) = lattice.save_to_file() {
                     tracing::warn!(error = %e, "Failed to persist hex lattice");
                 }
             }
         });
         tracing::info!(path = %lattice_path, "Hex lattice background persistence started");
+    }
+
+    // ── Automated block producer ──────────────────────────────────────
+    if tribechain_enabled {
+        let bp_state = Arc::clone(&state);
+        let bp_mempool = mempool_clone.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(5));
+            loop {
+                interval.tick().await;
+                let mp = match bp_mempool {
+                    Some(ref mp) => mp,
+                    None => continue,
+                };
+                if mp.is_empty() {
+                    continue;
+                }
+                // Get pending transactions and build block
+                let txs = mp.pending();
+                let slot = {
+                    let stats = bp_state.stats.read().await;
+                    stats.total_challenges_issued
+                };
+                let slot_hash = hex::encode(Sha256::digest(slot.to_le_bytes()));
+                let challenge = bp_state.hex_consensus.generate_challenge(slot, &slot_hash);
+                // Build coinbase tx
+                let coinbase = serde_json::json!({
+                    "miner_address": "INTERNAL",
+                    "block_reward": pot_o_extensions::ledger::block_reward_at_height(challenge.slot),
+                    "proof_rewards": [],
+                    "signature": [],
+                });
+                let mut tx_values: Vec<serde_json::Value> = vec![coinbase];
+                for tx in &txs {
+                    if let Ok(val) = serde_json::to_value(tx) {
+                        tx_values.push(val);
+                    }
+                }
+                let tx_merkle_root = compute_merkle_root(&tx_values);
+                // Mine a block at very low difficulty (high target)
+                let target = challenge.target;
+                let mut block = HexBlock {
+                    parent_hash: challenge.neighbor_hashes[0],
+                    height: challenge.slot,
+                    tx_merkle_root,
+                    transactions: Some(tx_values),
+                    miner_address: Some("INTERNAL".to_string()),
+                    timestamp: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs(),
+                    nonce: 0,
+                    coord: challenge.coord,
+                    neighbor_hashes: challenge.neighbor_hashes,
+                    tensor: hexchain_p2p::types::TensorMeta::default(),
+                };
+                // Try up to 1M nonces (should find one quickly with easy target)
+                let mut found = false;
+                for nonce in 0..1_000_000u64 {
+                    block.nonce = nonce;
+                    let hash = block.pow_hash();
+                    if hash <= target {
+                        found = true;
+                        break;
+                    }
+                }
+                if !found {
+                    tracing::debug!("Block producer could not find valid nonce, skipping");
+                    continue;
+                }
+                let proof = HexProof {
+                    challenge_id: challenge.id.clone(),
+                    block,
+                    miner_pubkey: "INTERNAL".to_string(),
+                    timestamp_unix: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs(),
+                };
+                // Submit block through consensus
+                match bp_state.hex_consensus.submit_block(&proof) {
+                    Ok(depth) => {
+                        let mut ledger = bp_state.extensions.ledger.write().await;
+                        let mp_ref = bp_mempool.as_deref();
+                        let bs_ref = bp_state.extensions.block_store.as_deref();
+                        if let Err(e) = crate::consensus::accept_block(
+                            &proof.block,
+                            &mut ledger,
+                            mp_ref,
+                            bs_ref,
+                        ) {
+                            tracing::warn!(error = %e, "Auto block producer: accept_block failed");
+                            continue;
+                        }
+                        *bp_state.canonical_tip_height.write().await += 1;
+                        tracing::info!(
+                            height = proof.block.height,
+                            txs = txs.len(),
+                            depth = depth,
+                            "Auto block produced"
+                        );
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = ?e, "Auto block producer: submit_block failed");
+                    }
+                }
+            }
+        });
+        tracing::info!("Automated block producer started");
     }
 
     if !cfg.bootstrap_urls.is_empty() && cfg.peer_network_mode == "vpn_mesh" {
@@ -172,10 +324,10 @@ async fn main() {
         };
         let url_count = reg_cfg.bootstrap_urls.len();
         tokio::spawn(async move {
-            let interval = tokio::time::Duration::from_secs(60);
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(60));
             loop {
                 let _ = network.register_with_bootstrap(&reg_cfg).await;
-                tokio::time::sleep(interval).await;
+                interval.tick().await;
             }
         });
         tracing::info!("Bootstrap registration task started ({} urls)", url_count);
@@ -185,7 +337,7 @@ async fn main() {
         node_id: cfg.node_id.clone(),
         peers: Arc::new(RwLock::new(Vec::new())),
         current_challenge: Arc::new(RwLock::new(None)),
-        mempool,
+        mempool: mempool_clone,
         ledger,
         tribechain_enabled,
     };
@@ -202,6 +354,7 @@ async fn main() {
     let shutdown_state = Arc::clone(&state);
     let shutdown_ledger = state.extensions.ledger.clone();
     let shutdown_ledger_path = ledger_path.clone();
+    let shutdown_state_path = state_path.clone();
 
     axum::serve(listener, app)
         .with_graceful_shutdown(async move {
@@ -222,7 +375,7 @@ async fn main() {
             }
             tracing::info!("Shutdown signal received — force-persisting state...");
 
-            // Force-save ledger (write regardless of modified flag)
+            // Force-save ledger
             {
                 let l = shutdown_ledger.read().await;
                 let entries: Vec<LedgerEntry> = l
@@ -251,6 +404,23 @@ async fn main() {
                     tracing::info!("Ledger saved to {}", shutdown_ledger_path);
                 }
             }
+
+            // Force-save canonical tip height + proof traces
+            {
+                let tip = *shutdown_state.canonical_tip_height.read().await;
+                let snap = ValidatorStateSnapshot {
+                    canonical_tip_height: tip,
+                };
+                if let Err(e) = std::fs::write(
+                    &shutdown_state_path,
+                    serde_json::to_string_pretty(&snap).unwrap(),
+                ) {
+                    tracing::error!("Failed to persist validator state: {}", e);
+                } else {
+                    tracing::info!("Validator state saved (tip={})", tip);
+                }
+            }
+            shutdown_state.proof_traces.save_to_file().ok();
 
             // Force-save block store
             if let Some(ref bs) = shutdown_state.extensions.block_store {
@@ -285,4 +455,39 @@ async fn main() {
         })
         .await
         .unwrap();
+}
+
+fn compute_merkle_root(txs: &[serde_json::Value]) -> BlockHash {
+    let leaves: Vec<BlockHash> = txs
+        .iter()
+        .map(|tx| {
+            let data = serde_json::to_string(tx).unwrap_or_default();
+            let hash = Sha256::digest(data.as_bytes());
+            let mut arr = [0u8; 32];
+            arr.copy_from_slice(&hash);
+            arr
+        })
+        .collect();
+    if leaves.is_empty() {
+        return [0u8; 32];
+    }
+    let mut level = leaves;
+    while level.len() > 1 {
+        let mut next = Vec::new();
+        for chunk in level.chunks(2) {
+            let mut hasher = Sha256::new();
+            hasher.update(chunk[0]);
+            hasher.update(if chunk.len() > 1 {
+                &chunk[1]
+            } else {
+                &chunk[0]
+            });
+            let hash = hasher.finalize();
+            let mut arr = [0u8; 32];
+            arr.copy_from_slice(&hash);
+            next.push(arr);
+        }
+        level = next;
+    }
+    level[0]
 }
