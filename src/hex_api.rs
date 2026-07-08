@@ -24,6 +24,7 @@ pub fn hex_routes(state: Arc<AppState>) -> Router {
         .route("/hexchain/lattice", get(get_hex_lattice_all))
         .route("/hexchain/lattice/sync", post(post_hex_lattice_sync))
         .route("/hexchain/lattice/{q}/{r}/{s}", get(get_hex_lattice_coord))
+        .route("/hexchain/block/{height}", get(get_hex_block_by_height))
         .with_state(state)
 }
 
@@ -270,4 +271,48 @@ async fn get_hex_lattice_coord(
             Json(serde_json::json!({ "error": "No block at this coordinate" })),
         ),
     }
+}
+
+async fn get_hex_block_by_height(
+    State(state): State<Arc<AppState>>,
+    Path(height): Path<u64>,
+) -> HexApiResponse {
+    let block_store = match &state.extensions.block_store {
+        Some(bs) => bs,
+        None => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({"error": "block store not available"})),
+            )
+        }
+    };
+
+    let stored = match block_store.at_height(height) {
+        Some(s) => s,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({"error": "No block at this height"})),
+            )
+        }
+    };
+
+    let block: hexchain_p2p::block::HexBlock = match serde_json::from_str(&stored.block_json) {
+        Ok(b) => b,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": format!("Failed to parse block: {}", e)})),
+            )
+        }
+    };
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "height": stored.height,
+            "hash": hex::encode(stored.hash),
+            "block": block,
+        })),
+    )
 }
