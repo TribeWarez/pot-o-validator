@@ -159,7 +159,8 @@ async fn main() {
 
     // Proof traces persistence
     state.proof_traces.set_path(&proof_trace_path);
-    state.proof_traces.load_from_file();
+    // NOTE: load_from_file disabled - uses blocking std::thread::spawn which can deadlock in async context
+    // Proof traces will start fresh on restart (acceptable for monitoring use case)
     {
         let pt = state.proof_traces.clone();
         tokio::spawn(async move {
