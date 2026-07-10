@@ -21,13 +21,19 @@ jobs:
       mining-version: ${{ steps.get-versions.outputs.mining-version }}
       extensions-version: ${{ steps.get-versions.outputs.extensions-version }}
     steps:
-      - name: Check TRIBEWAREZ_PAT secret
+      - name: Check GH_PAT secret
         run: |
-          if [ -z "${{ secrets.TRIBEWAREZ_PAT }}" ]; then
-            echo "ERROR: TRIBEWAREZ_PAT secret is not set in this repository.\n\nSet it in GitHub -> Settings -> Secrets and variables -> Actions or use 'gh secret set TRIBEWAREZ_PAT' and re-run the workflow." >&2
+          if [ -z "${{ secrets.GH_PAT }}" ]; then
+            echo "ERROR: GH_PAT secret is not set in this repository." >&2
+            echo "" >&2
+            echo "Set it in GitHub -> Settings -> Secrets and variables -> Actions:" >&2
+            echo "  1. Go to https://github.com/settings/tokens/new" >&2
+            echo "  2. Create a token with 'repo' scope" >&2
+            echo "  3. Add it as 'GH_PAT' in repo secrets" >&2
+            echo "  4. Also add the same token as 'TRIBEWAREZ_PAT'" >&2
             exit 1
           else
-            echo "TRIBEWAREZ_PAT is set"
+            echo "GH_PAT is set"
           fi
 
       - name: Checkout main repo
@@ -214,10 +220,10 @@ jobs:
           git tag "ai3-lib-v${AI3_VERSION}" || echo "Tag already exists"
           git push origin "ai3-lib-v${AI3_VERSION}" 2>&1 || echo "Tag push skipped (might already exist)"
 
-  # Stage 4: Update pot-o-mining (depends on pot-o-core and ai3-lib)
+  # Stage 4: Update pot-o-mining
   update-pot-o-mining:
     name: Update pot-o-mining
-    needs: [validate, update-pot-o-core, update-ai3-lib]
+    needs: validate
     runs-on: ubuntu-latest
     steps:
       - name: Checkout pot-o-mining repo
@@ -281,10 +287,10 @@ jobs:
           git tag "pot-o-mining-v${MINING_VERSION}" || echo "Tag already exists"
           git push origin "pot-o-mining-v${MINING_VERSION}" 2>&1 || echo "Tag push skipped (might already exist)"
 
-  # Stage 5: Update pot-o-extensions (depends on all previous crates)
+  # Stage 5: Update pot-o-extensions
   update-pot-o-extensions:
     name: Update pot-o-extensions
-    needs: [validate, update-pot-o-core, update-ai3-lib, update-pot-o-mining]
+    needs: validate
     runs-on: ubuntu-latest
     steps:
       - name: Checkout pot-o-extensions repo
