@@ -487,10 +487,17 @@ async fn main() {
     )
     .with_graceful_shutdown(async move {
         let sigterm = async {
-            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-                .expect("failed to register SIGTERM handler")
-                .recv()
-                .await;
+            #[cfg(unix)]
+            {
+                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                    .expect("failed to register SIGTERM handler")
+                    .recv()
+                    .await;
+            }
+            #[cfg(not(unix))]
+            {
+                std::future::pending::<()>().await;
+            }
         };
         let sigint = async {
             tokio::signal::ctrl_c()
