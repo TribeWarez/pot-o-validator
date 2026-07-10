@@ -109,6 +109,8 @@ fn test_multiple_tokens_config() {
         assert_eq!(&config.token, token_type);
         assert!(config.supply_cap > 0);
         assert!(config.burn_rate_bps <= 10_000); // Max 100%
-        assert!(config.decay_half_life_blocks > 0);
+        if *token_type != TokenType::TribeChain {
+            assert!(config.decay_half_life_blocks > 0);
+        }
     }
 }

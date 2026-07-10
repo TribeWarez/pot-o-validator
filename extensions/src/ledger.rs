@@ -10,7 +10,7 @@ use tracing;
 use crate::tx::{CoinbaseTransaction, TransferTransaction};
 use hexchain_p2p::block::HexBlock;
 
-pub const TRIBE_HARD_CAP: u64 = 1_000_000_000_000_000; // 1 billion TRIBE (6 dec)
+pub const TRIBE_HARD_CAP: u64 = 1_000_000_000_000_000;
 pub const TRIBE_BLOCK_REWARD_INITIAL: u64 = 1_000_000_000; // 1,000 TRIBE per block
 pub const TRIBE_HALVING_INTERVAL: u64 = 210_000; // ~73 days at 30s blocks
 pub const TRIBE_PROOF_REWARD: u64 = 10_000_000; // 10 TRIBE per proof
@@ -501,7 +501,10 @@ impl Ledger {
         let total_mint = cb.block_reward + total_proof_rewards;
 
         let current_supply = self.total_supply_of(&TokenType::TribeChain);
-        if current_supply + total_mint > TRIBE_HARD_CAP {
+        if current_supply
+            .checked_add(total_mint)
+            .is_none_or(|s| s > TRIBE_HARD_CAP)
+        {
             return Err("Supply cap exceeded".into());
         }
 
@@ -613,10 +616,12 @@ impl Ledger {
 
     pub fn mint_tokens(&mut self, to: &str, token: &TokenType, amount: u64) -> Result<(), String> {
         let current = self.total_supply_of(token);
-        if current + amount > TRIBE_HARD_CAP && *token == TokenType::TribeChain {
+        if current
+            .checked_add(amount)
+            .is_none_or(|s| *token == TokenType::TribeChain && s > TRIBE_HARD_CAP)
+        {
             return Err("Supply cap exceeded".into());
         }
-        // issue() already updates total_supply_map — do not increment again
         self.issue(to, token, amount);
         Ok(())
     }
@@ -676,12 +681,21 @@ pub fn spawn_persist_ledger(ledger: Arc<RwLock<Ledger>>, path: String) {
                     block_height: l.block_height,
                 }
             };
-            if let Err(e) = std::fs::write(&path, serde_json::to_string_pretty(&snapshot).unwrap())
-            {
-                tracing::warn!(error = %e, "Failed to persist ledger");
-            } else {
-                let mut l = ledger.write().await;
-                l.clear_modified();
+            let path_clone = path.clone();
+            let json = serde_json::to_string_pretty(&snapshot).unwrap();
+            let write_result =
+                tokio::task::spawn_blocking(move || std::fs::write(&path_clone, json)).await;
+            match write_result {
+                Ok(Ok(())) => {
+                    let mut l = ledger.write().await;
+                    l.clear_modified();
+                }
+                Ok(Err(e)) => {
+                    tracing::warn!(error = %e, "Failed to persist ledger");
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "spawn_blocking join error for ledger persist");
+                }
             }
         }
     });
@@ -1021,5 +1035,13 @@ mod tests {
         ledger.rollback_block(&block).unwrap();
         assert_eq!(ledger.balance_of("alice", &TokenType::TribeChain), 1000);
         assert_eq!(ledger.balance_of("bob", &TokenType::TribeChain), 0);
+    }
+
+    #[test]
+    fn test_try_issue_respects_pttc_cap() {
+        let mut ledger = Ledger::new("protocol".to_string());
+        let cap = 21_000_000_000_000u64;
+        ledger.try_issue("alice", &TokenType::PTtC, cap).unwrap();
+        assert!(ledger.try_issue("bob", &TokenType::PTtC, 1).is_err());
     }
 }

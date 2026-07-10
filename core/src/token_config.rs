@@ -77,6 +77,46 @@ pub fn token_config() -> TokenConfigSet {
         },
     );
 
+    configs.insert(
+        TokenType::TribeChain,
+        TokenConfig {
+            token: TokenType::TribeChain,
+            supply_cap: 1_000_000_000_000_000,
+            burn_rate_bps: 0,
+            decay_half_life_blocks: 0,
+        },
+    );
+
+    configs.insert(
+        TokenType::PTtC,
+        TokenConfig {
+            token: TokenType::PTtC,
+            supply_cap: 21_000_000_000_000,
+            burn_rate_bps: 25,
+            decay_half_life_blocks: 500_000,
+        },
+    );
+
+    configs.insert(
+        TokenType::NMTC,
+        TokenConfig {
+            token: TokenType::NMTC,
+            supply_cap: 100_000_000_000,
+            burn_rate_bps: 50,
+            decay_half_life_blocks: 250_000,
+        },
+    );
+
+    configs.insert(
+        TokenType::AI3,
+        TokenConfig {
+            token: TokenType::AI3,
+            supply_cap: 1_000_000_000_000,
+            burn_rate_bps: 10,
+            decay_half_life_blocks: 1_000_000,
+        },
+    );
+
     configs
 }
 
@@ -112,5 +152,44 @@ mod tests {
         // At half-life blocks, approximately 50% remains
         let remaining = config.apply_decay(1_000_000, 1_000_000);
         assert!(remaining > 490_000 && remaining < 510_000); // ~500_000
+    }
+
+    #[test]
+    fn test_all_tokens_have_supply_caps() {
+        let configs = token_config();
+        assert!(
+            configs.get(&TokenType::TribeChain).is_some(),
+            "TribeChain missing"
+        );
+        assert!(configs.get(&TokenType::STOMP).is_some(), "STOMP missing");
+        assert!(configs.get(&TokenType::AUM).is_some(), "AUM missing");
+        assert!(
+            configs.get(&TokenType::RAVECOIN).is_some(),
+            "RAVECOIN missing"
+        );
+        assert!(configs.get(&TokenType::PTtC).is_some(), "PTtC missing");
+        assert!(configs.get(&TokenType::NMTC).is_some(), "NMTC missing");
+        assert!(configs.get(&TokenType::AI3).is_some(), "AI3 missing");
+    }
+
+    #[test]
+    fn test_pttc_cap_value() {
+        let configs = token_config();
+        let pttc = configs.get(&TokenType::PTtC).unwrap();
+        assert_eq!(pttc.supply_cap, 21_000_000_000_000);
+    }
+
+    #[test]
+    fn test_nmtc_cap_value() {
+        let configs = token_config();
+        let nmtc = configs.get(&TokenType::NMTC).unwrap();
+        assert_eq!(nmtc.supply_cap, 100_000_000_000);
+    }
+
+    #[test]
+    fn test_ai3_cap_value() {
+        let configs = token_config();
+        let ai3 = configs.get(&TokenType::AI3).unwrap();
+        assert_eq!(ai3.supply_cap, 1_000_000_000_000);
     }
 }
