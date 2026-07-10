@@ -29,7 +29,7 @@ sha2 = "0.10"
 reqwest = { version = "0.11", features = ["json"] }
 mdns-sd = "0.7"
 flume = "0.10"
-ed25519-dalek = "1"
+ed25519-dalek = "2"
 bs58 = "0.4"
 hexchain-p2p = "0.9"
 

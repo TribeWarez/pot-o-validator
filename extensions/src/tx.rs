@@ -1,4 +1,4 @@
-use ed25519_dalek::{PublicKey, Signature};
+use ed25519_dalek::{Signature, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fmt;
@@ -160,8 +160,14 @@ pub fn verify_transfer_sig(tx: &TransferTransaction) -> Result<(), TxError> {
     let pubkey_array: [u8; 32] = pubkey_bytes
         .try_into()
         .map_err(|_| TxError::InvalidSignature)?;
-    let public_key = PublicKey::from_bytes(&pubkey_array).map_err(|_| TxError::InvalidSignature)?;
-    let sig = Signature::from_bytes(&tx.signature).map_err(|_| TxError::InvalidSignature)?;
+    let public_key =
+        VerifyingKey::from_bytes(&pubkey_array).map_err(|_| TxError::InvalidSignature)?;
+    let sig_bytes: [u8; 64] = tx
+        .signature
+        .as_slice()
+        .try_into()
+        .map_err(|_| TxError::InvalidSignature)?;
+    let sig = Signature::from_bytes(&sig_bytes);
 
     let expected_hash = hash_transfer(
         &tx.from,
@@ -198,8 +204,14 @@ pub fn verify_coinbase_sig(cb: &CoinbaseTransaction) -> Result<(), TxError> {
     let pubkey_array: [u8; 32] = pubkey_bytes
         .try_into()
         .map_err(|_| TxError::InvalidSignature)?;
-    let public_key = PublicKey::from_bytes(&pubkey_array).map_err(|_| TxError::InvalidSignature)?;
-    let sig = Signature::from_bytes(&cb.signature).map_err(|_| TxError::InvalidSignature)?;
+    let public_key =
+        VerifyingKey::from_bytes(&pubkey_array).map_err(|_| TxError::InvalidSignature)?;
+    let sig_bytes: [u8; 64] = cb
+        .signature
+        .as_slice()
+        .try_into()
+        .map_err(|_| TxError::InvalidSignature)?;
+    let sig = Signature::from_bytes(&sig_bytes);
 
     let expected_hash = hash_coinbase(
         cb.height,
@@ -215,7 +227,7 @@ pub fn verify_coinbase_sig(cb: &CoinbaseTransaction) -> Result<(), TxError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ed25519_dalek::{Keypair, SecretKey, Signer};
+    use ed25519_dalek::{Signer, SigningKey};
 
     #[test]
     fn test_token_discriminant() {
@@ -283,11 +295,9 @@ mod tests {
     #[test]
     fn test_verify_transfer_sig_valid() {
         let seed = [42u8; 32];
-        let secret = SecretKey::from_bytes(&seed).unwrap();
-        let public = PublicKey::from(&secret);
-        let keypair = Keypair { secret, public };
+        let signing_key = SigningKey::from_bytes(&seed);
 
-        let from = bs58::encode(keypair.public.to_bytes()).into_string();
+        let from = bs58::encode(signing_key.verifying_key().to_bytes()).into_string();
         let nonce = 1u64;
         let to = bs58::encode([99u8; 32]).into_string();
         let token = TokenType::TribeChain;
@@ -296,7 +306,7 @@ mod tests {
         let timestamp = 0u64;
 
         let msg = hash_transfer(&from, nonce, &to, &token, amount, fee, timestamp);
-        let signature = keypair.sign(&msg).to_bytes().to_vec();
+        let signature = signing_key.sign(&msg).to_bytes().to_vec();
 
         let tx = TransferTransaction {
             tx_hash: msg,
@@ -335,11 +345,9 @@ mod tests {
     #[test]
     fn test_verify_transfer_sig_tampered_message() {
         let seed = [42u8; 32];
-        let secret = SecretKey::from_bytes(&seed).unwrap();
-        let public = PublicKey::from(&secret);
-        let keypair = Keypair { secret, public };
+        let signing_key = SigningKey::from_bytes(&seed);
 
-        let from = bs58::encode(keypair.public.to_bytes()).into_string();
+        let from = bs58::encode(signing_key.verifying_key().to_bytes()).into_string();
         let nonce = 1u64;
         let to = bs58::encode([99u8; 32]).into_string();
         let token = TokenType::TribeChain;
@@ -348,7 +356,7 @@ mod tests {
         let timestamp = 0u64;
 
         let msg = hash_transfer(&from, nonce, &to, &token, amount, fee, timestamp);
-        let signature = keypair.sign(&msg).to_bytes().to_vec();
+        let signature = signing_key.sign(&msg).to_bytes().to_vec();
 
         let tampered_amount = amount + 1;
         let tx = TransferTransaction {
@@ -369,11 +377,9 @@ mod tests {
     #[test]
     fn test_verify_coinbase_sig_valid() {
         let seed = [99u8; 32];
-        let secret = SecretKey::from_bytes(&seed).unwrap();
-        let public = PublicKey::from(&secret);
-        let keypair = Keypair { secret, public };
+        let signing_key = SigningKey::from_bytes(&seed);
 
-        let miner_address = bs58::encode(keypair.public.to_bytes()).into_string();
+        let miner_address = bs58::encode(signing_key.verifying_key().to_bytes()).into_string();
         let height = 42u64;
         let block_reward = 500u64;
         let proof_rewards = vec![ProofRewardEntry {
@@ -383,7 +389,7 @@ mod tests {
         }];
 
         let msg = hash_coinbase(height, &miner_address, block_reward, &proof_rewards);
-        let signature = keypair.sign(&msg).to_bytes().to_vec();
+        let signature = signing_key.sign(&msg).to_bytes().to_vec();
 
         let cb = CoinbaseTransaction {
             tx_hash: msg,
@@ -416,11 +422,9 @@ mod tests {
     #[test]
     fn test_verify_coinbase_sig_tampered_reward() {
         let seed = [99u8; 32];
-        let secret = SecretKey::from_bytes(&seed).unwrap();
-        let public = PublicKey::from(&secret);
-        let keypair = Keypair { secret, public };
+        let signing_key = SigningKey::from_bytes(&seed);
 
-        let miner_address = bs58::encode(keypair.public.to_bytes()).into_string();
+        let miner_address = bs58::encode(signing_key.verifying_key().to_bytes()).into_string();
         let height = 42u64;
         let block_reward = 500u64;
         let proof_rewards = vec![ProofRewardEntry {
@@ -430,7 +434,7 @@ mod tests {
         }];
 
         let msg = hash_coinbase(height, &miner_address, block_reward, &proof_rewards);
-        let signature = keypair.sign(&msg).to_bytes().to_vec();
+        let signature = signing_key.sign(&msg).to_bytes().to_vec();
 
         let cb = CoinbaseTransaction {
             tx_hash: msg,

@@ -321,16 +321,12 @@ mod tests {
     use super::*;
     use crate::ledger::Ledger;
     use crate::tx::{hash_transfer, TokenType};
-    use ed25519_dalek::{Keypair, PublicKey, SecretKey, Signer};
-    use std::sync::Arc;
 
     async fn test_mempool_submit_and_drain_impl(ledger: &AsyncRwLock<Ledger>) {
-        use ed25519_dalek::{Keypair, PublicKey, SecretKey, Signer};
+        use ed25519_dalek::{Signer, SigningKey};
 
-        let secret = SecretKey::from_bytes(&[42u8; 32]).unwrap();
-        let public = PublicKey::from(&secret);
-        let keypair = Keypair { secret, public };
-        let from = bs58::encode(keypair.public.to_bytes()).into_string();
+        let signing_key = SigningKey::from_bytes(&[42u8; 32]);
+        let from = bs58::encode(signing_key.verifying_key().to_bytes()).into_string();
         let to = bs58::encode([99u8; 32]).into_string();
 
         ledger
@@ -353,7 +349,7 @@ mod tests {
             fee,
             timestamp,
         );
-        let signature = keypair.sign(&tx_hash).to_bytes().to_vec();
+        let signature = signing_key.sign(&tx_hash).to_bytes().to_vec();
 
         let tx = TransferTransaction {
             tx_hash,

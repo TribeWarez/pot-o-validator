@@ -1,6 +1,6 @@
 //! Proof authority and node authentication: Ed25519, mTLS, HMAC device auth.
 
-use ed25519_dalek::{Keypair, PublicKey, SecretKey, Signature, Signer};
+use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
 use pot_o_core::TribeResult;
 use pot_o_mining::Challenge;
 
@@ -26,7 +26,7 @@ pub trait ProofAuthority: Send + Sync {
 /// If no keypair is loaded (e.g., file not found), signing falls back to
 /// returning a zero-filled signature — acceptable for local/test mode.
 pub struct Ed25519Authority {
-    keypair: Option<Keypair>,
+    keypair: Option<SigningKey>,
 }
 
 impl Ed25519Authority {
@@ -63,26 +63,13 @@ impl Ed25519Authority {
         if keypair_bytes.len() >= 32 {
             let mut seed = [0u8; 32];
             seed.copy_from_slice(&keypair_bytes[..32]);
-            match SecretKey::from_bytes(&seed) {
-                Ok(secret) => {
-                    let public = PublicKey::from(&secret);
-                    let keypair = Keypair { secret, public };
-                    tracing::info!(
-                        pubkey = %hex::encode(public.to_bytes()),
-                        "Ed25519Authority: loaded signing key"
-                    );
-                    Self {
-                        keypair: Some(keypair),
-                    }
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        path = %keypair_path,
-                        error = %e,
-                        "Ed25519Authority: invalid secret key bytes; signing disabled"
-                    );
-                    Self { keypair: None }
-                }
+            let signing_key = SigningKey::from_bytes(&seed);
+            tracing::info!(
+                pubkey = %hex::encode(signing_key.verifying_key().to_bytes()),
+                "Ed25519Authority: loaded signing key"
+            );
+            Self {
+                keypair: Some(signing_key),
             }
         } else {
             tracing::warn!(
@@ -94,10 +81,10 @@ impl Ed25519Authority {
         }
     }
 
-    fn public_key_from_str(pubkey: &str) -> Option<PublicKey> {
+    fn public_key_from_str(pubkey: &str) -> Option<VerifyingKey> {
         let bytes = hex::decode(pubkey).ok()?;
         let arr: [u8; 32] = bytes.try_into().ok()?;
-        PublicKey::from_bytes(&arr).ok()
+        VerifyingKey::from_bytes(&arr).ok()
     }
 }
 
@@ -107,10 +94,12 @@ impl ProofAuthority for Ed25519Authority {
             Some(pk) => pk,
             None => return Ok(false),
         };
-        let sig = match Signature::from_bytes(signature) {
-            Ok(s) => s,
-            Err(_) => return Ok(false),
-        };
+        if signature.len() != 64 {
+            return Ok(false);
+        }
+        let mut sig_bytes = [0u8; 64];
+        sig_bytes.copy_from_slice(signature);
+        let sig = Signature::from_bytes(&sig_bytes);
         // We verify against the pubkey itself (the message is the pubkey bytes,
         // proving the miner controls the corresponding secret key)
         Ok(pk.verify_strict(pubkey.as_bytes(), &sig).is_ok())

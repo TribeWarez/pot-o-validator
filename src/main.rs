@@ -12,7 +12,7 @@ use std::sync::Arc;
 use config::ValidatorConfig;
 use consensus::create_app_state;
 use device_registry::{load_registry, DEFAULT_REGISTRY_PATH};
-use ed25519_dalek::{Keypair, SecretKey, Signer};
+use ed25519_dalek::{Signer, SigningKey};
 use hexchain_p2p::block::HexBlock;
 use hexchain_p2p::hex_consensus::{HexConsensus, HexProof};
 use hexchain_p2p::types::{BlockHash, ConsensusParams, MmlParams};
@@ -236,7 +236,8 @@ async fn main() {
     if tribechain_enabled {
         match load_miner_keypair(&cfg.tribechain_miner_keypair_path) {
             Ok(miner_keypair) => {
-                let miner_address = bs58::encode(miner_keypair.public.to_bytes()).into_string();
+                let miner_address =
+                    bs58::encode(miner_keypair.verifying_key().to_bytes()).into_string();
                 tracing::info!(
                     miner_address = %miner_address,
                     "Block producer miner identity loaded"
@@ -575,7 +576,7 @@ fn compute_merkle_root(txs: &[serde_json::Value]) -> BlockHash {
     level[0]
 }
 
-fn load_miner_keypair(path: &str) -> Result<Keypair, String> {
+fn load_miner_keypair(path: &str) -> Result<SigningKey, String> {
     let content = std::fs::read_to_string(path).map_err(|e| {
         format!(
             "Miner keypair file not found at '{}': {}. \
@@ -591,12 +592,15 @@ fn load_miner_keypair(path: &str) -> Result<Keypair, String> {
             bytes.len()
         ));
     }
-    let secret =
-        SecretKey::from_bytes(&bytes[..32]).map_err(|e| format!("Invalid secret key: {}", e))?;
-    let public = ed25519_dalek::PublicKey::from(&secret);
+    let signing_key = SigningKey::from_bytes(
+        &bytes[..32]
+            .try_into()
+            .map_err(|_| "Invalid secret key length".to_string())?,
+    );
+    let public = signing_key.verifying_key();
     if bytes[32..] != public.to_bytes() {
         return Err("Keypair file has mismatched public key".to_string());
     }
     tracing::info!(path = %path, "Miner keypair loaded from file");
-    Ok(Keypair { secret, public })
+    Ok(signing_key)
 }

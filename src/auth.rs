@@ -86,14 +86,13 @@ impl AuthState {
             .map_err(|e| format!("Invalid pubkey hex: {}", e))?
             .try_into()
             .map_err(|_| "Invalid pubkey length".to_string())?;
-        let public_key = ed25519_dalek::PublicKey::from_bytes(&pubkey_bytes)
+        let public_key = ed25519_dalek::VerifyingKey::from_bytes(&pubkey_bytes)
             .map_err(|e| format!("Invalid pubkey: {}", e))?;
 
         let sig_bytes: [u8; 64] = signature
             .try_into()
             .map_err(|_| "Invalid signature length".to_string())?;
-        let signature = ed25519_dalek::Signature::from_bytes(&sig_bytes)
-            .map_err(|e| format!("Invalid signature: {}", e))?;
+        let signature = ed25519_dalek::Signature::from_bytes(&sig_bytes);
 
         public_key
             .verify_strict(message, &signature)
