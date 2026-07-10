@@ -27,6 +27,10 @@ COPY --from=builder /app/target/release/pot-o-validator /usr/local/bin/pot-o-val
 WORKDIR /app
 COPY config/ /config/
 
+RUN useradd -r -s /bin/false -u 1000 pot-o && \
+    chown -R pot-o:pot-o /app /config
+USER pot-o
+
 EXPOSE 8900
 
 CMD ["pot-o-validator"]
