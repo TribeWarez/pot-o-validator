@@ -9,7 +9,7 @@ repository = "https://github.com/tribewarez/pot-o-validator"
 homepage = "https://pot.rpc.gateway.tribewarez.com"
 documentation = "https://docs.rs/pot-o-validator"
 readme = "README.md"
-keywords = ["pot-o", "tribewarez", "blockchain", "validator", "tensor", "mining"]
+keywords = ["pot-o", "tribewarez", "blockchain", "validator", "mining"]
 categories = ["cryptography", "development-tools"]
 
 [workspace]
