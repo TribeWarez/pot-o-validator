@@ -3,7 +3,7 @@
 [![crates.io](https://img.shields.io/crates/v/ai3-lib.svg)](https://crates.io/crates/ai3-lib)
 [![docs.rs](https://img.shields.io/docsrs/ai3-lib)](https://docs.rs/ai3-lib)
 [![CI](https://img.shields.io/github/actions/workflow/status/TribeWarez/ai3-lib/ci.yml?branch=main)](https://github.com/TribeWarez/ai3-lib/actions)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: GPL--3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 
 AI3 support library for PoT-O validator and miner components.
 
@@ -30,4 +30,4 @@ Releases follow semantic versioning. To publish:
 
 ## License
 
-[MIT](LICENSE)
+[GPL--3.0](LICENSE)

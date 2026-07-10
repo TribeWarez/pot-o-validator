@@ -3,7 +3,7 @@
 [![crates.io](https://img.shields.io/crates/v/pot-o-extensions.svg)](https://crates.io/crates/pot-o-extensions)
 [![docs.rs](https://img.shields.io/docsrs/pot-o-extensions)](https://docs.rs/pot-o-extensions)
 [![CI](https://img.shields.io/github/actions/workflow/status/TribeWarez/pot-o-extensions/ci.yml?branch=main)](https://github.com/TribeWarez/pot-o-extensions/actions)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: GPL--3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 
 DeFi, staking, and external-chain extensions for the PoT-O validator.
 
@@ -30,4 +30,4 @@ Releases follow semantic versioning. To publish:
 
 ## License
 
-[MIT](LICENSE)
+[GPL--3.0](LICENSE)

@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.9.11
+
+### Repository
+- Added SECURITY.md, CONTRIBUTING.md, CODE_OF_CONDUCT.md, SUPPORT.md, LICENSE
+- Added GitHub issue templates (bug report, feature request)
+- Added PR template
+- Added hexchain-p2p documentation (README, SECURITY, CONTRIBUTING)
+- Fixed sub-crate license inconsistencies (MIT → GPL-3.0)
+- Updated README.md with comprehensive project documentation
+
+## v0.9.10
+
+### CI/CD
+- Fixed release.yml to trigger on `pot-o-validator-v*` tags (GitHub Release)
+- Fixed upstream-release.yml: independent repo updates (no skip cascade)
+- Fixed upstream-release.yml: check GH_PAT secret
+- Removed `cargo build/test` from downstream update jobs (dependency ordering fix)
+- Added workflow_dispatch to all workflows for manual triggering
+- Fixed crates.io category slug (cryptography::cryptocurrency → cryptography)
+- Fixed keyword count (max 5 per crate for crates.io compatibility)
+
 ## v0.9.9
 
 ### Security

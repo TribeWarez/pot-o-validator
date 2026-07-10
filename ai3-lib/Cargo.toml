@@ -1,6 +1,6 @@
 [package]
 name = "ai3-lib"
-version = "0.9.10"
+version = "0.9.11"
 edition = "2021"
 authors = ["TribeWarez"]
 description = "AI3 support library for PoT-O validator and miner components"

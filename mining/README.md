@@ -3,7 +3,7 @@
 [![crates.io](https://img.shields.io/crates/v/pot-o-mining.svg)](https://crates.io/crates/pot-o-mining)
 [![docs.rs](https://img.shields.io/docsrs/pot-o-mining)](https://docs.rs/pot-o-mining)
 [![CI](https://img.shields.io/github/actions/workflow/status/TribeWarez/pot-o-mining/ci.yml?branch=main)](https://github.com/TribeWarez/pot-o-mining/actions)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: GPL--3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 
 Mining coordination and neural-path logic for PoT-O.
 
@@ -30,4 +30,4 @@ Releases follow semantic versioning. To publish:
 
 ## License
 
-[MIT](LICENSE)
+[GPL--3.0](LICENSE)

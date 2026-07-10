@@ -3,7 +3,7 @@
 [![crates.io](https://img.shields.io/crates/v/pot-o-core.svg)](https://crates.io/crates/pot-o-core)
 [![docs.rs](https://img.shields.io/docsrs/pot-o-core)](https://docs.rs/pot-o-core)
 [![CI](https://img.shields.io/github/actions/workflow/status/TribeWarez/pot-o-core/ci.yml?branch=main)](https://github.com/TribeWarez/pot-o-core/actions)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 
 Core types and utilities for PoT-O (Proof of Tensor Optimizations).
 
@@ -29,4 +29,4 @@ Releases follow semantic versioning. To publish a new release:
 
 ## License
 
-[MIT](LICENSE)
+[GPL-3.0](LICENSE)
