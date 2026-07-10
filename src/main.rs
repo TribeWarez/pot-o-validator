@@ -411,6 +411,110 @@ async fn main() {
         }
     }
 
+    if tribechain_enabled {
+        let sync_state = Arc::clone(&state);
+        let sync_network = network.clone();
+        let sync_peer_timeout = cfg.peer_timeout_secs;
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(30));
+            let client = reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(sync_peer_timeout))
+                .build()
+                .unwrap_or_default();
+            loop {
+                interval.tick().await;
+                let our_height = *sync_state.canonical_tip_height.read().await;
+                let peers = match sync_network.discover_peers().await {
+                    Ok(p) if !p.is_empty() => p,
+                    _ => continue,
+                };
+                let mut best_peer_url: Option<String> = None;
+                let mut best_peer_height = our_height;
+                for peer in &peers {
+                    let url = format!("http://{}:{}", peer.address, peer.port);
+                    let status_url = format!("{}/status", url);
+                    match client.get(&status_url).send().await {
+                        Ok(resp) if resp.status().is_success() => {
+                            if let Ok(json) = resp.json::<serde_json::Value>().await {
+                                if let Some(h) = json.get("block_height").and_then(|v| v.as_u64()) {
+                                    if h > best_peer_height {
+                                        best_peer_height = h;
+                                        best_peer_url = Some(url);
+                                    }
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                let Some(peer_url) = best_peer_url else {
+                    continue;
+                };
+                let from_height = our_height + 1;
+                let blocks_url = format!(
+                    "{}/hexchain/blocks?from_height={}&limit=200",
+                    peer_url, from_height
+                );
+                let blocks_resp = match client.get(&blocks_url).send().await {
+                    Ok(r) if r.status().is_success() => r,
+                    _ => {
+                        tracing::debug!(peer = %peer_url, "Block sync: peer unreachable for blocks");
+                        continue;
+                    }
+                };
+                let blocks_json: serde_json::Value = match blocks_resp.json().await {
+                    Ok(j) => j,
+                    Err(_) => continue,
+                };
+                let blocks = match blocks_json.get("blocks").and_then(|v| v.as_array()) {
+                    Some(b) if !b.is_empty() => b,
+                    _ => continue,
+                };
+                tracing::info!(
+                    peer = %peer_url,
+                    count = blocks.len(),
+                    from = from_height,
+                    "Block sync: fetching blocks from peer"
+                );
+                for block_entry in blocks {
+                    let block_json_str =
+                        match block_entry.get("block_json").and_then(|v| v.as_str()) {
+                            Some(s) => s,
+                            None => continue,
+                        };
+                    let block: HexBlock = match serde_json::from_str(block_json_str) {
+                        Ok(b) => b,
+                        Err(e) => {
+                            tracing::warn!(error = %e, "Block sync: failed to parse block");
+                            break;
+                        }
+                    };
+                    let expected_height = *sync_state.canonical_tip_height.read().await + 1;
+                    if block.height != expected_height {
+                        tracing::debug!(
+                            expected = expected_height,
+                            got = block.height,
+                            "Block sync: skipping out-of-order block"
+                        );
+                        continue;
+                    }
+                    let mut ledger = sync_state.extensions.ledger.write().await;
+                    let mempool = sync_state.extensions.mempool.as_deref();
+                    let block_store = sync_state.extensions.block_store.as_deref();
+                    if let Err(e) =
+                        crate::consensus::accept_block(&block, &mut ledger, mempool, block_store)
+                    {
+                        tracing::warn!(error = %e, height = block.height, "Block sync: accept_block failed");
+                        break;
+                    }
+                    *sync_state.canonical_tip_height.write().await += 1;
+                    tracing::info!(height = block.height, "Block sync: applied block");
+                }
+            }
+        });
+        tracing::info!("Block sync loop started");
+    }
+
     if !cfg.bootstrap_urls.is_empty() && cfg.peer_network_mode == "vpn_mesh" {
         let reg_cfg = RegistrationConfig {
             node_id: cfg.node_id.clone(),
@@ -438,8 +542,8 @@ async fn main() {
         node_id: cfg.node_id.clone(),
         peers: Arc::new(RwLock::new(Vec::new())),
         current_challenge: Arc::new(RwLock::new(None)),
-        mempool: mempool_clone,
-        ledger,
+        mempool: mempool_clone.clone(),
+        ledger: ledger.clone(),
         tribechain_enabled,
         internal_mint_secret: std::env::var("INTERNAL_MINT_SECRET").ok(),
         peer_store: None,
@@ -466,6 +570,99 @@ async fn main() {
 
     let mut internal_state = internal_state;
     internal_state.peer_store = Some(peer_store.clone());
+
+    if tribechain_enabled {
+        if let Some(ref mempool) = mempool_clone {
+            let recon_peers = internal_state.peers.clone();
+            let recon_mempool = mempool.clone();
+            let recon_ledger = ledger.clone();
+            tokio::spawn(async move {
+                let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(60));
+                loop {
+                    interval.tick().await;
+                    let own_hashes: std::collections::HashSet<[u8; 32]> =
+                        recon_mempool.hashes().into_iter().collect();
+                    let peers = recon_peers.read().await.clone();
+                    let client = reqwest::Client::new();
+                    for peer in &peers {
+                        let url =
+                            format!("{}/internal/mempool/hashes", peer.url.trim_end_matches('/'));
+                        let peer_hashes: Vec<String> = match client
+                            .get(&url)
+                            .timeout(std::time::Duration::from_secs(5))
+                            .send()
+                            .await
+                        {
+                            Ok(resp) if resp.status().is_success() => {
+                                match resp.json::<serde_json::Value>().await {
+                                    Ok(val) => val
+                                        .get("hashes")
+                                        .and_then(|h| serde_json::from_value(h.clone()).ok())
+                                        .unwrap_or_default(),
+                                    Err(_) => continue,
+                                }
+                            }
+                            _ => continue,
+                        };
+                        for hash_hex in &peer_hashes {
+                            let hash_bytes = match hex::decode(hash_hex) {
+                                Ok(b) if b.len() == 32 => {
+                                    let mut arr = [0u8; 32];
+                                    arr.copy_from_slice(&b);
+                                    arr
+                                }
+                                _ => continue,
+                            };
+                            if own_hashes.contains(&hash_bytes) {
+                                continue;
+                            }
+                            let tx_url = format!(
+                                "{}/internal/tx/{}",
+                                peer.url.trim_end_matches('/'),
+                                hash_hex
+                            );
+                            let tx_val = match client
+                                .get(&tx_url)
+                                .timeout(std::time::Duration::from_secs(5))
+                                .send()
+                                .await
+                            {
+                                Ok(resp) if resp.status().is_success() => {
+                                    match resp.json::<serde_json::Value>().await {
+                                        Ok(v) => v,
+                                        Err(_) => continue,
+                                    }
+                                }
+                                _ => continue,
+                            };
+                            let tx: pot_o_extensions::tx::TransferTransaction =
+                                match serde_json::from_value(tx_val) {
+                                    Ok(t) => t,
+                                    Err(_) => continue,
+                                };
+                            match recon_mempool.submit(tx, &recon_ledger).await {
+                                Ok(h) => {
+                                    tracing::info!(
+                                        tx_hash = %hex::encode(h),
+                                        from_peer = %peer.node_id,
+                                        "Reconciliation: recovered missing tx"
+                                    );
+                                }
+                                Err(e) => {
+                                    tracing::debug!(
+                                        error = %e,
+                                        from_peer = %peer.node_id,
+                                        "Reconciliation: could not recover tx"
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            tracing::info!("Mempool reconciliation task started (60s interval)");
+        }
+    }
 
     let app = build_router(Arc::clone(&state))
         .merge(hex_api::hex_routes(Arc::clone(&state)))

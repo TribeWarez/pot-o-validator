@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
 use hexchain_p2p::block::HexBlock;
@@ -19,6 +19,8 @@ use tokio::sync::RwLock;
 use crate::auth::AuthState;
 use crate::config::ValidatorConfig;
 use crate::device_registry::RegisteredDevice;
+
+pub const RELAYED_BLOCKS_MAX: usize = 1000;
 
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct ValidatorStats {
@@ -50,6 +52,7 @@ pub struct AppState {
     pub wallet_url: Option<String>,
     /// Proof trace store for recent proof submissions
     pub proof_traces: pot_o_extensions::proof_trace::ProofTraceStore,
+    pub relayed_blocks: RwLock<VecDeque<[u8; 32]>>,
 }
 
 pub fn create_app_state(
@@ -75,6 +78,7 @@ pub fn create_app_state(
         canonical_tip_height: RwLock::new(0),
         wallet_url,
         proof_traces: pot_o_extensions::proof_trace::ProofTraceStore::new(1000),
+        relayed_blocks: RwLock::new(VecDeque::new()),
     })
 }
 

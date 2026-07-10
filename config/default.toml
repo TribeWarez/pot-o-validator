@@ -8,7 +8,6 @@ max_tensor_dim = 64
 max_mine_iterations = 10000
 
 # Extension point modes (defaults for single-node local operation)
-peer_network_mode = "vpn_mesh"
 pool_strategy = "solo"
 device_protocol = "native"
 

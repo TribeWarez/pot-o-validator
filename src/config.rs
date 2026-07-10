@@ -165,6 +165,8 @@ impl ValidatorConfig {
             })
             .unwrap_or_else(Self::defaults);
 
+        let network_mode_from_env = std::env::var("PEER_NETWORK_MODE").is_ok();
+
         if let Ok(v) = std::env::var("NODE_ID") {
             cfg.node_id = v;
         }
@@ -270,6 +272,14 @@ impl ValidatorConfig {
         }
         if let Ok(v) = std::env::var("TRIBECHAIN_BLOCKSTORE_PATH") {
             cfg.tribechain_blockstore_path = v;
+        }
+
+        if !network_mode_from_env {
+            cfg.peer_network_mode = if !cfg.bootstrap_urls.is_empty() {
+                "vpn_mesh".into()
+            } else {
+                "local_only".into()
+            };
         }
 
         cfg

@@ -290,6 +290,14 @@ impl Mempool {
         self.txs.read().unwrap().values().cloned().collect()
     }
 
+    pub fn hashes(&self) -> Vec<[u8; 32]> {
+        self.txs.read().unwrap().keys().copied().collect()
+    }
+
+    pub fn get_tx(&self, hash: &[u8; 32]) -> Option<TransferTransaction> {
+        self.txs.read().unwrap().get(hash).cloned()
+    }
+
     pub fn len(&self) -> usize {
         self.txs.read().unwrap().len()
     }

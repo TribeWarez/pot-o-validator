@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use axum::{
     body::Body,
-    extract::State,
+    extract::{Path, State},
     http::{Request, StatusCode},
     middleware::{self, Next},
     response::IntoResponse,
@@ -93,6 +93,8 @@ pub fn internal_router(state: InternalApiState) -> Router {
             post(handle_challenge_broadcast),
         )
         .route("/internal/tx/broadcast", post(handle_tx_broadcast))
+        .route("/internal/mempool/hashes", get(handle_mempool_hashes))
+        .route("/internal/tx/:hash", get(handle_get_tx_by_hash))
         .route("/internal/mint", post(handle_internal_mint))
         .route("/api/pool/submit-batch", post(handle_submit_batch))
         .layer(middleware::from_fn(verify_peer_signature_middleware))
@@ -336,6 +338,83 @@ async fn handle_tx_broadcast(
             )
                 .into_response()
         }
+    }
+}
+
+/// Handler: GET /internal/mempool/hashes
+/// Returns all tx hashes currently in the mempool for reconciliation.
+async fn handle_mempool_hashes(State(state): State<InternalApiState>) -> impl IntoResponse {
+    if !state.tribechain_enabled {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "tribechain not enabled"})),
+        )
+            .into_response();
+    }
+
+    let Some(mempool) = &state.mempool else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "mempool not available"})),
+        )
+            .into_response();
+    };
+
+    let hashes: Vec<String> = mempool.hashes().iter().map(hex::encode).collect();
+    (StatusCode::OK, Json(json!({"hashes": hashes}))).into_response()
+}
+
+/// Handler: GET /internal/tx/:hash
+/// Returns a single transaction by its hex-encoded hash.
+async fn handle_get_tx_by_hash(
+    State(state): State<InternalApiState>,
+    Path(hash_hex): Path<String>,
+) -> impl IntoResponse {
+    if !state.tribechain_enabled {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "tribechain not enabled"})),
+        )
+            .into_response();
+    }
+
+    let Some(mempool) = &state.mempool else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "mempool not available"})),
+        )
+            .into_response();
+    };
+
+    let hash_bytes = match hex::decode(&hash_hex) {
+        Ok(b) if b.len() == 32 => {
+            let mut arr = [0u8; 32];
+            arr.copy_from_slice(&b);
+            arr
+        }
+        _ => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "invalid hash format"})),
+            )
+                .into_response();
+        }
+    };
+
+    match mempool.get_tx(&hash_bytes) {
+        Some(tx) => match serde_json::to_value(&tx) {
+            Ok(val) => (StatusCode::OK, Json(val)).into_response(),
+            Err(_) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "failed to serialize transaction"})),
+            )
+                .into_response(),
+        },
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "transaction not found"})),
+        )
+            .into_response(),
     }
 }
 
