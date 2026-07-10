@@ -7,6 +7,7 @@ use axum::{
         Path, Query, State,
     },
     http::StatusCode,
+    middleware,
     response::{IntoResponse, Redirect},
     routing::{delete, get, post},
     Json, Router,
@@ -22,6 +23,7 @@ use crate::device_registry::{
     normalize_device_type, prune_stale_devices, spawn_persist_registry, CurrentCalculation,
     RegisteredDevice, DEVICE_TYPE_KEYS,
 };
+use crate::rate_limit::{rate_limit_middleware, RateLimiter};
 
 /// Forward a confirmed mining reward to the wallet service ledger.
 /// Errors are logged but never propagated — the wallet is a best-effort side-effect.
@@ -77,12 +79,29 @@ async fn auth_middleware(
 }
 
 pub fn build_router(state: Arc<AppState>) -> Router {
+    let challenge_limiter = RateLimiter::new(5, 1);
+    let submit_limiter = RateLimiter::new(3, 1);
+    let tx_limiter = RateLimiter::new(10, 1);
+
+    let challenge_route = Router::new()
+        .route("/challenge", post(get_challenge))
+        .layer(middleware::from_fn(rate_limit_middleware))
+        .layer(axum::Extension(challenge_limiter));
+
+    let submit_route = Router::new()
+        .route("/submit", post(submit_proof))
+        .layer(middleware::from_fn(rate_limit_middleware))
+        .layer(axum::Extension(submit_limiter));
+
+    let tx_route = Router::new()
+        .route("/api/tx", post(post_tribechain_tx))
+        .layer(middleware::from_fn(rate_limit_middleware))
+        .layer(axum::Extension(tx_limiter));
+
     Router::new()
         .route("/", get(|| async { Redirect::permanent("/status") }))
         .route("/health", get(health))
         .route("/status", get(status))
-        .route("/challenge", post(get_challenge))
-        .route("/submit", post(submit_proof))
         .route("/miners/:pubkey", get(get_miner))
         .route("/pool", get(pool_info))
         .route("/devices/register", post(register_device))
@@ -96,7 +115,6 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/token/transfer", post(post_token_transfer))
         .route("/token/tx/:address", get(get_token_tx_history))
         .route("/token/tribe/supply", get(get_tribe_supply))
-        .route("/api/tx", post(post_tribechain_tx))
         .route("/api/nonce/:address", get(get_tribechain_nonce))
         .route("/api/blocks", get(get_tribechain_blocks))
         .route("/api/supply", get(get_token_supply))
@@ -115,6 +133,9 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/ws", get(ws_handler))
         .route("/auth/challenge", post(post_auth_challenge))
         .route("/auth/verify", post(post_auth_verify))
+        .merge(challenge_route)
+        .merge(submit_route)
+        .merge(tx_route)
         .with_state(state)
 }
 
@@ -256,14 +277,14 @@ async fn get_challenge(
 
             (
                 StatusCode::OK,
-                Json(serde_json::to_value(&challenge).unwrap()),
+                Json(serde_json::to_value(&challenge).unwrap_or_default()),
             )
         }
         Err(e) => {
             tracing::warn!(error = %e, "POST /challenge failed");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({ "error": e.to_string() })),
+                Json(serde_json::json!({ "error": "internal error" })),
             )
         }
     }
@@ -441,7 +462,9 @@ async fn submit_proof(
                         tracing::warn!(error = %e, "POST /submit chain submit failed");
                         (
                             StatusCode::INTERNAL_SERVER_ERROR,
-                            Json(serde_json::json!({ "accepted": false, "error": e.to_string() })),
+                            Json(
+                                serde_json::json!({ "accepted": false, "error": "internal error" }),
+                            ),
                         )
                     }
                 }
@@ -461,7 +484,7 @@ async fn submit_proof(
                 state.stats.write().await.total_proofs_rejected += 1;
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(serde_json::json!({ "accepted": false, "error": e.to_string() })),
+                    Json(serde_json::json!({ "accepted": false, "error": "internal error" })),
                 )
             }
         }
@@ -501,7 +524,7 @@ async fn get_miner(
 async fn pool_info(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     tracing::debug!("GET /pool");
     let info = state.extensions.pool.pool_info(0, 0);
-    Json(serde_json::to_value(&info).unwrap())
+    Json(serde_json::to_value(&info).unwrap_or_default())
 }
 
 #[derive(Deserialize)]
@@ -765,7 +788,7 @@ async fn get_peers(State(state): State<Arc<AppState>>) -> impl IntoResponse {
         Err(e) => {
             tracing::warn!(error = %e, "GET /network/peers failed");
             Json(serde_json::json!({
-                "error": e.to_string(),
+                "error": "internal error",
             }))
         }
     }
@@ -856,7 +879,10 @@ async fn post_token_transfer(
     };
 
     match receipt {
-        Ok(r) => (StatusCode::OK, Json(serde_json::to_value(&r).unwrap())),
+        Ok(r) => (
+            StatusCode::OK,
+            Json(serde_json::to_value(&r).unwrap_or_default()),
+        ),
         Err(e) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": e })),
@@ -969,10 +995,13 @@ async fn post_tribechain_tx(
                 })),
             )
         }
-        Err(e) => (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": e.to_string()})),
-        ),
+        Err(e) => {
+            tracing::warn!(error = %e, "POST /api/tx mempool submit failed");
+            (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": "internal error"})),
+            )
+        }
     }
 }
 
@@ -1265,9 +1294,38 @@ async fn post_marketplace_order(
 
 async fn delete_marketplace_order(
     State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    tracing::debug!(order_id = %id, "DELETE /marketplace/order");
+    let auth_pubkey = match auth_middleware(
+        &state,
+        headers.get("authorization").and_then(|v| v.to_str().ok()),
+    )
+    .await
+    {
+        Ok(pk) => pk,
+        Err(status) => return (status, Json(serde_json::json!({ "error": "unauthorized" }))),
+    };
+
+    tracing::debug!(order_id = %id, maker = %auth_pubkey, "DELETE /marketplace/order");
+
+    let order = {
+        let mp = state.extensions.marketplace.read().await;
+        mp.get_order(&id).cloned()
+    };
+    let Some(order) = order else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "Order not found or already filled/cancelled" })),
+        );
+    };
+    if order.maker != auth_pubkey {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({ "error": "unauthorized" })),
+        );
+    }
+
     let cancelled = {
         let mut mp = state.extensions.marketplace.write().await;
         mp.cancel_order(&id)
@@ -1295,7 +1353,10 @@ async fn get_marketplace_order(
         mp.get_order(&id).cloned()
     };
     match order {
-        Some(o) => (StatusCode::OK, Json(serde_json::to_value(&o).unwrap())),
+        Some(o) => (
+            StatusCode::OK,
+            Json(serde_json::to_value(&o).unwrap_or_default()),
+        ),
         None => (
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({ "error": "Order not found" })),

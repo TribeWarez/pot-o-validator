@@ -181,9 +181,10 @@ async fn handle_tx_broadcast(
     let tx: TransferTransaction = match serde_json::from_value(tx_val.clone()) {
         Ok(tx) => tx,
         Err(e) => {
+            tracing::warn!(error = %e, "Invalid transaction from peer");
             return (
                 StatusCode::BAD_REQUEST,
-                Json(json!({"error": format!("invalid transaction: {}", e)})),
+                Json(json!({"error": "invalid transaction"})),
             )
                 .into_response();
         }
@@ -215,10 +216,10 @@ async fn handle_tx_broadcast(
                 .into_response()
         }
         Err(e) => {
-            tracing::debug!(error = %e, "Rejected tx from peer");
+            tracing::warn!(error = %e, "Rejected tx from peer");
             (
                 StatusCode::BAD_REQUEST,
-                Json(json!({"error": e.to_string()})),
+                Json(json!({"error": "transaction rejected"})),
             )
                 .into_response()
         }

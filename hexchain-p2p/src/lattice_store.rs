@@ -156,6 +156,7 @@ impl<'de> Deserialize<'de> for LatticeSnapshot {
 pub struct LatticeStore {
     coord_to_hash: RwLock<HashMap<HCPCoord, BlockHash>>,
     hash_to_depth: RwLock<HashMap<BlockHash, u64>>,
+    timestamps: RwLock<Vec<u64>>,
     path: RwLock<String>,
 }
 
@@ -164,6 +165,7 @@ impl LatticeStore {
         Self {
             coord_to_hash: RwLock::new(HashMap::new()),
             hash_to_depth: RwLock::new(HashMap::new()),
+            timestamps: RwLock::new(Vec::new()),
             path: RwLock::new(DEFAULT_LATTICE_PATH.to_string()),
         }
     }
@@ -214,6 +216,17 @@ impl LatticeStore {
     pub fn all_blocks(&self) -> Vec<(HCPCoord, BlockHash)> {
         let map = self.coord_to_hash.read().unwrap();
         map.iter().map(|(c, h)| (*c, *h)).collect()
+    }
+
+    pub fn record_timestamp(&self, timestamp: u64) {
+        let mut ts = self.timestamps.write().unwrap();
+        ts.push(timestamp);
+    }
+
+    pub fn recent_timestamps(&self, limit: usize) -> Vec<u64> {
+        let ts = self.timestamps.read().unwrap();
+        let start = ts.len().saturating_sub(limit);
+        ts[start..].to_vec()
     }
 
     /// Take a consistent snapshot of the full lattice state.

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
+    middleware,
     response::IntoResponse,
     routing::{get, post},
     Json, Router,
@@ -13,18 +14,26 @@ use hexchain_p2p::lattice_store::LatticeSnapshot;
 use serde::Deserialize;
 
 use crate::consensus::{accept_block, rollback_ledger_to, AppState};
+use crate::rate_limit::{rate_limit_middleware, RateLimiter};
 
 type HexApiResponse = (StatusCode, Json<serde_json::Value>);
 
 pub fn hex_routes(state: Arc<AppState>) -> Router {
+    let hex_submit_limiter = RateLimiter::new(3, 1);
+
+    let hex_submit_route = Router::new()
+        .route("/hexchain/submit", post(post_hex_submit))
+        .layer(middleware::from_fn(rate_limit_middleware))
+        .layer(axum::Extension(hex_submit_limiter));
+
     Router::new()
         .route("/hexchain/challenge", post(post_hex_challenge))
-        .route("/hexchain/submit", post(post_hex_submit))
         .route("/hexchain/status", get(get_hex_status))
         .route("/hexchain/lattice", get(get_hex_lattice_all))
         .route("/hexchain/lattice/sync", post(post_hex_lattice_sync))
         .route("/hexchain/lattice/{q}/{r}/{s}", get(get_hex_lattice_coord))
         .route("/hexchain/block/{height}", get(get_hex_block_by_height))
+        .merge(hex_submit_route)
         .with_state(state)
 }
 
@@ -53,7 +62,7 @@ async fn post_hex_challenge(
     );
     (
         StatusCode::OK,
-        Json(serde_json::to_value(&challenge).unwrap()),
+        Json(serde_json::to_value(&challenge).unwrap_or_default()),
     )
 }
 
@@ -74,7 +83,9 @@ async fn post_hex_submit(
                         tracing::warn!(error = %e, "Tribechain block acceptance failed");
                         return (
                             StatusCode::INTERNAL_SERVER_ERROR,
-                            Json(serde_json::json!({ "accepted": false, "error": e })),
+                            Json(
+                                serde_json::json!({ "accepted": false, "error": "internal error" }),
+                            ),
                         );
                     }
                     *state.canonical_tip_height.write().await += 1;
@@ -102,7 +113,7 @@ async fn post_hex_submit(
                 tracing::warn!(error = ?e, "POST /hexchain/submit block insertion failed");
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(serde_json::json!({ "accepted": false, "error": format!("{:?}", e) })),
+                    Json(serde_json::json!({ "accepted": false, "error": "internal error" })),
                 )
             }
         },
@@ -120,7 +131,9 @@ async fn post_hex_submit(
                             tracing::warn!(error = %e, "Tribechain genesis block acceptance failed");
                             return (
                                 StatusCode::INTERNAL_SERVER_ERROR,
-                                Json(serde_json::json!({ "accepted": false, "error": e })),
+                                Json(
+                                    serde_json::json!({ "accepted": false, "error": "internal error" }),
+                                ),
                             );
                         }
                         *state.canonical_tip_height.write().await += 1;
@@ -138,19 +151,22 @@ async fn post_hex_submit(
                         })),
                     )
                 }
-                Err(e) => (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(serde_json::json!({
-                        "accepted": false, "error": format!("{:?}", e)
-                    })),
-                ),
+                Err(e) => {
+                    tracing::warn!(error = ?e, "POST /hexchain/submit genesis block insertion failed");
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(serde_json::json!({
+                            "accepted": false, "error": "internal error"
+                        })),
+                    )
+                }
             }
         }
         Err(e) => {
             tracing::warn!(error = ?e, "POST /hexchain/submit verification failed");
             (
                 StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({ "accepted": false, "error": format!("{:?}", e) })),
+                Json(serde_json::json!({ "accepted": false, "error": "verification failed" })),
             )
         }
     }
@@ -300,10 +316,11 @@ async fn get_hex_block_by_height(
     let block: hexchain_p2p::block::HexBlock = match serde_json::from_str(&stored.block_json) {
         Ok(b) => b,
         Err(e) => {
+            tracing::warn!(error = %e, "Failed to parse stored block");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": format!("Failed to parse block: {}", e)})),
-            )
+                Json(serde_json::json!({"error": "internal error"})),
+            );
         }
     };
 

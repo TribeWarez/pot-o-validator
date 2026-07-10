@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::block::{fill_neighbor_slots_from_store, HexBlock};
 use crate::consensus::{calculate_target, count_mature_neighbors};
+use crate::difficulty::{adjust_target, ADJUSTMENT_WINDOW};
 use crate::lattice_geometry::{get_neighbors, HCPCoord};
 use crate::lattice_store::LatticeStore;
 use crate::types::{BlockHash, ConsensusParams, ValidationError, NEIGHBOR_SLOTS};
@@ -59,7 +60,9 @@ impl HexConsensus {
         let k = count_mature_neighbors(&neighbor_hashes, self.params.maturity_depth, |h| {
             self.store.depth_of(h)
         });
-        let base = Uint256::from_be_bytes(self.params.base_target);
+        let recent = self.store.recent_timestamps(ADJUSTMENT_WINDOW + 1);
+        let adjusted_base_bytes = adjust_target(self.params.base_target, &recent);
+        let base = Uint256::from_be_bytes(adjusted_base_bytes);
         let target = calculate_target(&base, k, self.params.symmetry_num, self.params.symmetry_den);
 
         let now = std::time::SystemTime::now()
@@ -162,6 +165,7 @@ impl HexConsensus {
 
         self.store
             .insert(proof.block.coord, proof.block.pow_hash(), new_depth);
+        self.store.record_timestamp(proof.block.timestamp);
 
         Ok(new_depth)
     }

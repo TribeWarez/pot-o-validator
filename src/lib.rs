@@ -6,9 +6,11 @@ pub mod auth;
 pub mod config;
 pub mod consensus;
 pub mod device_registry;
+pub mod hex_api;
 pub mod http_api;
 pub mod internal_api;
 pub mod pool_coordinator;
+pub mod rate_limit;
 
 pub use ai3_lib::*;
 pub use pot_o_core::*;

@@ -6,6 +6,7 @@ mod extensions_bootstrap;
 mod hex_api;
 mod http_api;
 mod internal_api;
+mod rate_limit;
 
 use std::sync::Arc;
 
@@ -284,7 +285,7 @@ async fn main() {
                             proof_rewards,
                             signature,
                         };
-                        let coinbase_value = serde_json::to_value(&coinbase).unwrap();
+                        let coinbase_value = serde_json::to_value(&coinbase).unwrap_or_default();
                         let mut tx_values: Vec<serde_json::Value> = vec![coinbase_value];
                         for tx in &txs {
                             if let Ok(val) = serde_json::to_value(tx) {
@@ -440,105 +441,116 @@ async fn main() {
     let shutdown_ledger_path = ledger_path.clone();
     let shutdown_state_path = state_path.clone();
 
-    axum::serve(listener, app)
-        .with_graceful_shutdown(async move {
-            let sigterm = async {
-                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-                    .expect("failed to register SIGTERM handler")
-                    .recv()
-                    .await;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .with_graceful_shutdown(async move {
+        let sigterm = async {
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                .expect("failed to register SIGTERM handler")
+                .recv()
+                .await;
+        };
+        let sigint = async {
+            tokio::signal::ctrl_c()
+                .await
+                .expect("failed to register SIGINT handler");
+        };
+        tokio::select! {
+            _ = sigterm => {},
+            _ = sigint => {},
+        }
+        tracing::info!("Shutdown signal received — force-persisting state...");
+
+        // Force-save ledger
+        {
+            let l = shutdown_ledger.read().await;
+            let entries: Vec<LedgerEntry> = l
+                .balances()
+                .iter()
+                .map(|((addr, token), bal)| LedgerEntry {
+                    address: addr.clone(),
+                    token: token.clone(),
+                    balance: *bal,
+                })
+                .collect();
+            let nonces: Vec<(String, u64)> =
+                l.nonces().iter().map(|(k, v)| (k.clone(), *v)).collect();
+            let snapshot = LedgerSnapshot {
+                entries,
+                tx_history: l.tx_history().to_vec(),
+                nonces,
+                block_height: l.block_height(),
             };
-            let sigint = async {
-                tokio::signal::ctrl_c()
-                    .await
-                    .expect("failed to register SIGINT handler");
+            let json = match serde_json::to_string_pretty(&snapshot) {
+                Ok(j) => j,
+                Err(e) => {
+                    tracing::error!("Failed to serialize ledger on shutdown: {}", e);
+                    return;
+                }
             };
-            tokio::select! {
-                _ = sigterm => {},
-                _ = sigint => {},
-            }
-            tracing::info!("Shutdown signal received — force-persisting state...");
-
-            // Force-save ledger
-            {
-                let l = shutdown_ledger.read().await;
-                let entries: Vec<LedgerEntry> = l
-                    .balances()
-                    .iter()
-                    .map(|((addr, token), bal)| LedgerEntry {
-                        address: addr.clone(),
-                        token: token.clone(),
-                        balance: *bal,
-                    })
-                    .collect();
-                let nonces: Vec<(String, u64)> =
-                    l.nonces().iter().map(|(k, v)| (k.clone(), *v)).collect();
-                let snapshot = LedgerSnapshot {
-                    entries,
-                    tx_history: l.tx_history().to_vec(),
-                    nonces,
-                    block_height: l.block_height(),
-                };
-                if let Err(e) = std::fs::write(
-                    &shutdown_ledger_path,
-                    serde_json::to_string_pretty(&snapshot).unwrap(),
-                ) {
-                    tracing::error!("Failed to persist ledger on shutdown: {}", e);
-                } else {
-                    tracing::info!("Ledger saved to {}", shutdown_ledger_path);
-                }
-            }
-
-            // Force-save canonical tip height + proof traces
-            {
-                let tip = *shutdown_state.canonical_tip_height.read().await;
-                let snap = ValidatorStateSnapshot {
-                    canonical_tip_height: tip,
-                };
-                if let Err(e) = std::fs::write(
-                    &shutdown_state_path,
-                    serde_json::to_string_pretty(&snap).unwrap(),
-                ) {
-                    tracing::error!("Failed to persist validator state: {}", e);
-                } else {
-                    tracing::info!("Validator state saved (tip={})", tip);
-                }
-            }
-            shutdown_state.proof_traces.save_to_file().ok();
-
-            // Force-save block store
-            if let Some(ref bs) = shutdown_state.extensions.block_store {
-                if bs.is_modified() {
-                    if let Err(e) = bs.save_to_file() {
-                        tracing::error!("Failed to persist block store on shutdown: {}", e);
-                    } else {
-                        tracing::info!("BlockStore saved");
-                    }
-                }
-            }
-
-            // Force-save lattice
-            if let Err(e) = shutdown_state.hex_consensus.store.save_to_file() {
-                tracing::warn!("Failed to persist lattice on shutdown: {}", e);
+            if let Err(e) = std::fs::write(&shutdown_ledger_path, json) {
+                tracing::error!("Failed to persist ledger on shutdown: {}", e);
             } else {
-                tracing::info!("Hex lattice saved");
+                tracing::info!("Ledger saved to {}", shutdown_ledger_path);
             }
+        }
 
-            // Force-save mempool
-            if let Some(ref mp) = shutdown_state.extensions.mempool {
-                if mp.is_modified() {
-                    if let Err(e) = mp.save_to_file() {
-                        tracing::warn!("Failed to persist mempool on shutdown: {}", e);
-                    } else {
-                        tracing::info!("Mempool saved");
-                    }
+        // Force-save canonical tip height + proof traces
+        {
+            let tip = *shutdown_state.canonical_tip_height.read().await;
+            let snap = ValidatorStateSnapshot {
+                canonical_tip_height: tip,
+            };
+            let json = match serde_json::to_string_pretty(&snap) {
+                Ok(j) => j,
+                Err(e) => {
+                    tracing::error!("Failed to serialize validator state on shutdown: {}", e);
+                    return;
+                }
+            };
+            if let Err(e) = std::fs::write(&shutdown_state_path, json) {
+                tracing::error!("Failed to persist validator state: {}", e);
+            } else {
+                tracing::info!("Validator state saved (tip={})", tip);
+            }
+        }
+        shutdown_state.proof_traces.save_to_file().ok();
+
+        // Force-save block store
+        if let Some(ref bs) = shutdown_state.extensions.block_store {
+            if bs.is_modified() {
+                if let Err(e) = bs.save_to_file() {
+                    tracing::error!("Failed to persist block store on shutdown: {}", e);
+                } else {
+                    tracing::info!("BlockStore saved");
                 }
             }
+        }
 
-            tracing::info!("State persistence complete — exiting.");
-        })
-        .await
-        .unwrap();
+        // Force-save lattice
+        if let Err(e) = shutdown_state.hex_consensus.store.save_to_file() {
+            tracing::warn!("Failed to persist lattice on shutdown: {}", e);
+        } else {
+            tracing::info!("Hex lattice saved");
+        }
+
+        // Force-save mempool
+        if let Some(ref mp) = shutdown_state.extensions.mempool {
+            if mp.is_modified() {
+                if let Err(e) = mp.save_to_file() {
+                    tracing::warn!("Failed to persist mempool on shutdown: {}", e);
+                } else {
+                    tracing::info!("Mempool saved");
+                }
+            }
+        }
+
+        tracing::info!("State persistence complete — exiting.");
+    })
+    .await
+    .unwrap();
 }
 
 fn compute_merkle_root(txs: &[serde_json::Value]) -> BlockHash {
