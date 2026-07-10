@@ -1,5 +1,3 @@
-use crate::uint256::Uint256;
-
 pub const TARGET_BLOCK_SECS: u64 = 30;
 pub const ADJUSTMENT_WINDOW: usize = 12;
 pub const MAX_ADJUST_FACTOR: f64 = 4.0;
@@ -29,14 +27,21 @@ pub fn adjust_target(base_target: [u8; 32], recent_timestamps: &[u64]) -> [u8; 3
 }
 
 fn scale_target(target: [u8; 32], factor: f64) -> [u8; 32] {
+    let mut scaled: [f64; 32] = [0.0; 32];
+    for i in 0..32 {
+        scaled[i] = target[i] as f64 * factor;
+    }
+
     let mut result = [0u8; 32];
     let mut carry = 0.0f64;
 
-    for i in (0..32).rev() {
-        let val = target[i] as f64 * factor + carry;
-        let byte_val = val as u32;
-        result[i] = (byte_val & 0xFF) as u8;
-        carry = (byte_val >> 8) as f64;
+    for i in 0..32 {
+        let val = scaled[i] + carry;
+        result[i] = val as u8;
+        carry = val - (val as u8) as f64;
+        if i < 31 {
+            scaled[i + 1] += carry * 256.0;
+        }
     }
 
     result
@@ -45,6 +50,7 @@ fn scale_target(target: [u8; 32], factor: f64) -> [u8; 32] {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::uint256::Uint256;
 
     #[test]
     fn test_target_increases_when_blocks_too_fast() {
