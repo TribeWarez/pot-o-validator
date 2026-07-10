@@ -11,8 +11,10 @@
 use std::sync::Arc;
 
 use axum::{
+    body::Body,
     extract::State,
-    http::StatusCode,
+    http::{Request, StatusCode},
+    middleware::{self, Next},
     response::IntoResponse,
     routing::{get, post},
     Json, Router,
@@ -46,6 +48,8 @@ pub struct InternalApiState {
     pub tribechain_enabled: bool,
     /// Optional shared secret for mint authorization
     pub internal_mint_secret: Option<String>,
+    /// Optional peer store for persisting peers to disk
+    pub peer_store: Option<Arc<PeerStore>>,
 }
 
 /// Information about a peer validator in the network.
@@ -91,7 +95,103 @@ pub fn internal_router(state: InternalApiState) -> Router {
         .route("/internal/tx/broadcast", post(handle_tx_broadcast))
         .route("/internal/mint", post(handle_internal_mint))
         .route("/api/pool/submit-batch", post(handle_submit_batch))
+        .layer(middleware::from_fn(verify_peer_signature_middleware))
         .with_state(state)
+}
+
+/// Middleware that verifies peer signatures on incoming requests.
+///
+/// If the request contains `X-Node-Pubkey` and `X-Node-Signature` headers,
+/// the signature is verified against the reconstructed message:
+/// `timestamp:method:path:body_hash`
+async fn verify_peer_signature_middleware(req: Request<Body>, next: Next) -> impl IntoResponse {
+    let pubkey_hex = req
+        .headers()
+        .get("x-node-pubkey")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+    let signature_hex = req
+        .headers()
+        .get("x-node-signature")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+    let timestamp = req
+        .headers()
+        .get("x-node-timestamp")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+
+    let has_auth_headers = pubkey_hex.is_some() && signature_hex.is_some() && timestamp.is_some();
+
+    if !has_auth_headers {
+        return next.run(req).await.into_response();
+    }
+
+    let pubkey_hex = pubkey_hex.unwrap();
+    let signature_hex = signature_hex.unwrap();
+    let timestamp = timestamp.unwrap();
+
+    let pubkey_bytes = match hex::decode(&pubkey_hex) {
+        Ok(b) if b.len() == 32 => {
+            let mut arr = [0u8; 32];
+            arr.copy_from_slice(&b);
+            arr
+        }
+        _ => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "invalid pubkey format"})),
+            )
+                .into_response();
+        }
+    };
+
+    let signature_bytes = match hex::decode(&signature_hex) {
+        Ok(b) if b.len() == 64 => b,
+        _ => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "invalid signature format"})),
+            )
+                .into_response();
+        }
+    };
+
+    let method = req.method().as_str().to_string();
+    let path = req.uri().path().to_string();
+
+    let body_bytes = match axum::body::to_bytes(req.into_body(), 1024 * 1024).await {
+        Ok(b) => b,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "failed to read body"})),
+            )
+                .into_response();
+        }
+    };
+
+    let body_hash = hex::encode(Sha256::digest(&body_bytes));
+    let message = format!("{}:{}:{}:{}", timestamp, method, path, body_hash);
+
+    if !pot_o_extensions::peer_auth::verify_peer_signature(
+        &pubkey_bytes,
+        message.as_bytes(),
+        &signature_bytes,
+    ) {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "invalid signature"})),
+        )
+            .into_response();
+    }
+
+    let new_req = Request::builder()
+        .method(method.as_str())
+        .uri(path.as_str())
+        .body(Body::from(body_bytes))
+        .unwrap();
+    next.run(new_req).await.into_response()
 }
 
 /// Handler: POST /internal/peer/register
@@ -122,6 +222,17 @@ async fn handle_peer_register(
         existing.url = peer_info.url;
     } else {
         peers.push(peer_info);
+    }
+
+    drop(peers);
+
+    if let Some(ref store) = state.peer_store {
+        let store = store.clone();
+        tokio::spawn(async move {
+            if let Err(e) = store.save().await {
+                tracing::warn!(error = %e, "Failed to persist peers after registration");
+            }
+        });
     }
 
     (
@@ -377,6 +488,7 @@ mod tests {
             ))),
             tribechain_enabled: false,
             internal_mint_secret: None,
+            peer_store: None,
         };
 
         assert_eq!(state.node_id, "validator-1");
@@ -414,6 +526,7 @@ mod tests {
             ))),
             tribechain_enabled: false,
             internal_mint_secret: None,
+            peer_store: None,
         };
 
         let req = RegisterPeerRequest {
@@ -457,6 +570,7 @@ mod tests {
             ))),
             tribechain_enabled: false,
             internal_mint_secret: None,
+            peer_store: None,
         };
 
         let req = RegisterPeerRequest {
@@ -494,6 +608,7 @@ mod tests {
             ))),
             tribechain_enabled: false,
             internal_mint_secret: None,
+            peer_store: None,
         };
 
         let peers = state.peers.read().await;
@@ -524,6 +639,7 @@ mod tests {
             ))),
             tribechain_enabled: false,
             internal_mint_secret: None,
+            peer_store: None,
         };
 
         let peers = state.peers.read().await;
@@ -544,6 +660,7 @@ mod tests {
             ))),
             tribechain_enabled: false,
             internal_mint_secret: None,
+            peer_store: None,
         };
 
         let challenge_data = json!({"id": "challenge-1", "difficulty": 2});
@@ -571,6 +688,7 @@ mod tests {
             ))),
             tribechain_enabled: false,
             internal_mint_secret: None,
+            peer_store: None,
         };
 
         let mut challenge = state.current_challenge.write().await;
@@ -605,6 +723,7 @@ mod tests {
             ))),
             tribechain_enabled: false,
             internal_mint_secret: None,
+            peer_store: None,
         };
 
         // Register with duplicate node_id
@@ -653,6 +772,7 @@ mod tests {
             ))),
             tribechain_enabled: false,
             internal_mint_secret: None,
+            peer_store: None,
         };
 
         // Wait a bit and re-register
@@ -692,6 +812,7 @@ mod tests {
             ))),
             tribechain_enabled: false,
             internal_mint_secret: None,
+            peer_store: None,
         };
 
         // Verify the handler returns correct structure
@@ -711,6 +832,7 @@ mod tests {
             ))),
             tribechain_enabled: false,
             internal_mint_secret: None,
+            peer_store: None,
         };
 
         let challenge = json!({"id": "c1", "difficulty": 2});
@@ -752,6 +874,7 @@ mod tests {
             ))),
             tribechain_enabled: false,
             internal_mint_secret: None,
+            peer_store: None,
         };
 
         let peers = state.peers.read().await;

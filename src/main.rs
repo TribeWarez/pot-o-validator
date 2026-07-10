@@ -8,6 +8,7 @@ mod http_api;
 mod internal_api;
 mod peer_store;
 mod rate_limit;
+mod spv;
 
 use std::sync::Arc;
 
@@ -418,6 +419,9 @@ async fn main() {
         tracing::info!("Bootstrap registration task started ({} urls)", url_count);
     }
 
+    let peer_store_path =
+        std::env::var("PEER_STORE_PATH").unwrap_or_else(|_| "/blockstore/peers.json".to_string());
+
     let internal_state = internal_api::InternalApiState {
         node_id: cfg.node_id.clone(),
         peers: Arc::new(RwLock::new(Vec::new())),
@@ -426,7 +430,25 @@ async fn main() {
         ledger,
         tribechain_enabled,
         internal_mint_secret: std::env::var("INTERNAL_MINT_SECRET").ok(),
+        peer_store: None,
     };
+
+    let peer_store = Arc::new(peer_store::PeerStore::new(
+        peer_store_path.clone(),
+        internal_state.peers.clone(),
+    ));
+    peer_store.load();
+    {
+        let loaded = internal_state.peers.read().await.len();
+        if loaded > 0 {
+            tracing::info!(peers = loaded, path = %peer_store_path, "Peer list loaded from disk");
+        }
+    }
+    peer_store.spawn_persist();
+    tracing::info!(path = %peer_store_path, "Peer persistence started");
+
+    let mut internal_state = internal_state;
+    internal_state.peer_store = Some(peer_store.clone());
 
     let app = build_router(Arc::clone(&state))
         .merge(hex_api::hex_routes(Arc::clone(&state)))
@@ -441,6 +463,7 @@ async fn main() {
     let shutdown_ledger = state.extensions.ledger.clone();
     let shutdown_ledger_path = ledger_path.clone();
     let shutdown_state_path = state_path.clone();
+    let shutdown_peer_store = peer_store.clone();
 
     axum::serve(
         listener,
@@ -546,6 +569,12 @@ async fn main() {
                     tracing::info!("Mempool saved");
                 }
             }
+        }
+
+        if let Err(e) = shutdown_peer_store.save().await {
+            tracing::warn!("Failed to persist peers on shutdown: {}", e);
+        } else {
+            tracing::info!("Peer list saved");
         }
 
         tracing::info!("State persistence complete — exiting.");

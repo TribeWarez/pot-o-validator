@@ -42,7 +42,7 @@ pub fn verify_merkle_proof(proof: &MerkleProof) -> bool {
     let mut index = proof.index;
 
     for sibling in &proof.proof {
-        current = if index % 2 == 0 {
+        current = if index.is_multiple_of(2) {
             hash_pair(current, *sibling)
         } else {
             hash_pair(*sibling, current)
@@ -84,7 +84,11 @@ fn build_merkle_branch(leaves: &[[u8; 32]], index: usize) -> Vec<[u8; 32]> {
     let mut idx = index;
 
     while level.len() > 1 {
-        let sibling_idx = if idx % 2 == 0 { idx + 1 } else { idx - 1 };
+        let sibling_idx = if idx.is_multiple_of(2) {
+            idx + 1
+        } else {
+            idx - 1
+        };
         if sibling_idx < level.len() {
             proof.push(level[sibling_idx]);
         }

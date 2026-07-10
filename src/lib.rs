@@ -9,6 +9,7 @@ pub mod device_registry;
 pub mod hex_api;
 pub mod http_api;
 pub mod internal_api;
+pub mod peer_store;
 pub mod pool_coordinator;
 pub mod rate_limit;
 pub mod spv;

@@ -1222,7 +1222,7 @@ async fn get_tx_proof(
             Json(serde_json::json!({
                 "tx_hash": hex::encode(proof.tx_hash),
                 "merkle_root": hex::encode(proof.merkle_root),
-                "proof": proof.proof.iter().map(|h| hex::encode(h)).collect::<Vec<_>>(),
+                "proof": proof.proof.iter().map(hex::encode).collect::<Vec<_>>(),
                 "index": proof.index,
                 "valid": crate::spv::verify_merkle_proof(&proof),
             })),

@@ -216,13 +216,21 @@ impl GossipClient {
                 "node_id": node_id,
                 "snapshot": snapshot,
             });
-            let result = self
+            let body_bytes = serde_json::to_vec(&payload)?;
+            let headers = self.sign_request("POST", "/hexchain/lattice/sync", &body_bytes);
+
+            let mut request = self
                 .client
                 .post(format!("{}/hexchain/lattice/sync", peer_url))
                 .timeout(self.timeout)
-                .json(&payload)
-                .send()
-                .await;
+                .body(body_bytes)
+                .header("content-type", "application/json");
+
+            for (key, value) in headers {
+                request = request.header(key, value);
+            }
+
+            let result = request.send().await;
 
             if let Ok(response) = result {
                 if response.status().is_success() {
@@ -242,13 +250,21 @@ impl GossipClient {
         let mut success_count = 0;
 
         for peer_url in peers {
-            let result = self
+            let body_bytes = serde_json::to_vec(proof)?;
+            let headers = self.sign_request("POST", "/hexchain/submit", &body_bytes);
+
+            let mut request = self
                 .client
                 .post(format!("{}/hexchain/submit", peer_url))
                 .timeout(self.timeout)
-                .json(proof)
-                .send()
-                .await;
+                .body(body_bytes)
+                .header("content-type", "application/json");
+
+            for (key, value) in headers {
+                request = request.header(key, value);
+            }
+
+            let result = request.send().await;
 
             if let Ok(response) = result {
                 if response.status().is_success() {
