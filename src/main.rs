@@ -343,6 +343,7 @@ async fn main() {
                                 .duration_since(std::time::UNIX_EPOCH)
                                 .unwrap_or_default()
                                 .as_secs(),
+                            generation: challenge.generation,
                         };
                         match bp_state.hex_consensus.submit_block(&proof) {
                             Ok(depth) => {

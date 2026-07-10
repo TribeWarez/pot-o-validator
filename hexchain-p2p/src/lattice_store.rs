@@ -153,9 +153,14 @@ impl<'de> Deserialize<'de> for LatticeSnapshot {
     }
 }
 
+struct LatticeData {
+    coord_to_hash: HashMap<HCPCoord, BlockHash>,
+    hash_to_depth: HashMap<BlockHash, u64>,
+    generation: u64,
+}
+
 pub struct LatticeStore {
-    coord_to_hash: RwLock<HashMap<HCPCoord, BlockHash>>,
-    hash_to_depth: RwLock<HashMap<BlockHash, u64>>,
+    data: RwLock<LatticeData>,
     timestamps: RwLock<Vec<u64>>,
     path: RwLock<String>,
 }
@@ -163,8 +168,11 @@ pub struct LatticeStore {
 impl LatticeStore {
     pub fn new() -> Self {
         Self {
-            coord_to_hash: RwLock::new(HashMap::new()),
-            hash_to_depth: RwLock::new(HashMap::new()),
+            data: RwLock::new(LatticeData {
+                coord_to_hash: HashMap::new(),
+                hash_to_depth: HashMap::new(),
+                generation: 0,
+            }),
             timestamps: RwLock::new(Vec::new()),
             path: RwLock::new(DEFAULT_LATTICE_PATH.to_string()),
         }
@@ -178,44 +186,44 @@ impl LatticeStore {
     }
 
     pub fn hash_at(&self, coord: HCPCoord) -> Option<BlockHash> {
-        let map = self.coord_to_hash.read().unwrap();
-        map.get(&coord).copied()
+        let data = self.data.read().unwrap();
+        data.coord_to_hash.get(&coord).copied()
     }
 
     pub fn insert(&self, coord: HCPCoord, hash: BlockHash, depth: u64) {
-        {
-            let mut map = self.coord_to_hash.write().unwrap();
-            map.insert(coord, hash);
+        let mut data = self.data.write().unwrap();
+        if let Some(old_hash) = data.coord_to_hash.insert(coord, hash) {
+            if old_hash != hash {
+                data.hash_to_depth.remove(&old_hash);
+            }
         }
-        {
-            let mut map = self.hash_to_depth.write().unwrap();
-            map.insert(hash, depth);
-        }
+        data.hash_to_depth.insert(hash, depth);
+        data.generation += 1;
     }
 
     pub fn depth_of(&self, hash: &BlockHash) -> Option<u64> {
-        let map = self.hash_to_depth.read().unwrap();
-        map.get(hash).copied()
+        let data = self.data.read().unwrap();
+        data.hash_to_depth.get(hash).copied()
     }
 
     pub fn contains_coord(&self, coord: HCPCoord) -> bool {
-        let map = self.coord_to_hash.read().unwrap();
-        map.contains_key(&coord)
+        let data = self.data.read().unwrap();
+        data.coord_to_hash.contains_key(&coord)
     }
 
     pub fn is_empty(&self) -> bool {
-        let map = self.coord_to_hash.read().unwrap();
-        map.is_empty()
+        let data = self.data.read().unwrap();
+        data.coord_to_hash.is_empty()
     }
 
     pub fn all_coords(&self) -> HashSet<HCPCoord> {
-        let map = self.coord_to_hash.read().unwrap();
-        map.keys().copied().collect()
+        let data = self.data.read().unwrap();
+        data.coord_to_hash.keys().copied().collect()
     }
 
     pub fn all_blocks(&self) -> Vec<(HCPCoord, BlockHash)> {
-        let map = self.coord_to_hash.read().unwrap();
-        map.iter().map(|(c, h)| (*c, *h)).collect()
+        let data = self.data.read().unwrap();
+        data.coord_to_hash.iter().map(|(c, h)| (*c, *h)).collect()
     }
 
     pub fn record_timestamp(&self, timestamp: u64) {
@@ -229,34 +237,45 @@ impl LatticeStore {
         ts[start..].to_vec()
     }
 
+    pub fn generation(&self) -> u64 {
+        let data = self.data.read().unwrap();
+        data.generation
+    }
+
     /// Take a consistent snapshot of the full lattice state.
     pub fn snapshot(&self) -> LatticeSnapshot {
-        let coord_to_hash = self.coord_to_hash.read().unwrap().clone();
-        let hash_to_depth = self.hash_to_depth.read().unwrap().clone();
+        let data = self.data.read().unwrap();
         LatticeSnapshot {
-            coord_to_hash,
-            hash_to_depth,
+            coord_to_hash: data.coord_to_hash.clone(),
+            hash_to_depth: data.hash_to_depth.clone(),
         }
     }
 
     /// Load a snapshot into this store (merges, keeping deeper entries on conflict).
     pub fn merge_snapshot(&self, snapshot: &LatticeSnapshot) {
-        let mut coord_to_hash = self.coord_to_hash.write().unwrap();
-        let mut hash_to_depth = self.hash_to_depth.write().unwrap();
+        let mut data = self.data.write().unwrap();
         for (coord, hash) in &snapshot.coord_to_hash {
-            let current_depth = coord_to_hash
+            let current_depth = data
+                .coord_to_hash
                 .get(coord)
-                .and_then(|h| hash_to_depth.get(h))
+                .and_then(|h| data.hash_to_depth.get(h))
                 .copied();
             let incoming_depth = snapshot.hash_to_depth.get(hash).copied();
             match (current_depth, incoming_depth) {
                 (Some(cur), Some(inc)) if inc > cur => {
-                    coord_to_hash.insert(*coord, *hash);
-                    hash_to_depth.insert(*hash, inc);
+                    if let Some(old_hash) = data.coord_to_hash.insert(*coord, *hash) {
+                        if old_hash != *hash {
+                            data.hash_to_depth.remove(&old_hash);
+                        }
+                    }
+                    data.hash_to_depth.insert(*hash, inc);
+                    data.generation += 1;
                 }
                 (None, Some(_)) => {
-                    coord_to_hash.insert(*coord, *hash);
-                    hash_to_depth.insert(*hash, incoming_depth.unwrap_or(0));
+                    data.coord_to_hash.insert(*coord, *hash);
+                    data.hash_to_depth
+                        .insert(*hash, incoming_depth.unwrap_or(0));
+                    data.generation += 1;
                 }
                 _ => {}
             }
@@ -354,6 +373,7 @@ mod tests {
 
         assert_eq!(store.hash_at(coord), Some([0xBBu8; 32]));
         assert_eq!(store.depth_of(&[0xBBu8; 32]), Some(20));
+        assert_eq!(store.depth_of(&[0xAAu8; 32]), None);
     }
 
     #[test]
@@ -508,5 +528,54 @@ mod tests {
         let store = LatticeStore::with_path("/tmp/nonexistent_lattice_file_xyz.json");
         let result = store.load_from_file();
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_generation_increments_on_insert() {
+        let store = LatticeStore::new();
+        assert_eq!(store.generation(), 0);
+        store.insert(HCPCoord { q: 0, r: 0, s: 0 }, [1u8; 32], 5);
+        assert_eq!(store.generation(), 1);
+        store.insert(HCPCoord { q: 1, r: 0, s: 0 }, [2u8; 32], 10);
+        assert_eq!(store.generation(), 2);
+        store.insert(HCPCoord { q: 0, r: 0, s: 0 }, [3u8; 32], 15);
+        assert_eq!(store.generation(), 3);
+    }
+
+    #[test]
+    fn test_atomic_snapshot_consistency() {
+        let store = std::sync::Arc::new(LatticeStore::new());
+        store.insert(HCPCoord { q: 0, r: 0, s: 0 }, [1u8; 32], 5);
+
+        let snap_before = store.snapshot();
+        let writer = store.clone();
+        let handle = std::thread::spawn(move || {
+            for i in 0..100u8 {
+                writer.insert(
+                    HCPCoord {
+                        q: i as i32,
+                        r: 0,
+                        s: 0,
+                    },
+                    [i; 32],
+                    i as u64,
+                );
+            }
+        });
+
+        let snap_during = store.snapshot();
+        assert!(
+            snap_during.hash_to_depth.len() >= snap_before.hash_to_depth.len(),
+            "snapshot should be internally consistent"
+        );
+        for (coord, hash) in &snap_during.coord_to_hash {
+            assert!(
+                snap_during.hash_to_depth.contains_key(hash),
+                "every coord hash in snapshot must have a depth entry: {:?}",
+                coord
+            );
+        }
+
+        handle.join().unwrap();
     }
 }

@@ -23,6 +23,7 @@ pub struct HexChallenge {
     pub neighbor_hashes: [BlockHash; NEIGHBOR_SLOTS],
     pub created_at_unix: u64,
     pub expires_at_unix: u64,
+    pub generation: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -31,6 +32,7 @@ pub struct HexProof {
     pub block: HexBlock,
     pub miner_pubkey: String,
     pub timestamp_unix: u64,
+    pub generation: u64,
 }
 
 pub struct HexConsensus {
@@ -82,6 +84,7 @@ impl HexConsensus {
             neighbor_hashes,
             created_at_unix: now,
             expires_at_unix: now + 120,
+            generation: self.store.generation(),
         }
     }
 
@@ -126,6 +129,7 @@ impl HexConsensus {
                     block,
                     miner_pubkey: String::new(),
                     timestamp_unix: now,
+                    generation: challenge.generation,
                 });
             }
         }
@@ -145,6 +149,10 @@ impl HexConsensus {
 
     pub fn submit_block(&self, proof: &HexProof) -> Result<u64, ValidationError> {
         let genesis_mode = self.store.is_empty();
+
+        if !genesis_mode && proof.generation != self.store.generation() {
+            return Err(ValidationError::LatticeMismatch);
+        }
 
         if !genesis_mode {
             self.verify_proof(proof)?;
@@ -347,6 +355,7 @@ mod tests {
             block: bad_block,
             miner_pubkey: String::new(),
             timestamp_unix: 0,
+            generation: 0,
         };
 
         let verify_result = hc.verify_proof(&bad_proof);
