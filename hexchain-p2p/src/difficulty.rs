@@ -28,20 +28,24 @@ pub fn adjust_target(base_target: [u8; 32], recent_timestamps: &[u64]) -> [u8; 3
 
 fn scale_target(target: [u8; 32], factor: f64) -> [u8; 32] {
     let mut scaled: [f64; 32] = [0.0; 32];
-    for i in 0..32 {
-        scaled[i] = target[i] as f64 * factor;
+    for (i, &t) in target.iter().enumerate() {
+        scaled[i] = t as f64 * factor;
     }
 
-    let mut result = [0u8; 32];
-    let mut carry = 0.0f64;
+    let mut frac_carry = 0.0f64;
+    for s in &mut scaled {
+        *s += frac_carry;
+        let int_part = s.floor();
+        frac_carry = (*s - int_part) * 256.0;
+        *s = int_part;
+    }
 
-    for i in 0..32 {
-        let val = scaled[i] + carry;
-        result[i] = val as u8;
-        carry = val - (val as u8) as f64;
-        if i < 31 {
-            scaled[i + 1] += carry * 256.0;
-        }
+    let mut int_carry = 0u32;
+    let mut result = [0u8; 32];
+    for i in (0..32).rev() {
+        let val = scaled[i] as u32 + int_carry;
+        result[i] = (val & 0xFF) as u8;
+        int_carry = val >> 8;
     }
 
     result
