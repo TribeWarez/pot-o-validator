@@ -21,7 +21,6 @@ jobs:
   publish:
     name: Publish crates to crates.io
     runs-on: ubuntu-latest
-    environment: copilot
     permissions:
       contents: read
     steps:

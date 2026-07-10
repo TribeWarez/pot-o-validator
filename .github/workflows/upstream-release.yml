@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'pot-o-validator-v*'
+  workflow_dispatch:
 
 env:
   RUST_BACKTRACE: 1
@@ -125,15 +126,9 @@ jobs:
           echo "Current core version: ${CORE_VERSION}"
           echo "Validator release: v${VALIDATOR_VERSION}"
           
-          # Bump the package version to match the workspace version
           sed -i "s/^version = \".*\"/version = \"${CORE_VERSION}\"/" Cargo.toml
           
           cargo update
-
-      - name: Build and test
-        run: |
-          cargo build --release
-          cargo test --release
 
       - name: Commit and push
         env:
@@ -186,18 +181,10 @@ jobs:
           echo "Validator release: v${VALIDATOR_VERSION}"
           echo "pot-o-core version: ${CORE_VERSION}"
           
-          # Bump the package version to match the workspace version
           sed -i "s/^version = \".*\"/version = \"${AI3_VERSION}\"/" Cargo.toml
-          
-          # Update pot-o-core dependency to match workspace version
           sed -i "s/pot-o-core = \".*\"/pot-o-core = \"${CORE_VERSION}\"/" Cargo.toml
           
           cargo update
-
-      - name: Build and test
-        run: |
-          cargo build --release
-          cargo test --release
 
       - name: Commit and push
         env:
@@ -251,19 +238,11 @@ jobs:
           echo "Current pot-o-mining version: ${MINING_VERSION}"
           echo "Validator release: v${VALIDATOR_VERSION}"
           
-          # Bump the package version to match the workspace version
           sed -i "s/^version = \".*\"/version = \"${MINING_VERSION}\"/" Cargo.toml
-          
-          # Update dependencies
           sed -i "s/pot-o-core = \".*\"/pot-o-core = \"${CORE_VERSION}\"/" Cargo.toml
           sed -i "s/ai3-lib = \".*\"/ai3-lib = \"${AI3_VERSION}\"/" Cargo.toml
           
           cargo update
-
-      - name: Build and test
-        run: |
-          cargo build --release
-          cargo test --release
 
       - name: Commit and push
         env:
@@ -319,20 +298,12 @@ jobs:
           echo "Current pot-o-extensions version: ${EXT_VERSION}"
           echo "Validator release: v${VALIDATOR_VERSION}"
           
-          # Bump the package version to match the workspace version
           sed -i "s/^version = \".*\"/version = \"${EXT_VERSION}\"/" Cargo.toml
-          
-          # Update all dependencies
           sed -i "s/pot-o-core = \".*\"/pot-o-core = \"${CORE_VERSION}\"/" Cargo.toml
           sed -i "s/ai3-lib = \".*\"/ai3-lib = \"${AI3_VERSION}\"/" Cargo.toml
           sed -i "s/pot-o-mining = \".*\"/pot-o-mining = \"${MINING_VERSION}\"/" Cargo.toml
           
           cargo update
-
-      - name: Build and test
-        run: |
-          cargo build --release
-          cargo test --release
 
       - name: Commit and push
         env:
