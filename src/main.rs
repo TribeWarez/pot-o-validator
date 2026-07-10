@@ -315,7 +315,12 @@ async fn main() {
                             nonce: 0,
                             coord: challenge.coord,
                             neighbor_hashes: challenge.neighbor_hashes,
-                            tensor: hexchain_p2p::types::TensorMeta::default(),
+                            tensor: hexchain_p2p::types::TensorMeta {
+                                expected_capacity: 0,
+                                actual_capacity: 0,
+                                compression_num: 0,
+                                compression_den: 1,
+                            },
                         };
                         let mut found = false;
                         for nonce in 0..1_000_000u64 {

@@ -179,6 +179,7 @@ async fn status(State(state): State<Arc<AppState>>) -> impl IntoResponse {
             "expected_calcs": expected_calcs,
         })
     });
+    let block_height = *state.canonical_tip_height.read().await;
     let resp = Json(serde_json::json!({
         "node_id": state.config.node_id,
         "difficulty": state.config.difficulty,
@@ -194,6 +195,7 @@ async fn status(State(state): State<Arc<AppState>>) -> impl IntoResponse {
         "network": network,
         "current_challenge": current_challenge,
         "connected_peers": peers,
+        "block_height": block_height,
     }));
     tracing::info!(
         challenges_issued = stats.total_challenges_issued,
