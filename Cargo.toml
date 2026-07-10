@@ -1,6 +1,6 @@
 [package]
 name = "pot-o-validator"
-version = "0.9.11"
+version = "0.9.12"
 edition = "2021"
 authors = ["TribeWarez"]
 description = "PoT-O (Proof of Tensor Optimizations) Validator Service"

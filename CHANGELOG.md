@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.9.12
+
+### Hex-Lattice Fixes
+- Atomic lattice operations: single RwLock for coord_to_hash + hash_to_depth
+- Generation counter on every insert (TOCTOU protection for block producer)
+- Orphaned depth entries cleaned up on coord overwrite
+- Challenge carries generation for staleness detection
+
+### P2P Sync & Decentralization
+- Block sync protocol: GET /hexchain/blocks?from_height=N&limit=M
+- Periodic sync loop: compare heights with peers, request missing blocks
+- Block relay (gossip flooding): forward accepted blocks to all other peers
+- Relay dedup: track recently relayed block hashes (bounded set, last 1000)
+- Mempool reconciliation: GET /internal/mempool/hashes + GET /internal/tx/:hash
+- Periodic mempool hash exchange with peers, missing tx recovery
+- Auto-select network mode based on BOOTSTRAP_URLS config
+
 ## v0.9.11
 
 ### Repository

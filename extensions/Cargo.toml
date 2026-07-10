@@ -1,6 +1,6 @@
 [package]
 name = "pot-o-extensions"
-version = "0.9.11"
+version = "0.9.12"
 edition = "2021"
 authors = ["TribeWarez"]
 description = "DeFi, staking, and external-chain extensions for the PoT-O validator"
