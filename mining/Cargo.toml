@@ -1,6 +1,6 @@
 [package]
 name = "pot-o-mining"
-version = "0.9.8"
+version = "0.9.9"
 edition = "2021"
 authors = ["TribeWarez"]
 description = "Mining coordination and neural-path logic for PoT-O"
@@ -10,7 +10,7 @@ homepage = "https://pot.rpc.gateway.tribewarez.com"
 documentation = "https://docs.rs/pot-o-mining"
 readme = "README.md"
 keywords = ["pot-o", "tribewarez", "blockchain", "tensor", "mining", "mml", "neural-path"]
-categories = ["cryptography::cryptocurrency", "development-tools"]
+categories = ["cryptography", "development-tools"]
 
 [dependencies]
 pot-o-core = "0.9"

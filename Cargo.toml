@@ -1,6 +1,6 @@
 [package]
 name = "pot-o-validator"
-version = "0.9.8"
+version = "0.9.9"
 edition = "2021"
 authors = ["TribeWarez"]
 description = "PoT-O (Proof of Tensor Optimizations) Validator Service"
@@ -10,7 +10,7 @@ homepage = "https://pot.rpc.gateway.tribewarez.com"
 documentation = "https://docs.rs/pot-o-validator"
 readme = "README.md"
 keywords = ["pot-o", "tribewarez", "blockchain", "validator", "tensor", "mining"]
-categories = ["cryptography::cryptocurrency", "development-tools"]
+categories = ["cryptography", "development-tools"]
 
 [workspace]
 members = [

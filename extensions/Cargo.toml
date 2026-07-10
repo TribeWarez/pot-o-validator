@@ -1,6 +1,6 @@
 [package]
 name = "pot-o-extensions"
-version = "0.9.8"
+version = "0.9.9"
 edition = "2021"
 authors = ["TribeWarez"]
 description = "DeFi, staking, and external-chain extensions for the PoT-O validator"
@@ -10,7 +10,7 @@ homepage = "https://pot.rpc.gateway.tribewarez.com"
 documentation = "https://docs.rs/pot-o-extensions"
 readme = "README.md"
 keywords = ["pot-o", "tribewarez", "blockchain", "defi", "staking", "extensions"]
-categories = ["cryptography::cryptocurrency", "development-tools"]
+categories = ["cryptography", "development-tools"]
 
 [dependencies]
 pot-o-core = "0.9"

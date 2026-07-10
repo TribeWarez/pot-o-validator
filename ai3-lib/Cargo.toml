@@ -1,6 +1,6 @@
 [package]
 name = "ai3-lib"
-version = "0.9.8"
+version = "0.9.9"
 edition = "2021"
 authors = ["TribeWarez"]
 description = "AI3 support library for PoT-O validator and miner components"
@@ -10,7 +10,7 @@ homepage = "https://pot.rpc.gateway.tribewarez.com"
 documentation = "https://docs.rs/ai3-lib"
 readme = "README.md"
 keywords = ["pot-o", "tribewarez", "tensor", "mining", "esp", "ai3"]
-categories = ["cryptography::cryptocurrency", "development-tools"]
+categories = ["cryptography", "development-tools"]
 
 [dependencies]
 pot-o-core = "0.9"
