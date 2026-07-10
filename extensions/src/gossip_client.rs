@@ -1,6 +1,8 @@
 //! Gossip client for peer-to-peer challenge distribution using async HTTP.
 
+use crate::peer_auth::NodeIdentity;
 use serde_json;
+use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
@@ -13,6 +15,8 @@ pub struct GossipClient {
     peers: Arc<RwLock<Vec<String>>>,
     /// Request timeout duration
     timeout: Duration,
+    /// Optional node identity for request signing
+    identity: Option<Arc<NodeIdentity>>,
 }
 
 impl GossipClient {
@@ -26,7 +30,54 @@ impl GossipClient {
             client: reqwest::Client::new(),
             peers: Arc::new(RwLock::new(peer_urls)),
             timeout: Duration::from_secs(timeout_secs),
+            identity: None,
         }
+    }
+
+    /// Create a new gossip client with authentication enabled.
+    ///
+    /// # Arguments
+    /// * `peer_urls` - List of peer URLs for challenge distribution
+    /// * `timeout_secs` - Request timeout in seconds
+    /// * `identity` - Node identity for signing requests
+    pub fn with_identity(
+        peer_urls: Vec<String>,
+        timeout_secs: u64,
+        identity: Arc<NodeIdentity>,
+    ) -> Self {
+        Self {
+            client: reqwest::Client::new(),
+            peers: Arc::new(RwLock::new(peer_urls)),
+            timeout: Duration::from_secs(timeout_secs),
+            identity: Some(identity),
+        }
+    }
+
+    /// Sign a request and return authentication headers.
+    ///
+    /// # Arguments
+    /// * `method` - HTTP method (GET, POST, etc.)
+    /// * `path` - Request path
+    /// * `body` - Request body bytes
+    fn sign_request(&self, method: &str, path: &str, body: &[u8]) -> Vec<(String, String)> {
+        let Some(identity) = &self.identity else {
+            return vec![];
+        };
+
+        let timestamp = chrono::Utc::now().timestamp();
+        let body_hash = hex::encode(Sha256::digest(body));
+        let message = format!("{}:{}:{}:{}", timestamp, method, path, body_hash);
+        let signature = identity.sign_message(message.as_bytes());
+
+        vec![
+            ("X-Node-Id".to_string(), identity.node_id().to_string()),
+            (
+                "X-Node-Pubkey".to_string(),
+                hex::encode(identity.public_key_bytes()),
+            ),
+            ("X-Node-Signature".to_string(), hex::encode(signature)),
+            ("X-Node-Timestamp".to_string(), timestamp.to_string()),
+        ]
     }
 
     /// Broadcast a challenge to all peers, returning the count of successful broadcasts.
@@ -46,18 +97,26 @@ impl GossipClient {
         let mut success_count = 0;
 
         for peer_url in peers {
-            let result = self
+            let payload = serde_json::json!({
+                "challenge_id": challenge_id,
+                "challenge": challenge_json,
+            });
+            let body_bytes = serde_json::to_vec(&payload)?;
+            let headers = self.sign_request("POST", "/challenge", &body_bytes);
+
+            let mut request = self
                 .client
                 .post(format!("{}/challenge", peer_url))
                 .timeout(self.timeout)
-                .json(&serde_json::json!({
-                    "challenge_id": challenge_id,
-                    "challenge": challenge_json,
-                }))
-                .send()
-                .await;
+                .body(body_bytes)
+                .header("content-type", "application/json");
 
-            // Count as success only if request succeeded and status is 2xx
+            for (key, value) in headers {
+                request = request.header(key, value);
+            }
+
+            let result = request.send().await;
+
             if let Ok(response) = result {
                 if response.status().is_success() {
                     success_count += 1;

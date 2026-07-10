@@ -273,4 +273,112 @@ mod tests {
         );
         assert_eq!(expected_calcs, 1 + challenge.difficulty);
     }
+
+    #[test]
+    fn test_tampered_tensor_result_hash_rejected() {
+        let consensus = PotOConsensus::new(1, 8);
+        let hash = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+        let challenge = consensus.generate_challenge(100, hash).unwrap();
+        let mut proof = consensus
+            .mine(&challenge, "test_miner_pubkey", 1000)
+            .unwrap()
+            .expect("should mine");
+
+        proof.tensor_result_hash = "deadbeef".repeat(8);
+        proof.computation_hash = PotOConsensus::compute_proof_hash(
+            &proof.challenge_id,
+            &proof.tensor_result_hash,
+            proof.mml_score,
+            &proof.path_signature,
+            proof.computation_nonce,
+        );
+
+        let valid = consensus.verify_proof(&proof, &challenge).unwrap();
+        assert!(!valid, "Tampered tensor_result_hash must be rejected");
+    }
+
+    #[test]
+    fn test_negative_mml_score_rejected() {
+        let consensus = PotOConsensus::new(1, 8);
+        let hash = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+        let challenge = consensus.generate_challenge(100, hash).unwrap();
+        let mut proof = consensus
+            .mine(&challenge, "test_miner_pubkey", 1000)
+            .unwrap()
+            .expect("should mine");
+
+        proof.mml_score = -1.0;
+        proof.computation_hash = PotOConsensus::compute_proof_hash(
+            &proof.challenge_id,
+            &proof.tensor_result_hash,
+            proof.mml_score,
+            &proof.path_signature,
+            proof.computation_nonce,
+        );
+
+        let valid = consensus.verify_proof(&proof, &challenge).unwrap();
+        assert!(!valid, "Negative MML score must be rejected");
+    }
+
+    #[test]
+    fn test_tampered_mml_score_rejected() {
+        let consensus = PotOConsensus::new(1, 8);
+        let hash = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+        let challenge = consensus.generate_challenge(100, hash).unwrap();
+        let mut proof = consensus
+            .mine(&challenge, "test_miner_pubkey", 1000)
+            .unwrap()
+            .expect("should mine");
+
+        proof.mml_score = 999.0;
+        proof.computation_hash = PotOConsensus::compute_proof_hash(
+            &proof.challenge_id,
+            &proof.tensor_result_hash,
+            proof.mml_score,
+            &proof.path_signature,
+            proof.computation_nonce,
+        );
+
+        let valid = consensus.verify_proof(&proof, &challenge).unwrap();
+        assert!(!valid, "Tampered MML score must be rejected");
+    }
+
+    #[test]
+    fn test_tampered_path_distance_rejected() {
+        let consensus = PotOConsensus::new(1, 8);
+        let hash = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+        let challenge = consensus.generate_challenge(100, hash).unwrap();
+        let mut proof = consensus
+            .mine(&challenge, "test_miner_pubkey", 1000)
+            .unwrap()
+            .expect("should mine");
+
+        proof.path_distance = proof.path_distance.wrapping_add(100);
+
+        let valid = consensus.verify_proof(&proof, &challenge).unwrap();
+        assert!(!valid, "Tampered path_distance must be rejected");
+    }
+
+    #[test]
+    fn test_tampered_path_signature_rejected() {
+        let consensus = PotOConsensus::new(1, 8);
+        let hash = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+        let challenge = consensus.generate_challenge(100, hash).unwrap();
+        let mut proof = consensus
+            .mine(&challenge, "test_miner_pubkey", 1000)
+            .unwrap()
+            .expect("should mine");
+
+        proof.path_signature = "ff".repeat(64);
+        proof.computation_hash = PotOConsensus::compute_proof_hash(
+            &proof.challenge_id,
+            &proof.tensor_result_hash,
+            proof.mml_score,
+            &proof.path_signature,
+            proof.computation_nonce,
+        );
+
+        let valid = consensus.verify_proof(&proof, &challenge).unwrap();
+        assert!(!valid, "Tampered path_signature must be rejected");
+    }
 }

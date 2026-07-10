@@ -7,6 +7,7 @@ pub mod marketplace;
 pub mod mdns_discovery;
 pub mod mempool;
 pub mod messaging;
+pub mod peer_auth;
 pub mod peer_network;
 pub mod pool_strategy;
 pub mod proof_trace;
@@ -30,6 +31,7 @@ pub use marketplace::{
 pub use mdns_discovery::{MdnsDiscovery, PeerDiscovery};
 pub use mempool::Mempool;
 pub use messaging::{Messaging, MinerMessage, ValidatorMessage};
+pub use peer_auth::{verify_peer_signature, NodeIdentity};
 pub use peer_network::{LocalOnlyNetwork, PeerNetwork, VpnMeshConfig, VpnMeshNetwork};
 pub use pool_strategy::{
     MinerShare, PPLNSPool, PoolStrategy, PoolType, ProofRecord, ProportionalPool, SoloStrategy,

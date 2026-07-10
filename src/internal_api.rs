@@ -26,6 +26,8 @@ use serde_json::json;
 use sha2::{Digest, Sha256};
 use tokio::sync::RwLock;
 
+use crate::peer_store::PeerStore;
+
 /// State for the internal API, shared across peer communication handlers.
 #[derive(Clone)]
 pub struct InternalApiState {

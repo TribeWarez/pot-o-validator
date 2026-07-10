@@ -11,6 +11,7 @@ pub mod http_api;
 pub mod internal_api;
 pub mod pool_coordinator;
 pub mod rate_limit;
+pub mod spv;
 
 pub use ai3_lib::*;
 pub use pot_o_core::*;

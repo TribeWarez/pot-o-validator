@@ -6,6 +6,7 @@ mod extensions_bootstrap;
 mod hex_api;
 mod http_api;
 mod internal_api;
+mod peer_store;
 mod rate_limit;
 
 use std::sync::Arc;

@@ -130,6 +130,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         )
         .route("/marketplace/orders/{maker}", get(get_marketplace_orders))
         .route("/marketplace/trades", get(get_marketplace_trades))
+        .route("/api/proof/tx/{block_height}/{tx_index}", get(get_tx_proof))
         .route("/ws", get(ws_handler))
         .route("/auth/challenge", post(post_auth_challenge))
         .route("/auth/verify", post(post_auth_verify))
@@ -1165,6 +1166,72 @@ async fn get_proof_trace(
             "count": traces.len(),
         })),
     )
+}
+
+// ---------------------------------------------------------------------------
+// SPV proof handler
+// ---------------------------------------------------------------------------
+
+async fn get_tx_proof(
+    State(state): State<Arc<AppState>>,
+    Path((block_height, tx_index)): Path<(u64, usize)>,
+) -> impl IntoResponse {
+    let block_store = match &state.extensions.block_store {
+        Some(bs) => bs,
+        None => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({"error": "block store not available"})),
+            )
+        }
+    };
+
+    let stored = match block_store.at_height(block_height) {
+        Some(s) => s,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({"error": "block not found"})),
+            )
+        }
+    };
+
+    let block: hexchain_p2p::block::HexBlock = match serde_json::from_str(&stored.block_json) {
+        Ok(b) => b,
+        Err(_) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "invalid block"})),
+            )
+        }
+    };
+
+    let txs = match block.transactions {
+        Some(t) => t,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({"error": "no transactions"})),
+            )
+        }
+    };
+
+    match crate::spv::generate_merkle_proof(&txs, tx_index) {
+        Some(proof) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "tx_hash": hex::encode(proof.tx_hash),
+                "merkle_root": hex::encode(proof.merkle_root),
+                "proof": proof.proof.iter().map(|h| hex::encode(h)).collect::<Vec<_>>(),
+                "index": proof.index,
+                "valid": crate::spv::verify_merkle_proof(&proof),
+            })),
+        ),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "transaction not found"})),
+        ),
+    }
 }
 
 // ---------------------------------------------------------------------------
