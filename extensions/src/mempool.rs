@@ -46,15 +46,14 @@ impl Mempool {
                 let mut txs = self.txs.write().unwrap();
                 let mut by_fee = self.by_fee.write().unwrap();
                 let mut nonces = self.address_nonces.write().unwrap();
-                let mut now = std::time::SystemTime::now()
+                let base_time = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
                     .as_nanos() as u64;
-                for entry in entries {
+                for (i, entry) in entries.into_iter().enumerate() {
                     let hash = entry.tx.tx_hash;
                     txs.insert(hash, entry.tx);
-                    by_fee.insert((0, now), hash);
-                    now += 1;
+                    by_fee.insert((0, base_time + i as u64), hash);
                     for (addr, n) in entry.pending_nonces {
                         nonces.insert(addr, n);
                     }
@@ -65,21 +64,26 @@ impl Mempool {
     }
 
     pub fn save_to_file(&self) -> Result<(), String> {
-        let path = self.path.read().unwrap();
-        if path.is_empty() {
-            return Ok(());
-        }
-        let txs = self.txs.read().unwrap();
-        let nonces = self.address_nonces.read().unwrap();
-        let entries: Vec<MempoolEntry> = txs
-            .values()
-            .map(|tx| MempoolEntry {
-                tx: tx.clone(),
-                pending_nonces: nonces.clone(),
-            })
-            .collect();
+        let (path, entries) = {
+            let path = self.path.read().unwrap().clone();
+            if path.is_empty() {
+                return Ok(());
+            }
+            let txs = self.txs.read().unwrap();
+            let nonces = self.address_nonces.read().unwrap();
+            let entries: Vec<MempoolEntry> = txs
+                .values()
+                .map(|tx| MempoolEntry {
+                    tx: tx.clone(),
+                    pending_nonces: nonces.clone(),
+                })
+                .collect();
+            (path, entries)
+        };
         let json = serde_json::to_string_pretty(&entries).map_err(|e| e.to_string())?;
-        std::fs::write(path.as_str(), json).map_err(|e| e.to_string())?;
+        let tmp_path = format!("{}.tmp", path);
+        std::fs::write(&tmp_path, &json).map_err(|e| e.to_string())?;
+        std::fs::rename(&tmp_path, &path).map_err(|e| e.to_string())?;
         *self.modified.write().unwrap() = false;
         Ok(())
     }

@@ -129,10 +129,12 @@ impl BlockStore {
 
     /// Save blocks to a JSON file atomically (.tmp then rename).
     pub fn save_to_file(&self) -> Result<(), String> {
-        let path = self.path.read().unwrap().clone();
-        let blocks = self.blocks.read().unwrap();
-        let stored_blocks: Vec<StoredBlock> = blocks.values().cloned().collect();
-        drop(blocks);
+        let (path, stored_blocks) = {
+            let path = self.path.read().unwrap().clone();
+            let blocks = self.blocks.read().unwrap();
+            let stored: Vec<StoredBlock> = blocks.values().cloned().collect();
+            (path, stored)
+        };
         let json = serde_json::to_string_pretty(&stored_blocks)
             .map_err(|e| format!("serialization error: {}", e))?;
         let tmp = format!("{}.tmp", path);

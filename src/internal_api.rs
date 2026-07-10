@@ -18,6 +18,7 @@ use axum::{
     Json, Router,
 };
 use chrono::{DateTime, Utc};
+use pot_o_core::TokenType;
 use pot_o_extensions::pool_strategy::ProofRecord;
 use pot_o_extensions::{tx::TransferTransaction, Mempool};
 use serde::{Deserialize, Serialize};
@@ -41,6 +42,8 @@ pub struct InternalApiState {
     pub ledger: Arc<RwLock<pot_o_extensions::Ledger>>,
     /// Whether tribechain is enabled
     pub tribechain_enabled: bool,
+    /// Optional shared secret for mint authorization
+    pub internal_mint_secret: Option<String>,
 }
 
 /// Information about a peer validator in the network.
@@ -84,6 +87,7 @@ pub fn internal_router(state: InternalApiState) -> Router {
             post(handle_challenge_broadcast),
         )
         .route("/internal/tx/broadcast", post(handle_tx_broadcast))
+        .route("/internal/mint", post(handle_internal_mint))
         .route("/api/pool/submit-batch", post(handle_submit_batch))
         .with_state(state)
 }
@@ -188,6 +192,19 @@ async fn handle_tx_broadcast(
     match mempool.submit(tx, &state.ledger).await {
         Ok(tx_hash) => {
             tracing::debug!(tx_hash = %hex::encode(tx_hash), "Received tx from peer, added to mempool");
+            let peers = state.peers.read().await.clone();
+            let tx_val_clone = tx_val.clone();
+            tokio::spawn(async move {
+                for peer in &peers {
+                    let url = format!("{}/internal/tx/broadcast", peer.url.trim_end_matches('/'));
+                    let _ = reqwest::Client::new()
+                        .post(&url)
+                        .timeout(std::time::Duration::from_secs(5))
+                        .json(&tx_val_clone)
+                        .send()
+                        .await;
+                }
+            });
             (
                 StatusCode::OK,
                 Json(json!({
@@ -269,6 +286,78 @@ async fn handle_submit_batch(
         .into_response()
 }
 
+#[derive(Debug, Deserialize)]
+struct InternalMintRequest {
+    to: String,
+    token_type: String,
+    amount: u64,
+}
+
+async fn handle_internal_mint(
+    State(state): State<InternalApiState>,
+    headers: axum::http::HeaderMap,
+    Json(body): Json<InternalMintRequest>,
+) -> impl IntoResponse {
+    if let Some(ref expected) = state.internal_mint_secret {
+        let got = headers
+            .get("x-internal-secret")
+            .and_then(|v| v.to_str().ok());
+        if got != Some(expected.as_str()) {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "invalid internal secret"})),
+            )
+                .into_response();
+        }
+    }
+
+    if !state.tribechain_enabled {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "tribechain not enabled"})),
+        )
+            .into_response();
+    }
+
+    let token = match token_type_from_str(&body.token_type) {
+        Some(t) => t,
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": format!("Unknown token: {}", body.token_type)})),
+            )
+                .into_response();
+        }
+    };
+
+    let mut ledger = state.ledger.write().await;
+    if let Err(e) = ledger.try_issue(&body.to, &token, body.amount) {
+        return (StatusCode::BAD_REQUEST, Json(json!({"error": e}))).into_response();
+    }
+
+    let receipt = json!({
+        "status": "ok",
+        "to": body.to,
+        "token": body.token_type,
+        "amount": body.amount,
+        "tx_hash": format!("mint-{}-{}", body.to, body.token_type),
+    });
+    (StatusCode::OK, Json(receipt)).into_response()
+}
+
+fn token_type_from_str(s: &str) -> Option<TokenType> {
+    match s.to_lowercase().as_str() {
+        "tribechain" | "native" | "tribe" => Some(TokenType::TribeChain),
+        "pttc" => Some(TokenType::PTtC),
+        "nmtc" => Some(TokenType::NMTC),
+        "stomp" => Some(TokenType::STOMP),
+        "aum" => Some(TokenType::AUM),
+        "ai3" => Some(TokenType::AI3),
+        "ravecoin" => Some(TokenType::RAVECOIN),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -284,6 +373,7 @@ mod tests {
                 "test".to_string(),
             ))),
             tribechain_enabled: false,
+            internal_mint_secret: None,
         };
 
         assert_eq!(state.node_id, "validator-1");
@@ -320,6 +410,7 @@ mod tests {
                 "test".to_string(),
             ))),
             tribechain_enabled: false,
+            internal_mint_secret: None,
         };
 
         let req = RegisterPeerRequest {
@@ -362,6 +453,7 @@ mod tests {
                 "test".to_string(),
             ))),
             tribechain_enabled: false,
+            internal_mint_secret: None,
         };
 
         let req = RegisterPeerRequest {
@@ -398,6 +490,7 @@ mod tests {
                 "test".to_string(),
             ))),
             tribechain_enabled: false,
+            internal_mint_secret: None,
         };
 
         let peers = state.peers.read().await;
@@ -427,6 +520,7 @@ mod tests {
                 "test".to_string(),
             ))),
             tribechain_enabled: false,
+            internal_mint_secret: None,
         };
 
         let peers = state.peers.read().await;
@@ -446,6 +540,7 @@ mod tests {
                 "test".to_string(),
             ))),
             tribechain_enabled: false,
+            internal_mint_secret: None,
         };
 
         let challenge_data = json!({"id": "challenge-1", "difficulty": 2});
@@ -472,6 +567,7 @@ mod tests {
                 "test".to_string(),
             ))),
             tribechain_enabled: false,
+            internal_mint_secret: None,
         };
 
         let mut challenge = state.current_challenge.write().await;
@@ -505,6 +601,7 @@ mod tests {
                 "test".to_string(),
             ))),
             tribechain_enabled: false,
+            internal_mint_secret: None,
         };
 
         // Register with duplicate node_id
@@ -552,6 +649,7 @@ mod tests {
                 "test".to_string(),
             ))),
             tribechain_enabled: false,
+            internal_mint_secret: None,
         };
 
         // Wait a bit and re-register
@@ -590,6 +688,7 @@ mod tests {
                 "test".to_string(),
             ))),
             tribechain_enabled: false,
+            internal_mint_secret: None,
         };
 
         // Verify the handler returns correct structure
@@ -608,6 +707,7 @@ mod tests {
                 "test".to_string(),
             ))),
             tribechain_enabled: false,
+            internal_mint_secret: None,
         };
 
         let challenge = json!({"id": "c1", "difficulty": 2});
@@ -648,6 +748,7 @@ mod tests {
                 "test".to_string(),
             ))),
             tribechain_enabled: false,
+            internal_mint_secret: None,
         };
 
         let peers = state.peers.read().await;

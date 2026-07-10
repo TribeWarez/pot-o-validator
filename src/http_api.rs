@@ -98,7 +98,6 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/token/tribe/supply", get(get_tribe_supply))
         .route("/api/tx", post(post_tribechain_tx))
         .route("/api/nonce/:address", get(get_tribechain_nonce))
-        .route("/internal/mint", post(post_internal_mint))
         .route("/api/blocks", get(get_tribechain_blocks))
         .route("/api/supply", get(get_token_supply))
         .route("/api/tx/:hash", get(get_tx_by_hash))
@@ -378,11 +377,17 @@ async fn submit_proof(
                     {
                         let mut ledger = state.extensions.ledger.write().await;
                         for share in &shares {
-                            ledger.issue(
+                            if let Err(e) = ledger.try_issue(
                                 &share.miner_pubkey,
                                 &TokenType::TribeChain,
                                 share.reward_amount,
-                            );
+                            ) {
+                                tracing::warn!(
+                                    miner = %share.miner_pubkey,
+                                    error = %e,
+                                    "Mining reward capped — supply limit reached"
+                                );
+                            }
                         }
                     }
                     let mut stats = state.stats.write().await;
@@ -984,39 +989,6 @@ async fn get_tribechain_nonce(
             "nonce": nonce,
         })),
     )
-}
-
-#[derive(Debug, Deserialize)]
-struct InternalMintRequest {
-    to: String,
-    token_type: String,
-    amount: u64,
-}
-
-async fn post_internal_mint(
-    State(state): State<Arc<AppState>>,
-    Json(body): Json<InternalMintRequest>,
-) -> impl IntoResponse {
-    tracing::info!(to = %body.to, token = %body.token_type, amount = body.amount, "POST /internal/mint");
-    let token = match token_type_from_str(&body.token_type) {
-        Some(t) => t,
-        None => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"error": format!("Unknown token: {}", body.token_type)})),
-            );
-        }
-    };
-    let mut ledger = state.extensions.ledger.write().await;
-    ledger.issue(&body.to, &token, body.amount);
-    let receipt = serde_json::json!({
-        "status": "ok",
-        "to": body.to,
-        "token": body.token_type,
-        "amount": body.amount,
-        "tx_hash": format!("mint-{}-{}", body.to, body.token_type),
-    });
-    (StatusCode::OK, Json(receipt))
 }
 
 #[derive(Debug, Deserialize)]
@@ -1628,6 +1600,7 @@ mod tests {
             tribechain_max_txs_per_block: 1000,
             tribechain_genesis_path: String::new(),
             tribechain_miner_address: String::new(),
+            tribechain_miner_keypair_path: "keys/miner.json".to_string(),
             tribechain_blockstore_path: "blockstore.json".to_string(),
         }
     }

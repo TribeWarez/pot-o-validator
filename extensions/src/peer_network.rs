@@ -68,6 +68,12 @@ pub trait PeerNetwork: Send + Sync {
     async fn register_with_bootstrap(&self, _cfg: &RegistrationConfig) -> TribeResult<()> {
         Ok(())
     }
+
+    /// Broadcast a newly produced block to all known peer validators.
+    /// Returns count of successful broadcasts.
+    async fn broadcast_block(&self, _proof: &serde_json::Value) -> TribeResult<usize> {
+        Ok(0)
+    }
 }
 
 /// Configuration for bootstrap registry self-registration.
@@ -419,6 +425,15 @@ impl PeerNetwork for VpnMeshNetwork {
                 .await;
         }
         Ok(())
+    }
+
+    async fn broadcast_block(&self, proof: &serde_json::Value) -> TribeResult<usize> {
+        self.gossip_client
+            .broadcast_block(proof)
+            .await
+            .map_err(|e| {
+                pot_o_core::TribeError::NetworkError(format!("Failed to broadcast block: {}", e))
+            })
     }
 }
 

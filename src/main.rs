@@ -12,10 +12,12 @@ use std::sync::Arc;
 use config::ValidatorConfig;
 use consensus::create_app_state;
 use device_registry::{load_registry, DEFAULT_REGISTRY_PATH};
+use ed25519_dalek::{Keypair, SecretKey, Signer};
 use hexchain_p2p::block::HexBlock;
 use hexchain_p2p::hex_consensus::{HexConsensus, HexProof};
 use hexchain_p2p::types::{BlockHash, ConsensusParams, MmlParams};
 use http_api::build_router;
+use pot_o_extensions::tx::{hash_coinbase, CoinbaseTransaction};
 use pot_o_extensions::{
     peer_network::RegistrationConfig, spawn_persist_ledger, LedgerEntry, LedgerSnapshot,
     DEFAULT_LEDGER_PATH,
@@ -123,15 +125,26 @@ async fn main() {
     if let Some(ref mp) = mempool_clone {
         mp.set_path(&mempool_path);
         mp.load_from_file(&mempool_path);
+        mp.revalidate(&extensions.ledger);
+        tracing::info!(
+            path = %mempool_path,
+            pending = mp.len(),
+            "Mempool loaded and revalidated"
+        );
         let mp = mp.clone();
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(10));
             loop {
                 interval.tick().await;
                 if mp.is_modified() {
-                    if let Err(e) = mp.save_to_file() {
-                        tracing::warn!(error = %e, "Failed to persist mempool");
-                    }
+                    let mp = mp.clone();
+                    tokio::task::spawn_blocking(move || {
+                        if let Err(e) = mp.save_to_file() {
+                            tracing::warn!(error = %e, "Failed to persist mempool");
+                        }
+                    })
+                    .await
+                    .ok();
                 }
             }
         });
@@ -166,7 +179,12 @@ async fn main() {
             let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(30));
             loop {
                 interval.tick().await;
-                let _ = pt.save_to_file();
+                let pt = pt.clone();
+                tokio::task::spawn_blocking(move || {
+                    let _ = pt.save_to_file();
+                })
+                .await
+                .ok();
             }
         });
     }
@@ -178,11 +196,16 @@ async fn main() {
             loop {
                 interval.tick().await;
                 if bs.is_modified() {
-                    if let Err(e) = bs.save_to_file() {
-                        tracing::error!("Failed to persist block store: {}", e);
-                    } else {
-                        bs.clear_modified();
-                    }
+                    let bs = bs.clone();
+                    tokio::task::spawn_blocking(move || {
+                        if let Err(e) = bs.save_to_file() {
+                            tracing::error!("Failed to persist block store: {}", e);
+                        } else {
+                            bs.clear_modified();
+                        }
+                    })
+                    .await
+                    .ok();
                 }
             }
         });
@@ -196,9 +219,14 @@ async fn main() {
             let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(10));
             loop {
                 interval.tick().await;
-                if let Err(e) = lattice.save_to_file() {
-                    tracing::warn!(error = %e, "Failed to persist hex lattice");
-                }
+                let lattice = lattice.clone();
+                tokio::task::spawn_blocking(move || {
+                    if let Err(e) = lattice.save_to_file() {
+                        tracing::warn!(error = %e, "Failed to persist hex lattice");
+                    }
+                })
+                .await
+                .ok();
             }
         });
         tracing::info!(path = %lattice_path, "Hex lattice background persistence started");
@@ -206,111 +234,165 @@ async fn main() {
 
     // ── Automated block producer ──────────────────────────────────────
     if tribechain_enabled {
-        let bp_state = Arc::clone(&state);
-        let bp_mempool = mempool_clone.clone();
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(5));
-            loop {
-                interval.tick().await;
-                let mp = match bp_mempool {
-                    Some(ref mp) => mp,
-                    None => continue,
-                };
-                if mp.is_empty() {
-                    continue;
-                }
-                // Get pending transactions and build block
-                let txs = mp.pending();
-                let slot = {
-                    let stats = bp_state.stats.read().await;
-                    stats.total_challenges_issued
-                };
-                let slot_hash = hex::encode(Sha256::digest(slot.to_le_bytes()));
-                let challenge = bp_state.hex_consensus.generate_challenge(slot, &slot_hash);
-                // Build coinbase tx
-                let coinbase = serde_json::json!({
-                    "miner_address": "INTERNAL",
-                    "block_reward": pot_o_extensions::ledger::block_reward_at_height(challenge.slot),
-                    "proof_rewards": [],
-                    "signature": [],
-                });
-                let mut tx_values: Vec<serde_json::Value> = vec![coinbase];
-                for tx in &txs {
-                    if let Ok(val) = serde_json::to_value(tx) {
-                        tx_values.push(val);
-                    }
-                }
-                let tx_merkle_root = compute_merkle_root(&tx_values);
-                // Mine a block at very low difficulty (high target)
-                let target = challenge.target;
-                let mut block = HexBlock {
-                    parent_hash: challenge.neighbor_hashes[0],
-                    height: challenge.slot,
-                    tx_merkle_root,
-                    transactions: Some(tx_values),
-                    miner_address: Some("INTERNAL".to_string()),
-                    timestamp: std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs(),
-                    nonce: 0,
-                    coord: challenge.coord,
-                    neighbor_hashes: challenge.neighbor_hashes,
-                    tensor: hexchain_p2p::types::TensorMeta::default(),
-                };
-                // Try up to 1M nonces (should find one quickly with easy target)
-                let mut found = false;
-                for nonce in 0..1_000_000u64 {
-                    block.nonce = nonce;
-                    let hash = block.pow_hash();
-                    if hash <= target {
-                        found = true;
-                        break;
-                    }
-                }
-                if !found {
-                    tracing::debug!("Block producer could not find valid nonce, skipping");
-                    continue;
-                }
-                let proof = HexProof {
-                    challenge_id: challenge.id.clone(),
-                    block,
-                    miner_pubkey: "INTERNAL".to_string(),
-                    timestamp_unix: std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs(),
-                };
-                // Submit block through consensus
-                match bp_state.hex_consensus.submit_block(&proof) {
-                    Ok(depth) => {
-                        let mut ledger = bp_state.extensions.ledger.write().await;
-                        let mp_ref = bp_mempool.as_deref();
-                        let bs_ref = bp_state.extensions.block_store.as_deref();
-                        if let Err(e) = crate::consensus::accept_block(
-                            &proof.block,
-                            &mut ledger,
-                            mp_ref,
-                            bs_ref,
-                        ) {
-                            tracing::warn!(error = %e, "Auto block producer: accept_block failed");
+        match load_miner_keypair(&cfg.tribechain_miner_keypair_path) {
+            Ok(miner_keypair) => {
+                let miner_address = bs58::encode(miner_keypair.public.to_bytes()).into_string();
+                tracing::info!(
+                    miner_address = %miner_address,
+                    "Block producer miner identity loaded"
+                );
+
+                let bp_state = Arc::clone(&state);
+                let bp_mempool = mempool_clone.clone();
+                tokio::spawn(async move {
+                    let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(5));
+                    loop {
+                        interval.tick().await;
+                        let mp = match bp_mempool {
+                            Some(ref mp) => mp,
+                            None => continue,
+                        };
+                        let tip = *bp_state.canonical_tip_height.read().await;
+                        let next_height = tip + 1;
+                        let txs = if mp.is_empty() {
+                            Vec::new()
+                        } else {
+                            mp.pending()
+                        };
+                        let slot = {
+                            let stats = bp_state.stats.read().await;
+                            stats.total_challenges_issued
+                        };
+                        let slot_hash = hex::encode(Sha256::digest(slot.to_le_bytes()));
+                        let challenge = bp_state.hex_consensus.generate_challenge(slot, &slot_hash);
+                        let block_reward =
+                            pot_o_extensions::ledger::block_reward_at_height(next_height);
+                        let proof_rewards = Vec::new();
+                        let coinbase_hash = hash_coinbase(
+                            next_height,
+                            &miner_address,
+                            block_reward,
+                            &proof_rewards,
+                        );
+                        let signature = miner_keypair.sign(&coinbase_hash).to_bytes().to_vec();
+                        let coinbase = CoinbaseTransaction {
+                            tx_hash: coinbase_hash,
+                            height: next_height,
+                            miner_address: miner_address.clone(),
+                            block_reward,
+                            proof_rewards,
+                            signature,
+                        };
+                        let coinbase_value = serde_json::to_value(&coinbase).unwrap();
+                        let mut tx_values: Vec<serde_json::Value> = vec![coinbase_value];
+                        for tx in &txs {
+                            if let Ok(val) = serde_json::to_value(tx) {
+                                tx_values.push(val);
+                            }
+                        }
+                        let tx_merkle_root = compute_merkle_root(&tx_values);
+                        let target = challenge.target;
+                        let mut block = HexBlock {
+                            parent_hash: challenge.neighbor_hashes[0],
+                            height: next_height,
+                            tx_merkle_root,
+                            transactions: Some(tx_values),
+                            miner_address: Some(miner_address.clone()),
+                            timestamp: std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_secs(),
+                            nonce: 0,
+                            coord: challenge.coord,
+                            neighbor_hashes: challenge.neighbor_hashes,
+                            tensor: hexchain_p2p::types::TensorMeta::default(),
+                        };
+                        let mut found = false;
+                        for nonce in 0..1_000_000u64 {
+                            block.nonce = nonce;
+                            let hash = block.pow_hash();
+                            if hash <= target {
+                                found = true;
+                                break;
+                            }
+                        }
+                        if !found {
+                            tracing::debug!("Block producer could not find valid nonce, skipping");
                             continue;
                         }
-                        *bp_state.canonical_tip_height.write().await += 1;
-                        tracing::info!(
-                            height = proof.block.height,
-                            txs = txs.len(),
-                            depth = depth,
-                            "Auto block produced"
-                        );
+                        let proof = HexProof {
+                            challenge_id: challenge.id.clone(),
+                            block,
+                            miner_pubkey: miner_address.clone(),
+                            timestamp_unix: std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_secs(),
+                        };
+                        match bp_state.hex_consensus.submit_block(&proof) {
+                            Ok(depth) => {
+                                let mut ledger = bp_state.extensions.ledger.write().await;
+                                let mp_ref = bp_mempool.as_deref();
+                                let bs_ref = bp_state.extensions.block_store.as_deref();
+                                if let Err(e) = crate::consensus::accept_block(
+                                    &proof.block,
+                                    &mut ledger,
+                                    mp_ref,
+                                    bs_ref,
+                                ) {
+                                    tracing::warn!(error = %e, "Auto block producer: accept_block failed");
+                                    continue;
+                                }
+                                *bp_state.canonical_tip_height.write().await += 1;
+                                tracing::info!(
+                                    height = proof.block.height,
+                                    txs = txs.len(),
+                                    depth = depth,
+                                    "Auto block produced"
+                                );
+
+                                let block_hash = hex::encode(proof.block.pow_hash());
+                                let _ = bp_state
+                                    .extensions
+                                    .messaging
+                                    .broadcast(&pot_o_extensions::ValidatorMessage::NewBlock {
+                                        height: proof.block.height,
+                                        hash: block_hash,
+                                        tx_count: txs.len(),
+                                        timestamp: proof.timestamp_unix,
+                                    })
+                                    .await;
+
+                                if let Ok(proof_json) = serde_json::to_value(&proof) {
+                                    let network = bp_state.extensions.network.clone();
+                                    tokio::spawn(async move {
+                                        match network.broadcast_block(&proof_json).await {
+                                            Ok(n) if n > 0 => {
+                                                tracing::info!(
+                                                    peers = n,
+                                                    "Block broadcast to peers"
+                                                );
+                                            }
+                                            Ok(_) => {}
+                                            Err(e) => {
+                                                tracing::warn!(error = %e, "Block broadcast to peers failed");
+                                            }
+                                        }
+                                    });
+                                }
+                            }
+                            Err(e) => {
+                                tracing::warn!(error = ?e, "Auto block producer: submit_block failed");
+                            }
+                        }
                     }
-                    Err(e) => {
-                        tracing::warn!(error = ?e, "Auto block producer: submit_block failed");
-                    }
-                }
+                });
+                tracing::info!("Automated block producer started");
             }
-        });
-        tracing::info!("Automated block producer started");
+            Err(e) => {
+                tracing::error!(error = %e, "Failed to load miner keypair — block producer disabled");
+            }
+        }
     }
 
     if !cfg.bootstrap_urls.is_empty() && cfg.peer_network_mode == "vpn_mesh" {
@@ -340,6 +422,7 @@ async fn main() {
         mempool: mempool_clone,
         ledger,
         tribechain_enabled,
+        internal_mint_secret: std::env::var("INTERNAL_MINT_SECRET").ok(),
     };
 
     let app = build_router(Arc::clone(&state))
@@ -490,4 +573,30 @@ fn compute_merkle_root(txs: &[serde_json::Value]) -> BlockHash {
         level = next;
     }
     level[0]
+}
+
+fn load_miner_keypair(path: &str) -> Result<Keypair, String> {
+    let content = std::fs::read_to_string(path).map_err(|e| {
+        format!(
+            "Miner keypair file not found at '{}': {}. \
+             Generate one with: solana-keygen new --outfile {}",
+            path, e, path
+        )
+    })?;
+    let bytes: Vec<u8> = serde_json::from_str(&content)
+        .map_err(|e| format!("Invalid keypair JSON at '{}': {}", path, e))?;
+    if bytes.len() != 64 {
+        return Err(format!(
+            "Keypair file must contain 64 bytes, got {}",
+            bytes.len()
+        ));
+    }
+    let secret =
+        SecretKey::from_bytes(&bytes[..32]).map_err(|e| format!("Invalid secret key: {}", e))?;
+    let public = ed25519_dalek::PublicKey::from(&secret);
+    if bytes[32..] != public.to_bytes() {
+        return Err("Keypair file has mismatched public key".to_string());
+    }
+    tracing::info!(path = %path, "Miner keypair loaded from file");
+    Ok(Keypair { secret, public })
 }

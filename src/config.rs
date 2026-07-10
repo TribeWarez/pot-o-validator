@@ -59,6 +59,8 @@ pub struct ValidatorConfig {
     pub tribechain_genesis_path: String,
     #[serde(default = "default_tribechain_miner_address")]
     pub tribechain_miner_address: String,
+    #[serde(default = "default_tribechain_miner_keypair_path")]
+    pub tribechain_miner_keypair_path: String,
     #[serde(default = "default_tribechain_blockstore_path")]
     pub tribechain_blockstore_path: String,
 }
@@ -143,6 +145,9 @@ fn default_tribechain_genesis_path() -> String {
 }
 fn default_tribechain_miner_address() -> String {
     String::new()
+}
+fn default_tribechain_miner_keypair_path() -> String {
+    "keys/miner.json".to_string()
 }
 fn default_tribechain_blockstore_path() -> String {
     "blockstore.json".to_string()
@@ -260,6 +265,9 @@ impl ValidatorConfig {
         if let Ok(v) = std::env::var("TRIBECHAIN_MINER_ADDRESS") {
             cfg.tribechain_miner_address = v;
         }
+        if let Ok(v) = std::env::var("TRIBECHAIN_MINER_KEYPAIR_PATH") {
+            cfg.tribechain_miner_keypair_path = v;
+        }
         if let Ok(v) = std::env::var("TRIBECHAIN_BLOCKSTORE_PATH") {
             cfg.tribechain_blockstore_path = v;
         }
@@ -297,6 +305,7 @@ impl ValidatorConfig {
             tribechain_max_txs_per_block: default_tribechain_max_txs_per_block(),
             tribechain_genesis_path: default_tribechain_genesis_path(),
             tribechain_miner_address: default_tribechain_miner_address(),
+            tribechain_miner_keypair_path: default_tribechain_miner_keypair_path(),
             tribechain_blockstore_path: default_tribechain_blockstore_path(),
         }
     }

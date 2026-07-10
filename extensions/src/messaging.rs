@@ -37,12 +37,29 @@ pub enum MinerMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ValidatorMessage {
-    Challenge { challenge_json: String },
-    ProofAccepted { tx_signature: String },
-    ProofRejected { reason: String },
+    Challenge {
+        challenge_json: String,
+    },
+    ProofAccepted {
+        tx_signature: String,
+    },
+    ProofRejected {
+        reason: String,
+    },
     HeartbeatAck,
-    Error { code: String, message: String },
-    Subscribed { device_id: String },
+    Error {
+        code: String,
+        message: String,
+    },
+    Subscribed {
+        device_id: String,
+    },
+    NewBlock {
+        height: u64,
+        hash: String,
+        tx_count: usize,
+        timestamp: u64,
+    },
 }
 
 impl ValidatorMessage {

@@ -174,6 +174,32 @@ impl GossipClient {
 
         Ok(success_count)
     }
+
+    pub async fn broadcast_block(
+        &self,
+        proof: &serde_json::Value,
+    ) -> Result<usize, Box<dyn std::error::Error>> {
+        let peers = self.peers.read().await.clone();
+        let mut success_count = 0;
+
+        for peer_url in peers {
+            let result = self
+                .client
+                .post(format!("{}/hexchain/submit", peer_url))
+                .timeout(self.timeout)
+                .json(proof)
+                .send()
+                .await;
+
+            if let Ok(response) = result {
+                if response.status().is_success() {
+                    success_count += 1;
+                }
+            }
+        }
+
+        Ok(success_count)
+    }
 }
 
 #[cfg(test)]
