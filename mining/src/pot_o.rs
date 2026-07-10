@@ -120,6 +120,7 @@ impl PotOConsensus {
     }
 
     /// Verify a proof offline (same checks the on-chain program performs).
+    /// Re-executes the tensor computation and recomputes all derived values.
     pub fn verify_proof(&self, proof: &PotOProof, challenge: &Challenge) -> TribeResult<bool> {
         // 1. Verify computation hash integrity
         let expected_hash = Self::compute_proof_hash(
@@ -133,7 +134,28 @@ impl PotOConsensus {
             return Ok(false);
         }
 
-        // 2. Verify MML score meets threshold
+        // 2. Sanity: MML score must be non-negative
+        if proof.mml_score < 0.0 {
+            return Ok(false);
+        }
+
+        // 3. Re-execute the tensor operation and verify the result hash
+        let task = challenge.to_mining_task(&proof.miner_pubkey);
+        let output_tensor = self.engine.execute_task(&task)?;
+        let recomputed_hash = output_tensor.calculate_hash();
+        if recomputed_hash != proof.tensor_result_hash {
+            return Ok(false);
+        }
+
+        // 4. Recompute MML score and verify
+        let recomputed_mml = self
+            .mml_validator
+            .compute_mml_score(&challenge.input_tensor, &output_tensor)?;
+        if (recomputed_mml - proof.mml_score).abs() > f64::EPSILON {
+            return Ok(false);
+        }
+
+        // 5. Verify MML score meets threshold
         if !self
             .mml_validator
             .validate(proof.mml_score, challenge.mml_threshold)
@@ -141,8 +163,28 @@ impl PotOConsensus {
             return Ok(false);
         }
 
-        // 3. Verify path distance
+        // 6. Recompute neural path and verify path_distance
+        let actual_path = self
+            .neural_validator
+            .compute_actual_path(&output_tensor, proof.computation_nonce)?;
+        let expected_path = self.neural_validator.expected_path_signature(&challenge.id);
+        let min_len = actual_path.len().min(expected_path.len());
+        let recomputed_distance = NeuralPathValidator::hamming_distance(
+            &actual_path[..min_len],
+            &expected_path[..min_len],
+        );
+        if recomputed_distance != proof.path_distance {
+            return Ok(false);
+        }
+
+        // 7. Verify path distance within limit
         if proof.path_distance > challenge.path_distance_max {
+            return Ok(false);
+        }
+
+        // 8. Verify path signature hex matches recomputed path
+        let recomputed_path_sig = NeuralPathValidator::path_to_hex(&actual_path);
+        if recomputed_path_sig != proof.path_signature {
             return Ok(false);
         }
 

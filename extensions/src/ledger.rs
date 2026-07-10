@@ -614,6 +614,24 @@ impl Ledger {
         Ok(())
     }
 
+    pub fn compute_state_root(&self) -> [u8; 32] {
+        use crate::state_root::compute_state_root;
+        use std::collections::BTreeMap;
+
+        let mut balances = BTreeMap::new();
+        for ((addr, token), balance) in &self.balances {
+            let key = format!("{:?}:{:?}", addr, token);
+            balances.insert(key, *balance);
+        }
+
+        let mut nonces = BTreeMap::new();
+        for (addr, nonce) in &self.nonces {
+            nonces.insert(addr.clone(), *nonce);
+        }
+
+        compute_state_root(&balances, &nonces)
+    }
+
     pub fn mint_tokens(&mut self, to: &str, token: &TokenType, amount: u64) -> Result<(), String> {
         let current = self.total_supply_of(token);
         if current

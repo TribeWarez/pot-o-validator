@@ -12,6 +12,7 @@ pub mod pool_strategy;
 pub mod proof_trace;
 pub mod rewards;
 pub mod security;
+pub mod state_root;
 pub mod tx;
 
 pub use chain_bridge::{ChainBridge, TribechainBridge};
