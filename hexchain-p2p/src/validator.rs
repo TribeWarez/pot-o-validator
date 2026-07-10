@@ -3,7 +3,8 @@ use crate::consensus::{calculate_target, count_mature_neighbors};
 use crate::lattice_geometry::get_neighbors;
 use crate::lattice_store::LatticeStore;
 use crate::types::{
-    is_empty_neighbor_slot, ConsensusParams, TensorMeta, ValidationError, NEIGHBOR_SLOTS,
+    is_empty_neighbor_slot, ConsensusParams, TensorMeta, ValidationError, MAX_BLOCK_SIZE_BYTES,
+    NEIGHBOR_SLOTS,
 };
 use crate::uint256::Uint256;
 
@@ -25,6 +26,23 @@ pub fn validate_block(
     store: &LatticeStore,
     params: &ConsensusParams,
 ) -> Option<ValidationError> {
+    let block_json = match serde_json::to_vec(block) {
+        Ok(v) => v,
+        Err(_) => return Some(ValidationError::StructuralInvalid),
+    };
+    if block_json.len() > MAX_BLOCK_SIZE_BYTES {
+        return Some(ValidationError::BlockSizeExceeded);
+    }
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    const MAX_FUTURE_SECS: u64 = 120;
+    if block.timestamp > now + MAX_FUTURE_SECS {
+        return Some(ValidationError::TimestampTooFarFuture);
+    }
+
     let neighbors = get_neighbors(block.coord);
     for (i, &nb) in neighbors.iter().enumerate().take(NEIGHBOR_SLOTS) {
         let claimed = block.neighbor_hashes[i];
@@ -362,5 +380,77 @@ mod tests {
 
         let result = validate_block(&block, &store, &params);
         assert_eq!(result, Some(ValidationError::LatticeMismatch));
+    }
+
+    #[test]
+    fn test_timestamp_too_far_in_future() {
+        let store = LatticeStore::new();
+        let params = demo_params();
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        let mut block = make_genesis_block();
+        block.timestamp = now + 1000;
+
+        let result = validate_block(&block, &store, &params);
+        assert_eq!(result, Some(ValidationError::TimestampTooFarFuture));
+    }
+
+    #[test]
+    fn test_timestamp_within_future_tolerance() {
+        let store = LatticeStore::new();
+        let genesis = make_genesis_block();
+        let genesis_hash = genesis.pow_hash();
+        store.insert(HCPCoord { q: 0, r: 0, s: 0 }, genesis_hash, 1);
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        let mut hashes = [NEIGHBOR_SLOT_EMPTY; NEIGHBOR_SLOTS];
+        hashes[3] = genesis_hash;
+
+        let block = HexBlock {
+            parent_hash: [0u8; 32],
+            tx_merkle_root: [0u8; 32],
+            height: 0,
+            transactions: None,
+            miner_address: None,
+            timestamp: now + 60,
+            nonce: 0,
+            coord: HCPCoord { q: 1, r: 0, s: 0 },
+            neighbor_hashes: hashes,
+            tensor: TensorMeta {
+                expected_capacity: 1000,
+                actual_capacity: 1000,
+                compression_num: 1,
+                compression_den: 1,
+            },
+        };
+
+        let params = ConsensusParams {
+            maturity_depth: 0,
+            ..demo_params()
+        };
+
+        let result = validate_block(&block, &store, &params);
+        assert_ne!(result, Some(ValidationError::TimestampTooFarFuture));
+    }
+
+    #[test]
+    fn test_block_size_exceeded() {
+        let store = LatticeStore::new();
+        let params = demo_params();
+
+        let mut block = make_genesis_block();
+        let big_tx = serde_json::Value::String("X".repeat(MAX_BLOCK_SIZE_BYTES));
+        block.transactions = Some(vec![big_tx]);
+
+        let result = validate_block(&block, &store, &params);
+        assert_eq!(result, Some(ValidationError::BlockSizeExceeded));
     }
 }

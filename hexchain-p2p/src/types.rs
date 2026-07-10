@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 pub const HASH_BYTES: usize = 32;
 pub const NEIGHBOR_SLOTS: usize = 12;
+pub const MAX_BLOCK_SIZE_BYTES: usize = 1_048_576;
 
 pub type BlockHash = [u8; HASH_BYTES];
 
@@ -19,6 +20,8 @@ pub enum ValidationError {
     PowTooHigh,
     MmlExceeded,
     MissingPrevBlock,
+    TimestampTooFarFuture,
+    BlockSizeExceeded,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
