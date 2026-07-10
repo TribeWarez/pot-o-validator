@@ -128,7 +128,13 @@ async fn main() {
     if let Some(ref mp) = mempool_clone {
         mp.set_path(&mempool_path);
         mp.load_from_file(&mempool_path);
-        mp.revalidate(&extensions.ledger);
+        let ledger_for_reval = extensions.ledger.clone();
+        let mp_for_reval = mp.clone();
+        tokio::task::spawn_blocking(move || {
+            mp_for_reval.revalidate(&ledger_for_reval);
+        })
+        .await
+        .ok();
         tracing::info!(
             path = %mempool_path,
             pending = mp.len(),
@@ -437,7 +443,12 @@ async fn main() {
         peer_store_path.clone(),
         internal_state.peers.clone(),
     ));
-    peer_store.load();
+    let ps_for_load = peer_store.clone();
+    tokio::task::spawn_blocking(move || {
+        ps_for_load.load();
+    })
+    .await
+    .ok();
     {
         let loaded = internal_state.peers.read().await.len();
         if loaded > 0 {
