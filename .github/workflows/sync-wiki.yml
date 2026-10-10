@@ -1,0 +1,85 @@
+name: Sync Wiki
+
+# Source of truth: docs/wiki/ in this repository.
+# On every push to main that touches docs/wiki/, mirror those pages to the
+# GitHub Wiki (<repo>.wiki.git). The wiki is downstream-only: direct edits made
+# in the Wiki UI are overwritten on the next sync.
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "docs/wiki/**"
+      - ".github/workflows/sync-wiki.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: sync-wiki
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Sync docs/wiki to GitHub Wiki
+        env:
+          # Preferred: a PAT stored as WIKI_PUSH_TOKEN (fine-grained "Contents:
+          # read and write", or classic "repo" scope). Falls back to the
+          # built-in GITHUB_TOKEN, which works for the same repo's wiki on most
+          # accounts but can 403 on some.
+          WIKI_TOKEN: ${{ secrets.WIKI_PUSH_TOKEN || github.token }}
+          REPO: ${{ github.repository }}
+          ACTOR: ${{ github.actor }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          src="$GITHUB_WORKSPACE/docs/wiki"
+          if [ ! -d "$src" ] || [ -z "$(ls -A "$src" 2>/dev/null)" ]; then
+            echo "No docs/wiki content; nothing to sync."
+            exit 0
+          fi
+
+          # PATs authenticate as the user; GITHUB_TOKEN uses x-access-token.
+          if [[ "$WIKI_TOKEN" == ghp_* || "$WIKI_TOKEN" == github_pat_* ]]; then
+            wiki_url="https://${ACTOR}:${WIKI_TOKEN}@github.com/${REPO}.wiki.git"
+            echo "Using WIKI_PUSH_TOKEN for wiki push."
+          else
+            wiki_url="https://x-access-token:${WIKI_TOKEN}@github.com/${REPO}.wiki.git"
+            echo "Using GITHUB_TOKEN for wiki push (may 403; set WIKI_PUSH_TOKEN if it fails)."
+          fi
+
+          tmp="$(mktemp -d)"
+
+          if ! git clone --quiet "$wiki_url" "$tmp/wiki" 2>/dev/null; then
+            echo "::error::Could not clone ${REPO}.wiki.git."
+            echo "Initialize the wiki first: open https://github.com/${REPO}/wiki/_new,"
+            echo "create a 'Home' page, save, then re-run this workflow."
+            exit 1
+          fi
+
+          # Replace the wiki root with the current docs/wiki pages.
+          find "$tmp/wiki" -maxdepth 1 -type f -name '*.md' -delete
+          cp "$src"/*.md "$tmp/wiki"/
+
+          cd "$tmp/wiki"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo "Wiki already up to date; nothing to push."
+            exit 0
+          fi
+
+          short="$(printf '%s' "$SOURCE_SHA" | cut -c1-7)"
+          git commit -q -m "Sync wiki from docs/wiki (${short})"
+          git push origin HEAD:master
+
+          echo "Wiki synced from docs/wiki at ${short}."
