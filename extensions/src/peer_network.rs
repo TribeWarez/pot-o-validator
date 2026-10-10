@@ -36,6 +36,7 @@ pub struct NetworkState {
 // ---------------------------------------------------------------------------
 
 /// How validator nodes discover and communicate with each other.
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait PeerNetwork: Send + Sync {
     fn node_id(&self) -> &NodeId;

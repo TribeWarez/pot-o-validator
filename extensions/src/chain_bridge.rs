@@ -23,6 +23,7 @@ pub enum Token {
     NMTC,
 }
 
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait ChainBridge: Send + Sync {
     async fn submit_proof(&self, proof: &ProofPayload) -> TribeResult<TxSignature>;
