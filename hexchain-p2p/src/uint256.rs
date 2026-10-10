@@ -31,8 +31,8 @@ impl Uint256 {
         }
 
         let mut a = [0u32; 8];
-        for (chunk, limb) in self.data.chunks_exact(4).zip(a.iter_mut()) {
-            *limb = u32::from_be_bytes(chunk.try_into().unwrap());
+        for (chunk, limb) in self.data.as_chunks::<4>().0.iter().zip(a.iter_mut()) {
+            *limb = u32::from_be_bytes(*chunk);
         }
 
         let mut carry: u64 = 0;
@@ -53,9 +53,8 @@ impl Uint256 {
             rem = cur % div as u64;
         }
 
-        for (chunk, &limb) in self.data.chunks_exact_mut(4).zip(a.iter()) {
-            let be = limb.to_be_bytes();
-            chunk.copy_from_slice(&be);
+        for (chunk, &limb) in self.data.as_chunks_mut::<4>().0.iter_mut().zip(a.iter()) {
+            *chunk = limb.to_be_bytes();
         }
     }
 

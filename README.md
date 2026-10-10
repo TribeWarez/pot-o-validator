@@ -3,7 +3,7 @@
 [![crates.io](https://img.shields.io/crates/v/pot-o-validator.svg)](https://crates.io/crates/pot-o-validator)
 [![GitHub release](https://img.shields.io/github/v/release/TribeWarez/pot-o-validator)](https://github.com/TribeWarez/pot-o-validator/releases/latest)
 [![docs.rs](https://img.shields.io/docsrs/pot-o-validator)](https://docs.rs/pot-o-validator)
-[![CI](https://img.shields.io/github/actions/workflow/status/TribeWarez/pot-o-validator/pot-o-validator.yml?branch=main)](https://github.com/TribeWarez/pot-o-validator/actions)
+[![CI](https://img.shields.io/github/actions/workflow/status/TribeWarez/pot-o-validator/ci.yml?branch=main)](https://github.com/TribeWarez/pot-o-validator/actions)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 
 PoT-O (Proof of Tensor Optimizations) blockchain validator — HTTP API, HexChain lattice consensus, and TribeChain multi-token economy.
