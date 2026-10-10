@@ -1,6 +1,6 @@
 [package]
 name = "pot-o-extensions"
-version = "0.9.12"
+version = "0.10.0"
 edition = "2021"
 authors = ["TribeWarez"]
 description = "DeFi, staking, and external-chain extensions for the PoT-O validator"
@@ -13,9 +13,9 @@ keywords = ["pot-o", "tribewarez", "blockchain", "defi", "staking"]
 categories = ["cryptography", "development-tools"]
 
 [dependencies]
-pot-o-core = "0.9"
-ai3-lib = "0.9"
-pot-o-mining = "0.9"
+pot-o-core = "0.10"
+ai3-lib = "0.10"
+pot-o-mining = "0.10"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 async-trait = "0.1"
@@ -32,7 +32,7 @@ flume = "0.10"
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 rand = "0.8"
 bs58 = "0.4"
-hexchain-p2p = "0.9"
+hexchain-p2p = "0.10"
 
 [dev-dependencies]
 chrono = { version = "0.4", features = ["serde"] }

@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.10.0
+
+### CI & Tooling
+- Fixed `clippy::chunks_exact_to_as_chunks` in hexchain-p2p `uint256` (use `as_chunks`)
+- Allowed `clippy::double_must_use` on `async_trait` traits (clippy 1.99 false positive)
+- Pinned stable toolchain via `rust-toolchain.toml`
+- Removed duplicate CI workflow; README CI badge now references `ci.yml`
+
+### Repository
+- Added `CODEOWNERS`, issue template chooser config
+- Added operator wiki docs under `docs/wiki/` (build, run, config, network, API, troubleshooting)
+
+### Versions
+- Workspace bumped to 0.10.0 (`pot-o-core`, `ai3-lib`, `pot-o-mining`, `pot-o-extensions`, `hexchain-p2p`, `pot-o-validator`)
+
 ## v0.9.12
 
 ### Hex-Lattice Fixes
